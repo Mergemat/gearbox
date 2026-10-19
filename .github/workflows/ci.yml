@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+            packages: --workspace
+          - name: Linux
+            os: ubuntu-latest
+            packages: --workspace --exclude gearbox-editor
+          - name: Windows
+            os: windows-latest
+            packages: --workspace --exclude gearbox-editor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked --all-targets ${{ matrix.packages }}
+      - run: cargo test --release --locked ${{ matrix.packages }}
