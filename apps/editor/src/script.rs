@@ -367,6 +367,8 @@ impl Editor {
                 build_record(&mut s, self.opts.record.clone().unwrap());
             } else if self.opts.smoke {
                 build_smoke(&mut s);
+            } else if self.opts.showcase {
+                build_showcase(&mut s);
             } else {
                 build_e2e(&mut s);
             }
@@ -1882,4 +1884,202 @@ fn build_record(s: &mut Script, path: PathBuf) {
 
 thread_local! {
     static RECORDER: std::cell::RefCell<Option<std::process::Child>> = const { std::cell::RefCell::new(None) };
+}
+
+fn settle(e: &Editor, c: &mut Ctl, key: &'static str, frames: u32) -> bool {
+    if !e.settled() {
+        c.f.remove(key);
+        return false;
+    }
+    let since = *c.f.entry(key).or_insert(c.n as f64) as u32;
+    c.n >= since + frames
+}
+
+fn tries_bounds(e: &Editor) -> Option<(Vec3, Vec3)> {
+    let points = e.tries.iter().flat_map(|(path, _)| path.iter()).map(|p| Vec3::from(*p));
+    points.fold(None, |acc, p| match acc {
+        None => Some((p, p)),
+        Some((lo, hi)) => Some((lo.min(p), hi.max(p))),
+    })
+}
+
+fn run_bounds(e: &Editor) -> Option<(Vec3, Vec3)> {
+    e.sim.frames.iter().map(|f| Vec3::from(f.position())).fold(None, |acc, p| match acc {
+        None => Some((p, p)),
+        Some((lo, hi)) => Some((lo.min(p), hi.max(p))),
+    })
+}
+
+fn showcase_shot(e: &Editor, c: &mut Ctl, name: &str) {
+    c.shot(e, name);
+    let path = c.dir.join(format!("{name}.png"));
+    let Ok(img) = image::open(&path) else { return };
+    let (o, size, k) = (crate::app::v2(e.viewport.origin), e.vsize(), e.scale);
+    let (x, y) = ((o.x * k) as u32, (o.y * k) as u32);
+    let (w, h) = (((size.x * k) as u32).min(img.width() - x), ((size.y * k) as u32).min(img.height() - y));
+    let _ = img.crop_imm(x, y, w, h).save(c.dir.join(format!("{name}-view.png")));
+}
+
+fn build_showcase(s: &mut Script) {
+    s.add("open the map", |e, _| {
+        if !(e.ready() && !e.gates.is_empty() && e.origin.is_some()) {
+            return Flow::Wait;
+        }
+        Flow::Next
+    });
+    s.add("import a replay and its ghost", |e, c| match c.n {
+        1 => {
+            c.key("cmd-i");
+            Flow::Wait
+        }
+        4 => {
+            c.click_id("menu-0");
+            Flow::Wait
+        }
+        _ if c.n < 8 || e.doc.inputs.controls.is_empty() || !e.ready() => Flow::Wait,
+        _ if !c.f.contains_key("ghost") => {
+            c.f.insert("ghost", c.n as f64);
+            c.key("cmd-shift-i");
+            Flow::Wait
+        }
+        n if n == c.f["ghost"] as u32 + 3 => {
+            c.click_id("menu-0");
+            Flow::Wait
+        }
+        _ if e.ghosts.is_empty() => Flow::Wait,
+        _ => Flow::Next,
+    });
+    s.add("overview", |e, c| {
+        if c.n == 1 {
+            e.show.tricks = false;
+            if let Some((lo, hi)) = run_bounds(e) {
+                e.camera.frame(lo, hi);
+            }
+        }
+        if !settle(e, c, "overview", 90) {
+            return Flow::Wait;
+        }
+        showcase_shot(e, c, "showcase-1-overview");
+        Flow::Next
+    });
+    s.add("physics view", |e, c| {
+        if c.n == 1 {
+            e.show.physics = true;
+            e.dirty = true;
+        }
+        if !settle(e, c, "physics", 30) {
+            return Flow::Wait;
+        }
+        showcase_shot(e, c, "showcase-2-physics");
+        e.show.physics = false;
+        e.dirty = true;
+        Flow::Next
+    });
+    s.add("follow the car at speed", |e, c| {
+        if c.n == 1 {
+            let half = e.sim.frames.len() / 2;
+            let fastest = e.sim.frames[..half]
+                .iter()
+                .enumerate()
+                .max_by(|a, b| a.1.speed_kmh().total_cmp(&b.1.speed_kmh()))
+                .map_or(0, |(k, _)| k);
+            e.show.trail = true;
+            e.set_cursor(fastest);
+            c.key("shift-f");
+        }
+        if !settle(e, c, "follow", 60) {
+            return Flow::Wait;
+        }
+        showcase_shot(e, c, "showcase-3-follow");
+        c.key("shift-f");
+        Flow::Next
+    });
+    s.add("search: the web of tried lines", |e, c| {
+        if c.n == 1 {
+            let crossing = e
+                .sim
+                .frames
+                .windows(2)
+                .find(|w| w[1].waypoints > w[0].waypoints)
+                .and_then(|w| w[1].last_crossing)
+                .map(|x| x.0);
+            let Some(gate) = crossing.and_then(|w| e.gate_goal(w)) else {
+                return Flow::Fail("the run crosses no checkpoint".into());
+            };
+            let id = e.add_goal(GoalKind::Gate(gate));
+            e.objective_for_goal(id);
+            e.spec.by_time = true;
+            e.spec.seconds = 25.0;
+            e.show.tries = true;
+            if !e.search.running() {
+                e.start_search();
+            }
+            if let Some(id) = e.window_id {
+                let movie = c.dir.join("showcase-search-web.mov");
+                let _ = std::fs::remove_file(&movie);
+                let _ = std::process::Command::new("screencapture")
+                    .args(["-v", "-V24", "-x", "-k", &format!("-l{id}")])
+                    .arg(&movie)
+                    .spawn();
+            }
+            return Flow::Wait;
+        }
+        if e.search.running() {
+            if c.n == 90
+                && let Some((lo, hi)) = tries_bounds(e)
+            {
+                e.camera.frame(lo, hi);
+                e.camera.axis_view(e.camera.goal.yaw, 0.9);
+                e.camera.goal.distance *= 0.75;
+            }
+            if c.n > 90 {
+                e.camera.goal.yaw += 0.0025;
+            }
+            return Flow::Wait;
+        }
+        if !c.f.contains_key("framed") {
+            c.f.insert("framed", 1.0);
+            if let Some((lo, hi)) = tries_bounds(e) {
+                e.camera.frame(lo, hi);
+                e.camera.axis_view(e.camera.goal.yaw, 0.9);
+                e.camera.goal.distance *= 0.75;
+            }
+        }
+        if !settle(e, c, "web", 30) {
+            return Flow::Wait;
+        }
+        c.say(format!("  {} tried lines", e.tries.len()));
+        showcase_shot(e, c, "showcase-4-search-web");
+        Flow::Next
+    });
+    s.add("what if: three futures and the contacts", |e, c| {
+        if c.n == 1 {
+            let k = 640;
+            e.show.branches = true;
+            e.show.contacts = true;
+            e.set_cursor(k);
+            if let Some(f) = e.sim.frames.get(k) {
+                let at = Vec3::from(f.position());
+                let forward = Vec3::from(f.axis(2));
+                e.camera.look_at(at - forward * 11.0 + Vec3::Y * 4.5, at + forward * 6.0);
+            }
+        }
+        if c.n < 150 {
+            return Flow::Wait;
+        }
+        showcase_shot(e, c, "showcase-5-what-if");
+        Flow::Next
+    });
+    s.add("compare with the ghost", |e, c| match c.n {
+        1 => {
+            c.click_id("btab-1");
+            Flow::Wait
+        }
+        n if n < 40 => Flow::Wait,
+        _ => {
+            showcase_shot(e, c, "showcase-6-compare");
+            c.click_id("btab-0");
+            Flow::Next
+        }
+    });
 }

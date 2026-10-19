@@ -534,6 +534,7 @@ pub struct Options {
     pub pick_map: bool,
     pub script: Option<PathBuf>,
     pub smoke: bool,
+    pub showcase: bool,
     pub game: Option<PathBuf>,
     pub record: Option<PathBuf>,
     pub sync: bool,
