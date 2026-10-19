@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use crate::engine::frame::Frame;
 use crate::engine::input::InputFile;
 use crate::engine::session::{Command, Engine, Event, InputSel, Shared, Source};
-use crate::{aux, doc, optimize, project};
+use crate::{background, doc, optimize, project};
 
 const TICKS: usize = 500;
 const WAIT: Duration = Duration::from_secs(300);
@@ -121,7 +121,7 @@ fn project_session_scrub_record_and_search_match_golden_typed_engine() {
         let probe = shared.probe.as_ref().unwrap();
         assert_eq!((probe.tick, probe.stepped), (SCRUB_TICK, 37));
         assert_eq!(probe.branches.len(), 3);
-        let saved = aux::reach(&origin, &inputs, SCRUB_TICK, None).unwrap();
+        let saved = background::reach(&origin, &inputs, SCRUB_TICK, None).unwrap();
         for (branch, steer) in probe.branches.iter().zip([-1.0, 0.0, 1.0]) {
             let mut runner = saved.fork();
             let controls = gearbox_engine::Controls { steer, ..inputs.at(runner.race_ms()) };
@@ -159,7 +159,7 @@ fn project_session_scrub_record_and_search_match_golden_typed_engine() {
     engine.send(Command::Probe { tick: TICKS, branches: false });
     wait_for(&engine, &wake, |s| s.probe.as_ref().is_some_and(|p| p.tick == TICKS));
     let mut compare_runner = origin.fork();
-    let (compared, error) = aux::simulate(&mut compare_runner, &inputs, TICKS,
+    let (compared, error) = background::simulate(&mut compare_runner, &inputs, TICKS,
         Some(&(start.tick, start.placement())));
     assert!(error.is_none(), "{error:?}");
     let actual = engine.shared.lock().unwrap().frames.clone();
@@ -186,7 +186,7 @@ fn project_session_scrub_record_and_search_match_golden_typed_engine() {
     assert!(!live.candidates.is_empty(), "search returned no candidates");
     for candidate in &live.candidates {
         let mut runner = origin.fork();
-        let (frames, error) = aux::simulate(&mut runner, &candidate.inputs, 300, None);
+        let (frames, error) = background::simulate(&mut runner, &candidate.inputs, 300, None);
         assert!(error.is_none(), "{error:?}");
         check_frames(&frames, &golden, &candidate.inputs);
     }

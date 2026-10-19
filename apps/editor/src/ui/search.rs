@@ -663,7 +663,7 @@ impl Editor {
 
     fn candidate_diffs_now(&self, id: u64, until: usize) -> Option<Vec<GoalDiff>> {
         let judged = |f: &[crate::engine::frame::Frame]| f.len().min(until + 1);
-        let f = self.runs_frames.get(&crate::aux::Key::Candidate(id))?;
+        let f = self.runs_frames.get(&crate::background::Key::Candidate(id))?;
         let f = &f[..judged(f)];
         let cur_frames = &self.sim.frames[..judged(&self.sim.frames)];
         let cur = self.aimed_reach(cur_frames);

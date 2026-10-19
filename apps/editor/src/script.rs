@@ -1012,7 +1012,7 @@ fn build_e2e(s: &mut Script) {
                 }
                 Flow::Wait
             }
-            _ if !e.runs_frames.contains_key(&crate::aux::Key::Candidate(id)) || c.n < 4 => Flow::Wait,
+            _ if !e.runs_frames.contains_key(&crate::background::Key::Candidate(id)) || c.n < 4 => Flow::Wait,
             _ if !c.f.contains_key("previewed") => {
                 c.f.insert("previewed", 1.0);
                 c.check(e.preview == Some(id), "selected candidate previews (ghost path, timeline diff)");
@@ -1365,7 +1365,7 @@ fn build_smoke(s: &mut Script) {
         match stage(c) {
             Some(0) if e.sel == Sel::Candidate(id) => advance(c),
             Some(0) => press(c, &format!("cand-{id}"), &format!("no result row cand-{id}")),
-            Some(1) if (e.sel != Sel::Candidate(id) || !e.runs_frames.contains_key(&crate::aux::Key::Candidate(id))) && c.n < c.f["acted"] as u32 + 300 => Flow::Wait,
+            Some(1) if (e.sel != Sel::Candidate(id) || !e.runs_frames.contains_key(&crate::background::Key::Candidate(id))) && c.n < c.f["acted"] as u32 + 300 => Flow::Wait,
             Some(1) => {
                 c.check(e.preview == Some(id), "the candidate previews");
                 c.f.insert("before", gate_goal(e).and_then(|(i, _)| e.reach.get(i)?.ms).unwrap_or(i32::MAX) as f64);

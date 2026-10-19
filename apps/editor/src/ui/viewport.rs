@@ -699,14 +699,14 @@ impl Editor {
                 _ => self.hover_handle,
             };
             let reached: Vec<bool> = self.reach.iter().map(|r| r.tick.is_some()).collect();
-            let preview_frames = self.preview.and_then(|id| self.runs_frames.get(&crate::aux::Key::Candidate(id)).cloned());
+            let preview_frames = self.preview.and_then(|id| self.runs_frames.get(&crate::background::Key::Candidate(id)).cloned());
             let b_frames = match self.compare.1 {
                 RunRef::Ghost(_) | RunRef::Current => None,
                 r if self.layout.bottom_tab == 1 => {
                     let key = match r {
-                        RunRef::Run(id) => Some(crate::aux::Key::Run(id)),
-                        RunRef::Previous => self.doc.history.last().map(|h| crate::aux::Key::Run(h.id)),
-                        RunRef::Candidate(id) => Some(crate::aux::Key::Candidate(id)),
+                        RunRef::Run(id) => Some(crate::background::Key::Run(id)),
+                        RunRef::Previous => self.doc.history.last().map(|h| crate::background::Key::Run(h.id)),
+                        RunRef::Candidate(id) => Some(crate::background::Key::Candidate(id)),
                         _ => None,
                     };
                     key.and_then(|k| self.runs_frames.get(&k).cloned())

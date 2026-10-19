@@ -275,9 +275,9 @@ impl Editor {
             Some(((0..len).map(|k| doc::control_at(&c, self.race_ms0, k)).collect::<Vec<_>>(), diff))
         });
         let b_frames = match self.compare.1 {
-            RunRef::Run(id) => self.runs_frames.get(&crate::aux::Key::Run(id)),
-            RunRef::Candidate(id) => self.runs_frames.get(&crate::aux::Key::Candidate(id)),
-            RunRef::Previous => self.doc.history.last().and_then(|h| self.runs_frames.get(&crate::aux::Key::Run(h.id))),
+            RunRef::Run(id) => self.runs_frames.get(&crate::background::Key::Run(id)),
+            RunRef::Candidate(id) => self.runs_frames.get(&crate::background::Key::Candidate(id)),
+            RunRef::Previous => self.doc.history.last().and_then(|h| self.runs_frames.get(&crate::background::Key::Run(h.id))),
             _ => None,
         };
         let (b_speed, b_splits): (Option<Vec<(i32, f32)>>, Option<Vec<i32>>) = match self.compare.1 {

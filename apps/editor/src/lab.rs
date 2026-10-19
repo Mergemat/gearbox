@@ -81,7 +81,7 @@ impl Editor {
     pub fn trick_ticks(&self, from: usize, ticks: usize, placed: bool) -> Option<gearbox_search::tricks::Events> {
         let origin = self.origin.as_ref()?;
         let start = if placed { self.doc.start.as_ref().map(|s| (s.tick, s.placement())) } else { None };
-        let at = crate::aux::reach(origin, &self.doc.inputs, from, start.as_ref()).ok()?;
+        let at = crate::background::reach(origin, &self.doc.inputs, from, start.as_ref()).ok()?;
         let mut n = at.fork();
         let mut line = gearbox_search::input::Timeline { t0: self.doc.inputs.t0, seed: self.doc.inputs.seed, controls: self.doc.inputs.controls.clone() };
         let until = self.race_ms0 + 10 * (from + ticks) as i32;

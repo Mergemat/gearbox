@@ -5,7 +5,7 @@ use crate::replay::GhostTrack;
 use crate::engine::display::World;
 use glam::{Mat4, Quat, Vec3};
 
-use crate::aux::GateInfo;
+use crate::background::GateInfo;
 use crate::doc::{Goal, GoalKind, StartState};
 use crate::gfx::mesh::{DrawList, Instance, Mesh, MeshId, Pass, TextureId, Vertex};
 use crate::gfx::renderer::Renderer;

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use gearbox_search::objective::{Objective, Score};
 use gearbox_search::pose::Placement;
 
-use crate::aux::{reach, Wake, panic_message};
+use crate::background::{reach, Wake, panic_message};
 use crate::doc::{Goal, GoalKind, Id};
 use crate::fmt::{fmt_ms, fmt_s};
 
