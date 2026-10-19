@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/Mergemat/gearbox?include_prereleases)](https://github.com/Mergemat/gearbox/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Trackmania 2020 physics, input search and a TAS editor, in Rust.
+Trackmania physics, tick for tick.
 
 Gearbox simulates a Trackmania 2020 race tick by tick, with the same results
 as the game, from a map file and your own game install. On top of that it
