@@ -50,7 +50,12 @@ impl Mesh {
             v[(k + 2) % 3] = 1.0;
             let base = m.vertices.len() as u32;
             for (a, b) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
-                m.vertices.push(Vertex::smooth(n + u * a + v * b, n, [255; 4], [0.5 + a * 0.5, 0.5 + b * 0.5]));
+                m.vertices.push(Vertex::smooth(
+                    n + u * a + v * b,
+                    n,
+                    [255; 4],
+                    [0.5 + a * 0.5, 0.5 + b * 0.5],
+                ));
             }
             m.indices.extend([0, 1, 2, 0, 2, 3].map(|i| base + i));
         }

@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 
-use crate::pak::Pak;
 use crate::packs::PackSet;
+use crate::pak::Pak;
 
 pub const NOT_FOUND: &str = "Trackmania not found. Run: gearbox setup --game <path to Trackmania>";
 
@@ -46,7 +46,10 @@ impl Game {
             && let Some(saved) = read_config(&file)?
         {
             return Game::at(&saved, Origin::Saved).with_context(|| {
-                format!("the game saved in {} is gone. Run: gearbox setup --game <path to Trackmania>", file.display())
+                format!(
+                    "the game saved in {} is gone. Run: gearbox setup --game <path to Trackmania>",
+                    file.display()
+                )
             });
         }
         detect().context(NOT_FOUND)
@@ -54,12 +57,18 @@ impl Game {
 
     pub fn at(path: &Path, origin: Origin) -> Result<Game> {
         let Some(packs) = packs_dir(path) else {
-            bail!("{}: no Stadium.pak there or in its Packs folder; pass the Trackmania folder or its Packs folder", path.display());
+            bail!(
+                "{}: no Stadium.pak there or in its Packs folder; pass the Trackmania folder or its Packs folder",
+                path.display()
+            );
         };
         let stadium = child(&packs, "Stadium.pak").context("Stadium.pak")?;
         let pak = Pak::open(&stadium, None)?;
-        ensure!(pak.check_key(&crate::packs::key("stadium").context("Stadium key")?),
-            "{}: does not open with the Stadium key; is it a Trackmania 2020 install?", stadium.display());
+        ensure!(
+            pak.check_key(&crate::packs::key("stadium").context("Stadium key")?),
+            "{}: does not open with the Stadium key; is it a Trackmania 2020 install?",
+            stadium.display()
+        );
         Ok(Game { packs: std::fs::canonicalize(&packs)?, origin })
     }
 
@@ -87,8 +96,11 @@ pub fn data_dir() -> PathBuf {
 }
 
 pub fn maps_dirs(game: Option<&Game>) -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = dirs::document_dir().map(|d| d.join("Trackmania").join("Maps")).into_iter().collect();
-    if let Some(drive) = game.and_then(|g| g.packs.ancestors().find(|a| a.file_name().is_some_and(|n| n.eq_ignore_ascii_case("drive_c")))) {
+    let mut dirs: Vec<PathBuf> =
+        dirs::document_dir().map(|d| d.join("Trackmania").join("Maps")).into_iter().collect();
+    if let Some(drive) = game.and_then(|g| {
+        g.packs.ancestors().find(|a| a.file_name().is_some_and(|n| n.eq_ignore_ascii_case("drive_c")))
+    }) {
         let users = list(&drive.join("users"));
         for user in users {
             for docs in ["Documents", "My Documents"] {
@@ -107,7 +119,8 @@ pub fn read_config(file: &Path) -> Result<Option<PathBuf>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e).with_context(|| format!("reading {}", file.display())),
     };
-    let config: Config = serde_json::from_str(&text).with_context(|| format!("{}: not a gearbox configuration", file.display()))?;
+    let config: Config = serde_json::from_str(&text)
+        .with_context(|| format!("{}: not a gearbox configuration", file.display()))?;
     Ok(Some(config.game))
 }
 
@@ -155,11 +168,21 @@ pub fn candidates(os: Os, home: &Path, drives: &[PathBuf]) -> Vec<PathBuf> {
             }
         }
         Os::Linux => {
-            for steam in [".steam/steam", ".steam/root", ".local/share/Steam", ".var/app/com.valvesoftware.Steam/.local/share/Steam"] {
+            for steam in [
+                ".steam/steam",
+                ".steam/root",
+                ".local/share/Steam",
+                ".var/app/com.valvesoftware.Steam/.local/share/Steam",
+            ] {
                 out.extend(steam_installs(&home.join(steam)));
             }
             let mut prefixes = vec![home.join(".wine")];
-            for root in ["Games", ".local/share/lutris/prefixes", ".local/share/bottles/bottles", ".var/app/com.usebottles.bottles/data/bottles/bottles"] {
+            for root in [
+                "Games",
+                ".local/share/lutris/prefixes",
+                ".local/share/bottles/bottles",
+                ".var/app/com.usebottles.bottles/data/bottles/bottles",
+            ] {
                 prefixes.extend(list(&home.join(root)));
             }
             for prefix in prefixes {
@@ -169,7 +192,11 @@ pub fn candidates(os: Os, home: &Path, drives: &[PathBuf]) -> Vec<PathBuf> {
         Os::Mac => {
             let mut drives = vec![home.join(".wine/drive_c")];
             find_drives(&home.join("Library/Application Support"), 4, &mut drives);
-            find_drives(&home.join("Library/Containers/com.isaacmarovitz.Whisky/Data/Library/Application Support"), 4, &mut drives);
+            find_drives(
+                &home.join("Library/Containers/com.isaacmarovitz.Whisky/Data/Library/Application Support"),
+                4,
+                &mut drives,
+            );
             find_drives(&home.join("Library/Containers/com.isaacmarovitz.Whisky/Bottles"), 2, &mut drives);
             for drive in drives {
                 out.extend(windows_installs(&drive));
@@ -230,7 +257,8 @@ fn find_drives(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
 }
 
 fn list(dir: &Path) -> Vec<PathBuf> {
-    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
+    let mut entries: Vec<PathBuf> =
+        std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
     entries.sort();
     entries
 }
@@ -298,8 +326,10 @@ mod tests {
     #[test]
     fn linux_follows_steam_library_folders_and_wine_prefixes() {
         let home = Temp::new("linux");
-        home.file(".local/share/Steam/steamapps/libraryfolders.vdf",
-            "\"libraryfolders\"\n{\n\t\"1\"\n\t{\n\t\t\"path\"\t\t\"/mnt/games/SteamLibrary\"\n\t}\n}\n");
+        home.file(
+            ".local/share/Steam/steamapps/libraryfolders.vdf",
+            "\"libraryfolders\"\n{\n\t\"1\"\n\t{\n\t\t\"path\"\t\t\"/mnt/games/SteamLibrary\"\n\t}\n}\n",
+        );
         std::fs::create_dir_all(home.0.join("Games/trackmania/drive_c")).unwrap();
         let found = candidates(Os::Linux, &home.0, &[]);
         for want in [
@@ -315,16 +345,31 @@ mod tests {
     #[test]
     fn windows_reads_epic_manifests_and_steam_libraries() {
         let drive = Temp::new("windows");
-        drive.file("ProgramData/Epic/EpicGamesLauncher/Data/Manifests/A1.item",
-            r#"{"DisplayName": "Trackmania", "InstallLocation": "D:\\Epic\\TrackmaniaNext"}"#);
-        drive.file("ProgramData/Epic/EpicGamesLauncher/Data/Manifests/B2.item",
-            r#"{"DisplayName": "Other", "InstallLocation": "D:\\Epic\\Other"}"#);
-        drive.file("Program Files (x86)/Steam/steamapps/libraryfolders.vdf", "\t\t\"path\"\t\t\"E:\\\\SteamLibrary\"\n");
+        drive.file(
+            "ProgramData/Epic/EpicGamesLauncher/Data/Manifests/A1.item",
+            r#"{"DisplayName": "Trackmania", "InstallLocation": "D:\\Epic\\TrackmaniaNext"}"#,
+        );
+        drive.file(
+            "ProgramData/Epic/EpicGamesLauncher/Data/Manifests/B2.item",
+            r#"{"DisplayName": "Other", "InstallLocation": "D:\\Epic\\Other"}"#,
+        );
+        drive.file(
+            "Program Files (x86)/Steam/steamapps/libraryfolders.vdf",
+            "\t\t\"path\"\t\t\"E:\\\\SteamLibrary\"\n",
+        );
         let found = candidates(Os::Windows, Path::new("/nowhere"), std::slice::from_ref(&drive.0));
         assert!(found.contains(&PathBuf::from("D:\\Epic\\TrackmaniaNext")), "{found:#?}");
         assert!(!found.contains(&PathBuf::from("D:\\Epic\\Other")));
-        assert!(found.contains(&Path::new("E:\\SteamLibrary").join("steamapps").join("common").join("Trackmania")), "{found:#?}");
-        assert!(found.contains(&drive.0.join("Program Files (x86)/Ubisoft/Ubisoft Game Launcher/games/Trackmania")));
+        assert!(
+            found
+                .contains(&Path::new("E:\\SteamLibrary").join("steamapps").join("common").join("Trackmania")),
+            "{found:#?}"
+        );
+        assert!(
+            found.contains(
+                &drive.0.join("Program Files (x86)/Ubisoft/Ubisoft Game Launcher/games/Trackmania")
+            )
+        );
     }
 
     #[test]

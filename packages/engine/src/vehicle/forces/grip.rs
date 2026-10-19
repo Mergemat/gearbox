@@ -1,4 +1,7 @@
-use super::{ForceCtx, common::{EPS, TINY, PEDAL_THRESHOLD, PedalMode}};
+use super::{
+    ForceCtx,
+    common::{EPS, PEDAL_THRESHOLD, PedalMode, TINY},
+};
 
 const NEGATIVE_PEDAL_THRESHOLD: f32 = -PEDAL_THRESHOLD;
 
@@ -10,10 +13,10 @@ pub fn steer_grip_forces(ctx: &mut ForceCtx<'_>, blend: f32) {
     if MINIMUM_FORWARD_SPEED >= ctx.local_velocity.z || EPS > blend {
         return;
     }
-    let (lateral_speed, vertical_speed, forward_speed) = (ctx.local_velocity.x, ctx.local_velocity.y,
-        ctx.local_velocity.z);
-    let squared_speed = vertical_speed * vertical_speed + lateral_speed * lateral_speed
-        + forward_speed * forward_speed;
+    let (lateral_speed, vertical_speed, forward_speed) =
+        (ctx.local_velocity.x, ctx.local_velocity.y, ctx.local_velocity.z);
+    let squared_speed =
+        vertical_speed * vertical_speed + lateral_speed * lateral_speed + forward_speed * forward_speed;
     let mut lateral_alignment = lateral_speed;
     if squared_speed > TINY && f32::MAX > squared_speed {
         lateral_alignment = 1.0 / squared_speed.sqrt() * lateral_speed;
@@ -31,11 +34,7 @@ pub fn steer_grip_forces(ctx: &mut ForceCtx<'_>, blend: f32) {
     let pedal = if cut_pedal {
         None
     } else if gassing && !braking {
-        Some(if full_pedal {
-            1.0
-        } else {
-            ctx.vehicle.controls.gas
-        })
+        Some(if full_pedal { 1.0 } else { ctx.vehicle.controls.gas })
     } else if full_pedal {
         Some(1.0)
     } else {
@@ -48,13 +47,19 @@ pub fn steer_grip_forces(ctx: &mut ForceCtx<'_>, blend: f32) {
         let speed_divisor = speed_divisor * speed_divisor;
         let side_alignment = lateral_alignment.abs();
         let side_scale = side_alignment * SIDE_ALIGNMENT_SCALE + 1.0;
-        let (yaw_scale, yaw_damping) = (ctx.tuning.special_grip_yaw_scale,
-            ctx.tuning.special_grip_yaw_damping);
-        front_force = [(yaw_scale * lateral_alignment) / steering_scale * blend, blend * 0.0,
-            lateral_scale * FRONT_LATERAL_SCALE * side_alignment * side_scale * yaw_damping
-            / speed_divisor * blend];
-        rear_force = [lateral_alignment * -1.0 * yaw_scale / steering_scale * blend, blend * 0.0,
-            lateral_scale * side_alignment * side_scale * yaw_damping / speed_divisor * blend];
+        let (yaw_scale, yaw_damping) =
+            (ctx.tuning.special_grip_yaw_scale, ctx.tuning.special_grip_yaw_damping);
+        front_force = [
+            (yaw_scale * lateral_alignment) / steering_scale * blend,
+            blend * 0.0,
+            lateral_scale * FRONT_LATERAL_SCALE * side_alignment * side_scale * yaw_damping / speed_divisor
+                * blend,
+        ];
+        rear_force = [
+            lateral_alignment * -1.0 * yaw_scale / steering_scale * blend,
+            blend * 0.0,
+            lateral_scale * side_alignment * side_scale * yaw_damping / speed_divisor * blend,
+        ];
     }
     for index in 0..ctx.geometry.wheels.len() {
         let braking = ctx.vehicle.controls.brake > PEDAL_THRESHOLD;

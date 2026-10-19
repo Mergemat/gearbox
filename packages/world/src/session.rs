@@ -1,19 +1,19 @@
-use std::sync::Arc;
-use anyhow::Result;
-use gearbox_packs::packs::PackSet;
-use gearbox_engine::{
-    World, State, Iso, arena,
-    dyna::Dyna,
-    race::RaceRules,
-    session::{Session, SessionConfig, VehicleAssets, Clock},
-    vehicle::{Vehicle, spawn, vis},
-};
 use crate::{
     bodies,
     car::{self, Car, CarAssets, VehicleStart},
     gameplay::{self, Gameplay},
     statics::MapAssets,
 };
+use anyhow::Result;
+use gearbox_engine::{
+    Iso, State, World, arena,
+    dyna::Dyna,
+    race::RaceRules,
+    session::{Clock, Session, SessionConfig, VehicleAssets},
+    vehicle::{Vehicle, spawn, vis},
+};
+use gearbox_packs::packs::PackSet;
+use std::sync::Arc;
 
 const RECENT_EVENT_DURATION_MS: u32 = 100;
 const DEFAULT_INPUT_START_MS: i32 = -1500;
@@ -27,11 +27,7 @@ pub struct OpenOptions {
 }
 impl Default for OpenOptions {
     fn default() -> Self {
-        Self {
-            t0: DEFAULT_INPUT_START_MS,
-            seed: None,
-            car: None,
-        }
+        Self { t0: DEFAULT_INPUT_START_MS, seed: None, car: None }
     }
 }
 
@@ -41,9 +37,8 @@ pub fn open(map: &gearbox_gbx::Map, packs: &PackSet, options: OpenOptions) -> Re
     let gameplay = gameplay::build(map, &map_assets, clock.start, clock.now)?;
     let (mut world, mut state, mut dyna) = build_world(map, &map_assets, clock.start)?;
     let car = load_car(map, packs, options.car, &mut world, &mut state)?;
-    let (vehicle, effects, assets) = spawn_car(
-        &car, &gameplay, clock.now, &mut world, &mut state, &mut dyna,
-    )?;
+    let (vehicle, effects, assets) =
+        spawn_car(&car, &gameplay, clock.now, &mut world, &mut state, &mut dyna)?;
     state.scene.push(gameplay.scene);
     let config = session_config(assets, car, &gameplay.settings, gameplay.initial_pose);
     Ok(Session {
@@ -78,7 +73,8 @@ fn load_car(
 ) -> Result<CarAssets> {
     let car = match override_car {
         Some(car) => car,
-        None => Car::ALL.into_iter()
+        None => Car::ALL
+            .into_iter()
             .find(|car| car.pack_name() == map.player_model.as_deref().unwrap_or("CarSport"))
             .ok_or_else(|| anyhow::anyhow!("unsupported session car"))?,
     };

@@ -1,4 +1,3 @@
-
 use anyhow::{Context, Result, ensure};
 
 pub fn plain_gbx(buf: &[u8]) -> Result<Vec<u8>> {
@@ -29,7 +28,10 @@ fn norm(p: &str) -> String {
 }
 
 impl<'a> Files<'a> {
-    pub fn new<'b>(files: impl IntoIterator<Item = (&'b str, &'b [u8])>, packs: &'a dyn crate::catalog::Source) -> Self {
+    pub fn new<'b>(
+        files: impl IntoIterator<Item = (&'b str, &'b [u8])>,
+        packs: &'a dyn crate::catalog::Source,
+    ) -> Self {
         Self { by_path: files.into_iter().map(|(p, b)| (norm(p), b.to_vec())).collect(), packs }
     }
 }

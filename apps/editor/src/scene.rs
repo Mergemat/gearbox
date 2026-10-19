@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
+use crate::engine::display::World;
 use crate::engine::frame::{Frame, Wheel};
 use crate::replay::GhostTrack;
-use crate::engine::display::World;
 use glam::{Mat4, Quat, Vec3};
 
 use crate::background::GateInfo;
@@ -14,7 +14,8 @@ use crate::theme;
 use crate::visual::MatKind;
 
 pub const CAR_HALF: Vec3 = Vec3::new(0.95, 0.42, 2.15);
-const WHEELS: [[f32; 3]; 4] = [[0.86, -0.35, 1.38], [-0.86, -0.35, 1.38], [-0.86, -0.35, -1.42], [0.86, -0.35, -1.42]];
+const WHEELS: [[f32; 3]; 4] =
+    [[0.86, -0.35, 1.38], [-0.86, -0.35, 1.38], [-0.86, -0.35, -1.42], [0.86, -0.35, -1.42]];
 
 pub fn build_world(w: &World, hidden: &[crate::materials::Family]) -> Mesh {
     let mut mesh = Mesh::default();
@@ -58,7 +59,12 @@ fn trail_mesh(frames: &[Frame], half_width: f32) -> Mesh {
 }
 
 fn box_transform(c: Vec3, ax: [Vec3; 3], half: Vec3) -> Mat4 {
-    Mat4::from_cols((ax[0] * half.x).extend(0.0), (ax[1] * half.y).extend(0.0), (ax[2] * half.z).extend(0.0), c.extend(1.0))
+    Mat4::from_cols(
+        (ax[0] * half.x).extend(0.0),
+        (ax[1] * half.y).extend(0.0),
+        (ax[2] * half.z).extend(0.0),
+        c.extend(1.0),
+    )
 }
 
 fn tint(rgb: [u8; 3], a: f32) -> [f32; 4] {
@@ -72,7 +78,10 @@ fn rgba(hex: u32, a: u8) -> [u8; 4] {
 pub fn lerp_frame(a: &Frame, b: &Frame, t: f32) -> Frame {
     use glam::Mat3;
     let mut f = *a;
-    let rot = |f: &Frame| Quat::from_mat3(&Mat3::from_cols(Vec3::from(f.axis(0)), Vec3::from(f.axis(1)), Vec3::from(f.axis(2)))).normalize();
+    let rot = |f: &Frame| {
+        Quat::from_mat3(&Mat3::from_cols(Vec3::from(f.axis(0)), Vec3::from(f.axis(1)), Vec3::from(f.axis(2))))
+            .normalize()
+    };
     let m = Mat3::from_quat(rot(a).slerp(rot(b), t));
     for (k, c) in [m.x_axis, m.y_axis, m.z_axis].iter().enumerate() {
         f.body[k] = c.x;
@@ -153,16 +162,26 @@ fn part_sphere(m: &crate::visual::MeshData, first: u32, count: u32) -> (Vec3, f3
 
 impl VisualGpu {
     pub fn upload(r: &mut Renderer, v: &crate::visual::VisualWorld) -> Self {
-        let textures: Vec<Option<TextureId>> = v.textures.iter().map(|t| t.as_ref().map(|t| {
-            let mips: Vec<&[u8]> = t.mips.iter().map(Vec::as_slice).collect();
-            r.add_texture_mips(t.format, t.width, t.height, &mips)
-        })).collect();
+        let textures: Vec<Option<TextureId>> = v
+            .textures
+            .iter()
+            .map(|t| {
+                t.as_ref().map(|t| {
+                    let mips: Vec<&[u8]> = t.mips.iter().map(Vec::as_slice).collect();
+                    r.add_texture_mips(t.format, t.width, t.height, &mips)
+                })
+            })
+            .collect();
         let mut ids: Vec<Vec<MeshId>> = Vec::with_capacity(v.meshes.len());
         let mut spheres: Vec<Vec<(Vec3, f32)>> = Vec::with_capacity(v.meshes.len());
         for m in &v.meshes {
             let parts: Vec<(u32, u32)> = m.parts.iter().map(|p| (p.0, p.1)).collect();
             spheres.push(parts.iter().map(|&(f, c)| part_sphere(m, f, c)).collect());
-            ids.push(if m.indices.is_empty() { Vec::new() } else { r.add_mesh_parts(&m.vertices, &m.indices, &parts) });
+            ids.push(if m.indices.is_empty() {
+                Vec::new()
+            } else {
+                r.add_mesh_parts(&m.vertices, &m.indices, &parts)
+            });
         }
         let look = |p: &crate::visual::Placed| -> Option<(MeshId, TextureId, [f32; 4])> {
             let mesh = *ids.get(p.mesh)?.get(p.part)?;
@@ -170,11 +189,27 @@ impl VisualGpu {
             if mat.is_some_and(|m| m.kind == MatKind::Skip) {
                 return None;
             }
-            let tex = mat.and_then(|m| m.texture).and_then(|t| textures.get(t).copied().flatten()).unwrap_or(TextureId(0));
+            let tex = mat
+                .and_then(|m| m.texture)
+                .and_then(|t| textures.get(t).copied().flatten())
+                .unwrap_or(TextureId(0));
             let base = mat.map_or([1.0; 4], |m| m.base);
             let kind = mat.map(|m| m.kind);
-            let g = if matches!(kind, Some(MatKind::Holo | MatKind::Glow)) { [1.0; 3] } else { gameplay_tint(mat.and_then(|m| m.gameplay)) };
-            let mut tint = [base[0] * g[0], base[1] * g[1], base[2] * g[2], if matches!(kind, Some(MatKind::Glass | MatKind::Holo | MatKind::Glow)) { base[3] } else { 1.0 }];
+            let g = if matches!(kind, Some(MatKind::Holo | MatKind::Glow)) {
+                [1.0; 3]
+            } else {
+                gameplay_tint(mat.and_then(|m| m.gameplay))
+            };
+            let mut tint = [
+                base[0] * g[0],
+                base[1] * g[1],
+                base[2] * g[2],
+                if matches!(kind, Some(MatKind::Glass | MatKind::Holo | MatKind::Glow)) {
+                    base[3]
+                } else {
+                    1.0
+                },
+            ];
             if p.surroundings {
                 for c in &mut tint[..3] {
                     *c *= 0.55;
@@ -186,7 +221,13 @@ impl VisualGpu {
         for p in &v.placed {
             let Some((mesh, texture, tint)) = look(p) else { continue };
             let (c, rad) = spheres[p.mesh][p.part];
-            let scale = p.transform.x_axis.truncate().length().max(p.transform.y_axis.truncate().length()).max(p.transform.z_axis.truncate().length());
+            let scale = p
+                .transform
+                .x_axis
+                .truncate()
+                .length()
+                .max(p.transform.y_axis.truncate().length())
+                .max(p.transform.z_axis.truncate().length());
             let pass = match v.materials.get(p.material).map(|m| m.kind) {
                 Some(MatKind::Cutout) => Pass::Cutout,
                 Some(MatKind::Decal) => Pass::Decal,
@@ -195,12 +236,32 @@ impl VisualGpu {
                 Some(MatKind::Glow) => Pass::Glow,
                 _ => Pass::Opaque,
             };
-            parts.push(VisualPart { pass, mesh, texture, tint, transform: p.transform, center: p.transform.transform_point3(c), radius: rad * scale, surroundings: p.surroundings });
+            parts.push(VisualPart {
+                pass,
+                mesh,
+                texture,
+                tint,
+                transform: p.transform,
+                center: p.transform.transform_point3(c),
+                radius: rad * scale,
+                surroundings: p.surroundings,
+            });
         }
         let (car_body, wheels) = match &v.car {
             Some(c) => (
                 c.body.iter().filter_map(|p| look(p).map(|(m, t, tint)| (m, t, tint, p.transform))).collect(),
-                c.wheels.iter().map(|w| (w.pivot.w_axis.truncate(), w.parts.iter().filter_map(|p| look(p).map(|(m, t, tint)| (m, t, tint, p.transform))).collect())).collect(),
+                c.wheels
+                    .iter()
+                    .map(|w| {
+                        (
+                            w.pivot.w_axis.truncate(),
+                            w.parts
+                                .iter()
+                                .filter_map(|p| look(p).map(|(m, t, tint)| (m, t, tint, p.transform)))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
             ),
             None => (Vec::new(), Vec::new()),
         };
@@ -264,12 +325,24 @@ pub const VEL_ARROW_S: f32 = 0.15;
 pub fn velocity_tip(s: &StartState) -> Vec3 {
     let p = Vec3::from(s.pos) + Vec3::Y * 0.6;
     let v = Vec3::from(s.velocity);
-    if v.length() * VEL_ARROW_S > 3.0 { p + v * VEL_ARROW_S } else { p + crate::doc::ypr_rot(s.ypr) * Vec3::Z * 3.0 }
+    if v.length() * VEL_ARROW_S > 3.0 {
+        p + v * VEL_ARROW_S
+    } else {
+        p + crate::doc::ypr_rot(s.ypr) * Vec3::Z * 3.0
+    }
 }
 
 fn box_lines(d: &mut DrawList, min: Vec3, max: Vec3, c: [u8; 4], overlay: bool) {
-    let p = |i: usize| Vec3::new(if i & 1 == 0 { min.x } else { max.x }, if i & 2 == 0 { min.y } else { max.y }, if i & 4 == 0 { min.z } else { max.z });
-    for (a, b) in [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)] {
+    let p = |i: usize| {
+        Vec3::new(
+            if i & 1 == 0 { min.x } else { max.x },
+            if i & 2 == 0 { min.y } else { max.y },
+            if i & 4 == 0 { min.z } else { max.z },
+        )
+    };
+    for (a, b) in
+        [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)]
+    {
         if overlay {
             d.overlay_line(p(a), p(b), c);
         } else {
@@ -279,8 +352,16 @@ fn box_lines(d: &mut DrawList, min: Vec3, max: Vec3, c: [u8; 4], overlay: bool) 
 }
 
 fn oriented_box_lines(d: &mut DrawList, c: Vec3, h: Vec3, q: Quat, col: [u8; 4]) {
-    let p = |i: usize| c + q * Vec3::new(if i & 1 == 0 { -h.x } else { h.x }, if i & 2 == 0 { -h.y } else { h.y }, if i & 4 == 0 { -h.z } else { h.z });
-    for (a, b) in [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)] {
+    let p = |i: usize| {
+        c + q * Vec3::new(
+            if i & 1 == 0 { -h.x } else { h.x },
+            if i & 2 == 0 { -h.y } else { h.y },
+            if i & 4 == 0 { -h.z } else { h.z },
+        )
+    };
+    for (a, b) in
+        [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)]
+    {
         d.line(p(a), p(b), col);
     }
 }
@@ -288,10 +369,12 @@ fn oriented_box_lines(d: &mut DrawList, c: Vec3, h: Vec3, q: Quat, col: [u8; 4])
 fn circle(d: &mut DrawList, c: Vec3, n: Vec3, r: f32, col: [u8; 4]) {
     let u = n.any_orthonormal_vector();
     let v = n.cross(u);
-    let pts: Vec<Vec3> = (0..=48).map(|i| {
-        let a = i as f32 / 48.0 * std::f32::consts::TAU;
-        c + (u * a.cos() + v * a.sin()) * r
-    }).collect();
+    let pts: Vec<Vec3> = (0..=48)
+        .map(|i| {
+            let a = i as f32 / 48.0 * std::f32::consts::TAU;
+            c + (u * a.cos() + v * a.sin()) * r
+        })
+        .collect();
     for w in pts.windows(2) {
         d.line(w[0], w[1], col);
     }
@@ -302,18 +385,43 @@ impl Scene {
         let unit_box = renderer.add_mesh(&Mesh::unit_box());
         let octa = renderer.add_mesh(&Mesh::octahedron());
         let quad = renderer.add_mesh(&Mesh {
-            vertices: [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(x, z)| Vertex::unlit(Vec3::new(x, 0.0, z), [255; 4])).into_iter().zip([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]).map(|(mut v, uv)| { v.uv = uv; v }).collect(),
+            vertices: [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+                .map(|(x, z)| Vertex::unlit(Vec3::new(x, 0.0, z), [255; 4]))
+                .into_iter()
+                .zip([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
+                .map(|(mut v, uv)| {
+                    v.uv = uv;
+                    v
+                })
+                .collect(),
             indices: vec![0, 1, 2, 0, 2, 3],
         });
         let n = 64u32;
-        let blob_px: Vec<u8> = (0..n * n).flat_map(|i| {
-            let (x, y) = ((i % n) as f32 / (n - 1) as f32 * 2.0 - 1.0, (i / n) as f32 / (n - 1) as f32 * 2.0 - 1.0);
-            let r = (x * x + y * y).sqrt();
-            let a = ((1.0 - r) / 0.6).clamp(0.0, 1.0);
-            [0, 0, 0, (a * a * (3.0 - 2.0 * a) * 255.0) as u8]
-        }).collect();
+        let blob_px: Vec<u8> = (0..n * n)
+            .flat_map(|i| {
+                let (x, y) = (
+                    (i % n) as f32 / (n - 1) as f32 * 2.0 - 1.0,
+                    (i / n) as f32 / (n - 1) as f32 * 2.0 - 1.0,
+                );
+                let r = (x * x + y * y).sqrt();
+                let a = ((1.0 - r) / 0.6).clamp(0.0, 1.0);
+                [0, 0, 0, (a * a * (3.0 - 2.0 * a) * 255.0) as u8]
+            })
+            .collect();
         let blob = renderer.add_texture(&blob_px, n, n);
-        Self { renderer, world: None, bounds: None, unit_box, octa, quad, blob, trail: None, trail_key: (u64::MAX, 0, 0), ghost_lines: Vec::new(), visual: None }
+        Self {
+            renderer,
+            world: None,
+            bounds: None,
+            unit_box,
+            octa,
+            quad,
+            blob,
+            trail: None,
+            trail_key: (u64::MAX, 0, 0),
+            ghost_lines: Vec::new(),
+            visual: None,
+        }
     }
 
     pub fn set_world(&mut self, mesh: &Mesh, min: Vec3, max: Vec3) {
@@ -331,7 +439,10 @@ impl Scene {
             let mut v = Vec::new();
             for s in g.samples.windows(2) {
                 for p in [s[0].position, s[1].position] {
-                    v.push(crate::gfx::mesh::LineVertex { pos: (Vec3::from(p) + Vec3::Y * 0.25).into(), color: c });
+                    v.push(crate::gfx::mesh::LineVertex {
+                        pos: (Vec3::from(p) + Vec3::Y * 0.25).into(),
+                        color: c,
+                    });
                 }
             }
             self.ghost_lines.push((key, v));
@@ -342,25 +453,58 @@ impl Scene {
         &self.ghost_lines.iter().find(|(k, _)| *k == key).unwrap().1
     }
 
-    fn car(&self, d: &mut DrawList, body: Mat4, wheels: Option<&[Wheel; 4]>, tint_rgba: Option<[f32; 4]>, realistic: bool, shadow: f32) {
+    fn car(
+        &self,
+        d: &mut DrawList,
+        body: Mat4,
+        wheels: Option<&[Wheel; 4]>,
+        tint_rgba: Option<[f32; 4]>,
+        realistic: bool,
+        shadow: f32,
+    ) {
         if realistic && let Some(v) = self.visual.as_ref().filter(|v| !v.car_body.is_empty()) {
             if shadow > 0.0 {
-                let s = body * Mat4::from_translation(Vec3::new(0.0, 0.015, 0.25)) * Mat4::from_scale(Vec3::new(1.35, 1.0, 2.6));
-                d.instances.push(Instance { mesh: self.quad, texture: self.blob, transform: s, tint: [1.0, 1.0, 1.0, 0.55 * shadow], pass: Pass::Decal });
+                let s = body
+                    * Mat4::from_translation(Vec3::new(0.0, 0.015, 0.25))
+                    * Mat4::from_scale(Vec3::new(1.35, 1.0, 2.6));
+                d.instances.push(Instance {
+                    mesh: self.quad,
+                    texture: self.blob,
+                    transform: s,
+                    tint: [1.0, 1.0, 1.0, 0.55 * shadow],
+                    pass: Pass::Decal,
+                });
             }
             let mix = |t: [f32; 4]| match tint_rgba {
-                Some(k) => [t[0] * 0.35 + k[0] * 0.65, t[1] * 0.35 + k[1] * 0.65, t[2] * 0.35 + k[2] * 0.65, k[3]],
+                Some(k) => {
+                    [t[0] * 0.35 + k[0] * 0.65, t[1] * 0.35 + k[1] * 0.65, t[2] * 0.35 + k[2] * 0.65, k[3]]
+                }
                 None => t,
             };
             for &(mesh, texture, t, m) in &v.car_body {
-                d.instances.push(Instance { mesh, texture, transform: body * m, tint: mix(t), pass: Pass::Auto });
+                d.instances.push(Instance {
+                    mesh,
+                    texture,
+                    transform: body * m,
+                    tint: mix(t),
+                    pass: Pass::Auto,
+                });
             }
             for (i, (pivot, parts)) in v.wheels.iter().enumerate() {
                 let w = wheels.and_then(|w| w.get(i).copied()).unwrap_or_default();
                 let at = if w.position == [0.0; 3] { *pivot } else { Vec3::from(w.position) };
-                let local = Mat4::from_translation(at) * Mat4::from_rotation_y(w.steer) * Mat4::from_rotation_x(w.spin) * Mat4::from_translation(-*pivot);
+                let local = Mat4::from_translation(at)
+                    * Mat4::from_rotation_y(w.steer)
+                    * Mat4::from_rotation_x(w.spin)
+                    * Mat4::from_translation(-*pivot);
                 for &(mesh, texture, t, m) in parts {
-                    d.instances.push(Instance { mesh, texture, transform: body * local * m, tint: mix(t), pass: Pass::Auto });
+                    d.instances.push(Instance {
+                        mesh,
+                        texture,
+                        transform: body * local * m,
+                        tint: mix(t),
+                        pass: Pass::Auto,
+                    });
                 }
             }
             return;
@@ -368,14 +512,32 @@ impl Scene {
         let ax = [body.x_axis.truncate(), body.y_axis.truncate(), body.z_axis.truncate()];
         let c = body.w_axis.truncate();
         let base = tint_rgba.unwrap_or(tint(theme::rgb8(theme::TEXT), 1.0));
-        d.instances.push(Instance { mesh: self.unit_box, texture: TextureId(0), transform: box_transform(c + ax[1] * 0.45, ax, CAR_HALF), tint: base, pass: Pass::Auto });
+        d.instances.push(Instance {
+            mesh: self.unit_box,
+            texture: TextureId(0),
+            transform: box_transform(c + ax[1] * 0.45, ax, CAR_HALF),
+            tint: base,
+            pass: Pass::Auto,
+        });
         let dark = [0.18, 0.2, 0.24, base[3]];
-        d.instances.push(Instance { mesh: self.unit_box, texture: TextureId(0), transform: box_transform(c + ax[1] * 0.95 - ax[2] * 0.3, ax, Vec3::new(0.7, 0.18, 0.9)), tint: dark, pass: Pass::Auto });
+        d.instances.push(Instance {
+            mesh: self.unit_box,
+            texture: TextureId(0),
+            transform: box_transform(c + ax[1] * 0.95 - ax[2] * 0.3, ax, Vec3::new(0.7, 0.18, 0.9)),
+            tint: dark,
+            pass: Pass::Auto,
+        });
         for (i, w) in WHEELS.iter().enumerate() {
             let wc = c + ax[0] * w[0] + ax[1] * (w[1] + 0.45) + ax[2] * w[2];
             let contact = wheels.is_some_and(|ws| ws[i].contact);
             let rgb = if contact || wheels.is_none() { [34, 37, 42] } else { [90, 60, 70] };
-            d.instances.push(Instance { mesh: self.unit_box, texture: TextureId(0), transform: box_transform(wc, ax, Vec3::new(0.2, 0.36, 0.36)), tint: tint(rgb, base[3]), pass: Pass::Auto });
+            d.instances.push(Instance {
+                mesh: self.unit_box,
+                texture: TextureId(0),
+                transform: box_transform(wc, ax, Vec3::new(0.2, 0.36, 0.36)),
+                tint: tint(rgb, base[3]),
+                pass: Pass::Auto,
+            });
         }
     }
 
@@ -384,7 +546,13 @@ impl Scene {
         let body = Mat4::from_rotation_translation(q, Vec3::from(s.pos));
         let col = if preview { theme::GHOST } else { theme::PIN };
         let rgb = theme::rgb8(col);
-        let a = if preview { 0.45 } else if selected { 0.7 } else { 0.55 };
+        let a = if preview {
+            0.45
+        } else if selected {
+            0.7
+        } else {
+            0.55
+        };
         self.car(d, body, None, Some(tint(rgb, a)), realistic, 0.0);
         let p = Vec3::from(s.pos) + Vec3::Y * 0.6;
         let v = Vec3::from(s.velocity);
@@ -403,10 +571,12 @@ impl Scene {
             let u = n.any_orthonormal_vector();
             let vv = n.cross(u);
             let sweep = (w.length().to_radians() * 0.5).min(5.5);
-            let pts: Vec<Vec3> = (0..=24).map(|i| {
-                let t = i as f32 / 24.0 * sweep;
-                p + (u * t.cos() + vv * t.sin()) * 1.6
-            }).collect();
+            let pts: Vec<Vec3> = (0..=24)
+                .map(|i| {
+                    let t = i as f32 / 24.0 * sweep;
+                    p + (u * t.cos() + vv * t.sin()) * 1.6
+                })
+                .collect();
             for seg in pts.windows(2) {
                 d.overlay_line(seg[0], seg[1], rgba(theme::WARN, 230));
             }
@@ -423,13 +593,27 @@ impl Scene {
             let planes = frustum(&s.view_proj);
             let v = self.visual.as_ref().unwrap();
             for p in &v.parts {
-                if (p.surroundings && !s.surroundings) || planes.iter().any(|pl| pl.truncate().dot(p.center) + pl.w < -p.radius) {
+                if (p.surroundings && !s.surroundings)
+                    || planes.iter().any(|pl| pl.truncate().dot(p.center) + pl.w < -p.radius)
+                {
                     continue;
                 }
-                d.instances.push(Instance { mesh: p.mesh, texture: p.texture, transform: p.transform, tint: p.tint, pass: p.pass });
+                d.instances.push(Instance {
+                    mesh: p.mesh,
+                    texture: p.texture,
+                    transform: p.transform,
+                    tint: p.tint,
+                    pass: p.pass,
+                });
             }
         } else if let Some(w) = self.world {
-            d.instances.push(Instance { mesh: w, texture: TextureId(0), transform: Mat4::IDENTITY, tint: [1.0; 4], pass: Pass::Auto });
+            d.instances.push(Instance {
+                mesh: w,
+                texture: TextureId(0),
+                transform: Mat4::IDENTITY,
+                tint: [1.0; 4],
+                pass: Pass::Auto,
+            });
         }
         if let Some((min, max)) = self.bounds.filter(|_| !realistic) {
             let y = min.y - 0.05;
@@ -459,10 +643,20 @@ impl Scene {
                 self.trail_key = (s.frames_gen, step, from);
             }
             if let Some(t) = self.trail {
-                d.instances.push(Instance { mesh: t, texture: TextureId(0), transform: Mat4::IDENTITY, tint: [1.0; 4], pass: Pass::Auto });
+                d.instances.push(Instance {
+                    mesh: t,
+                    texture: TextureId(0),
+                    transform: Mat4::IDENTITY,
+                    tint: [1.0; 4],
+                    pass: Pass::Auto,
+                });
             }
             for w in s.frames[..from.min(s.frames.len())].windows(2).step_by(2) {
-                d.line(Vec3::from(w[0].position()) + Vec3::Y * 0.1, Vec3::from(w[1].position()) + Vec3::Y * 0.1, rgba(theme::MUTED, 90));
+                d.line(
+                    Vec3::from(w[0].position()) + Vec3::Y * 0.1,
+                    Vec3::from(w[1].position()) + Vec3::Y * 0.1,
+                    rgba(theme::MUTED, 90),
+                );
             }
         }
         let race_ms = s.car.as_ref().map(|f| f.race_ms);
@@ -479,15 +673,31 @@ impl Scene {
         for r in &s.refs {
             let c = rgba(theme::GHOST, r.alpha);
             for w in r.frames.windows(2) {
-                d.line(Vec3::from(w[0].position()) + Vec3::Y * 0.3, Vec3::from(w[1].position()) + Vec3::Y * 0.3, c);
+                d.line(
+                    Vec3::from(w[0].position()) + Vec3::Y * 0.3,
+                    Vec3::from(w[1].position()) + Vec3::Y * 0.3,
+                    c,
+                );
             }
             if r.car
                 && let Some(t) = race_ms
                 && let Some(f) = r.frames.iter().find(|f| f.race_ms >= t)
             {
                 let ax = [Vec3::from(f.axis(0)), Vec3::from(f.axis(1)), Vec3::from(f.axis(2))];
-                let body = Mat4::from_cols(ax[0].extend(0.0), ax[1].extend(0.0), ax[2].extend(0.0), Vec3::from(f.position()).extend(1.0));
-                self.car(&mut d, body, Some(&f.wheels), Some(tint(theme::rgb8(theme::GHOST), 0.5)), realistic, 0.0);
+                let body = Mat4::from_cols(
+                    ax[0].extend(0.0),
+                    ax[1].extend(0.0),
+                    ax[2].extend(0.0),
+                    Vec3::from(f.position()).extend(1.0),
+                );
+                self.car(
+                    &mut d,
+                    body,
+                    Some(&f.wheels),
+                    Some(tint(theme::rgb8(theme::GHOST), 0.5)),
+                    realistic,
+                    0.0,
+                );
             }
         }
         for g in s.guides {
@@ -499,7 +709,17 @@ impl Scene {
             }
             let sz = if sel { 0.45 } else { 0.3 };
             for p in &g.points {
-                d.instances.push(Instance { mesh: self.octa, texture: TextureId(0), transform: Mat4::from_scale_rotation_translation(Vec3::splat(sz), Quat::IDENTITY, Vec3::from(*p)), tint: tint(theme::rgb8(theme::WARN), 1.0), pass: Pass::Auto });
+                d.instances.push(Instance {
+                    mesh: self.octa,
+                    texture: TextureId(0),
+                    transform: Mat4::from_scale_rotation_translation(
+                        Vec3::splat(sz),
+                        Quat::IDENTITY,
+                        Vec3::from(*p),
+                    ),
+                    tint: tint(theme::rgb8(theme::WARN), 1.0),
+                    pass: Pass::Auto,
+                });
             }
         }
         let n = s.tries.len().max(1) as f32;
@@ -516,16 +736,33 @@ impl Scene {
         if let Some(bs) = s.branches {
             for b in bs {
                 for w in b.points.windows(2) {
-                    d.overlay_line(Vec3::from(w[0]) + Vec3::Y * 0.3, Vec3::from(w[1]) + Vec3::Y * 0.3, rgba(theme::WARN, 200));
+                    d.overlay_line(
+                        Vec3::from(w[0]) + Vec3::Y * 0.3,
+                        Vec3::from(w[1]) + Vec3::Y * 0.3,
+                        rgba(theme::WARN, 200),
+                    );
                 }
             }
         }
-        let goal_gates: Vec<u32> = s.goals.iter().filter_map(|g| if let GoalKind::Gate(x) = &g.kind { Some(x) } else { None }).flat_map(|x| std::iter::once(x.waypoint).chain(x.also.iter().copied())).collect();
+        let goal_gates: Vec<u32> = s
+            .goals
+            .iter()
+            .filter_map(|g| if let GoalKind::Gate(x) = &g.kind { Some(x) } else { None })
+            .flat_map(|x| std::iter::once(x.waypoint).chain(x.also.iter().copied()))
+            .collect();
         if s.show_gates {
             for g in s.gates {
                 let is_goal = goal_gates.contains(&g.gate.waypoint);
                 let hot = s.hover_gate == Some(g.gate.waypoint) || s.selected_gate == Some(g.gate.waypoint);
-                let c = if hot { rgba(theme::TEXT, 255) } else if is_goal { rgba(theme::PIN, 0) } else if g.gate.kind == 1 { rgba(theme::WARN, 150) } else { rgba(theme::MUTED, 120) };
+                let c = if hot {
+                    rgba(theme::TEXT, 255)
+                } else if is_goal {
+                    rgba(theme::PIN, 0)
+                } else if g.gate.kind == 1 {
+                    rgba(theme::WARN, 150)
+                } else {
+                    rgba(theme::MUTED, 120)
+                };
                 if c[3] == 0 {
                     continue;
                 }
@@ -545,9 +782,25 @@ impl Scene {
             match &g.kind {
                 GoalKind::Gate(gate) => {
                     for b in &gate.boxes {
-                        box_lines(&mut d, Vec3::from(b.min), Vec3::from(b.max), [pin[0], pin[1], pin[2], a], sel);
+                        box_lines(
+                            &mut d,
+                            Vec3::from(b.min),
+                            Vec3::from(b.max),
+                            [pin[0], pin[1], pin[2], a],
+                            sel,
+                        );
                         let (mn, mx) = (Vec3::from(b.min), Vec3::from(b.max));
-                        d.instances.push(Instance { mesh: self.unit_box, texture: TextureId(0), transform: Mat4::from_scale_rotation_translation((mx - mn) * 0.5, Quat::IDENTITY, (mn + mx) * 0.5), tint: tint(pin, if sel { 0.16 } else { 0.08 }), pass: Pass::Glass });
+                        d.instances.push(Instance {
+                            mesh: self.unit_box,
+                            texture: TextureId(0),
+                            transform: Mat4::from_scale_rotation_translation(
+                                (mx - mn) * 0.5,
+                                Quat::IDENTITY,
+                                (mn + mx) * 0.5,
+                            ),
+                            tint: tint(pin, if sel { 0.16 } else { 0.08 }),
+                            pass: Pass::Glass,
+                        });
                     }
                 }
                 GoalKind::Point { pos, radius } => {
@@ -560,21 +813,53 @@ impl Scene {
                     d.overlay_line(p, top, [pin[0], pin[1], pin[2], 70]);
                     let sz = if sel { 0.7 } else { 0.55 };
                     let col = if reached { pin } else { theme::rgb8(theme::MUTED) };
-                    d.instances.push(Instance { mesh: self.octa, texture: TextureId(0), transform: Mat4::from_scale_rotation_translation(Vec3::new(sz, sz * 1.4, sz), Quat::IDENTITY, top + Vec3::Y * sz * 1.4), tint: tint(col, 1.0), pass: Pass::Auto });
+                    d.instances.push(Instance {
+                        mesh: self.octa,
+                        texture: TextureId(0),
+                        transform: Mat4::from_scale_rotation_translation(
+                            Vec3::new(sz, sz * 1.4, sz),
+                            Quat::IDENTITY,
+                            top + Vec3::Y * sz * 1.4,
+                        ),
+                        tint: tint(col, 1.0),
+                        pass: Pass::Auto,
+                    });
                 }
                 GoalKind::Box { pos, size, ypr } => {
                     let (c, h, q) = (Vec3::from(*pos), Vec3::from(*size) * 0.5, crate::doc::ypr_rot(*ypr));
                     let col = [pin[0], pin[1], pin[2], a];
                     oriented_box_lines(&mut d, c, h, q, col);
-                    d.instances.push(Instance { mesh: self.unit_box, texture: TextureId(0), transform: Mat4::from_scale_rotation_translation(h, q, c), tint: tint(if reached { pin } else { theme::rgb8(theme::MUTED) }, if sel { 0.22 } else { 0.12 }), pass: Pass::Glass });
+                    d.instances.push(Instance {
+                        mesh: self.unit_box,
+                        texture: TextureId(0),
+                        transform: Mat4::from_scale_rotation_translation(h, q, c),
+                        tint: tint(
+                            if reached { pin } else { theme::rgb8(theme::MUTED) },
+                            if sel { 0.22 } else { 0.12 },
+                        ),
+                        pass: Pass::Glass,
+                    });
                 }
                 GoalKind::Pose(p) => {
                     let q = crate::doc::ypr_rot(p.ypr);
                     let body = Mat4::from_rotation_translation(q, Vec3::from(p.pos));
-                    self.car(&mut d, body, None, Some(tint(pin, if sel { 0.5 } else { 0.32 })), realistic, 0.0);
+                    self.car(
+                        &mut d,
+                        body,
+                        None,
+                        Some(tint(pin, if sel { 0.5 } else { 0.32 })),
+                        realistic,
+                        0.0,
+                    );
                     let c = Vec3::from(p.pos);
                     let t = Vec3::from(p.pos_tol);
-                    box_lines(&mut d, c - t, c + t, [pin[0], pin[1], pin[2], if sel { 200 } else { 90 }], false);
+                    box_lines(
+                        &mut d,
+                        c - t,
+                        c + t,
+                        [pin[0], pin[1], pin[2], if sel { 200 } else { 90 }],
+                        false,
+                    );
                     let f = q * Vec3::Z;
                     let side = q * Vec3::X;
                     let (a0, b0) = (c + Vec3::Y * 0.1 + f * 2.6, c + Vec3::Y * 0.1 + f * 4.4);
@@ -589,7 +874,13 @@ impl Scene {
             if let Some(hot) = s.start_handle {
                 let tip = velocity_tip(st);
                 let sz = if hot { 0.75 } else { 0.5 };
-                d.instances.push(Instance { mesh: self.octa, texture: TextureId(0), transform: Mat4::from_scale_rotation_translation(Vec3::splat(sz), Quat::IDENTITY, tip), tint: tint(theme::rgb8(if hot { theme::TEXT } else { theme::PIN }), 1.0), pass: Pass::Auto });
+                d.instances.push(Instance {
+                    mesh: self.octa,
+                    texture: TextureId(0),
+                    transform: Mat4::from_scale_rotation_translation(Vec3::splat(sz), Quat::IDENTITY, tip),
+                    tint: tint(theme::rgb8(if hot { theme::TEXT } else { theme::PIN }), 1.0),
+                    pass: Pass::Auto,
+                });
                 if Vec3::from(st.velocity).length() * VEL_ARROW_S <= 3.0 {
                     d.overlay_line(Vec3::from(st.pos) + Vec3::Y * 0.6, tip, rgba(theme::PIN, 120));
                 }
@@ -599,7 +890,10 @@ impl Scene {
             let (a, b) = (a.min(s.frames.len()), b.min(s.frames.len().saturating_sub(1)));
             if a < b {
                 for w in s.frames[a..=b].windows(2) {
-                    let (p, q) = (Vec3::from(w[0].position()) + Vec3::Y * 0.35, Vec3::from(w[1].position()) + Vec3::Y * 0.35);
+                    let (p, q) = (
+                        Vec3::from(w[0].position()) + Vec3::Y * 0.35,
+                        Vec3::from(w[1].position()) + Vec3::Y * 0.35,
+                    );
                     d.overlay_line(p, q, rgba(theme::PIN, 150));
                 }
             }
@@ -620,16 +914,40 @@ impl Scene {
         for (st, sel) in &s.setups {
             let rgb = theme::rgb8(theme::SETUP);
             let q = crate::doc::ypr_rot(st.start.ypr);
-            self.car(&mut d, Mat4::from_rotation_translation(q, Vec3::from(st.start.pos)), None, Some(tint(rgb, if *sel { 0.7 } else { 0.45 })), realistic, 0.0);
+            self.car(
+                &mut d,
+                Mat4::from_rotation_translation(q, Vec3::from(st.start.pos)),
+                None,
+                Some(tint(rgb, if *sel { 0.7 } else { 0.45 })),
+                realistic,
+                0.0,
+            );
             let qe = crate::doc::ypr_rot(st.end_ypr);
-            self.car(&mut d, Mat4::from_rotation_translation(qe, Vec3::from(st.end_pos)), None, Some(tint(rgb, if *sel { 0.35 } else { 0.18 })), realistic, 0.0);
+            self.car(
+                &mut d,
+                Mat4::from_rotation_translation(qe, Vec3::from(st.end_pos)),
+                None,
+                Some(tint(rgb, if *sel { 0.35 } else { 0.18 })),
+                realistic,
+                0.0,
+            );
             let (a, b) = (Vec3::from(st.start.pos) + Vec3::Y * 0.7, Vec3::from(st.end_pos) + Vec3::Y * 0.7);
             let n = ((b - a).length() / 1.5).ceil().max(1.0) as usize;
             for i in (0..n).step_by(2) {
-                d.overlay_line(a.lerp(b, i as f32 / n as f32), a.lerp(b, ((i + 1) as f32 / n as f32).min(1.0)), rgba(theme::SETUP, if *sel { 255 } else { 160 }));
+                d.overlay_line(
+                    a.lerp(b, i as f32 / n as f32),
+                    a.lerp(b, ((i + 1) as f32 / n as f32).min(1.0)),
+                    rgba(theme::SETUP, if *sel { 255 } else { 160 }),
+                );
             }
             if *sel {
-                circle(&mut d, Vec3::from(st.start.pos) + Vec3::Y * 0.05, Vec3::Y, 2.8, rgba(theme::SETUP, 255));
+                circle(
+                    &mut d,
+                    Vec3::from(st.start.pos) + Vec3::Y * 0.05,
+                    Vec3::Y,
+                    2.8,
+                    rgba(theme::SETUP, 255),
+                );
             }
         }
         if let Some(st) = s.car_preview {
@@ -638,8 +956,16 @@ impl Scene {
         if let Some(c) = &s.contacts {
             let col = theme::rgba8(theme::GHOST, 255);
             for (center, hit) in c {
-                d.overlay_line(*center - Vec3::X * 0.12, *center + Vec3::X * 0.12, theme::rgba8(theme::TEXT, 255));
-                d.overlay_line(*center - Vec3::Z * 0.12, *center + Vec3::Z * 0.12, theme::rgba8(theme::TEXT, 255));
+                d.overlay_line(
+                    *center - Vec3::X * 0.12,
+                    *center + Vec3::X * 0.12,
+                    theme::rgba8(theme::TEXT, 255),
+                );
+                d.overlay_line(
+                    *center - Vec3::Z * 0.12,
+                    *center + Vec3::Z * 0.12,
+                    theme::rgba8(theme::TEXT, 255),
+                );
                 if let Some(h) = hit {
                     d.overlay_line(*center, *h, col);
                     for a in [Vec3::X, Vec3::Z] {
@@ -661,7 +987,12 @@ impl Scene {
         }
         if let Some(f) = s.car.as_ref() {
             let ax = [Vec3::from(f.axis(0)), Vec3::from(f.axis(1)), Vec3::from(f.axis(2))];
-            let body = Mat4::from_cols(ax[0].extend(0.0), ax[1].extend(0.0), ax[2].extend(0.0), Vec3::from(f.position()).extend(1.0));
+            let body = Mat4::from_cols(
+                ax[0].extend(0.0),
+                ax[1].extend(0.0),
+                ax[2].extend(0.0),
+                Vec3::from(f.position()).extend(1.0),
+            );
             let touching = f.wheels.iter().filter(|w| w.contact).count() as f32 / 4.0;
             self.car(&mut d, body, Some(&f.wheels), None, realistic, touching);
         }

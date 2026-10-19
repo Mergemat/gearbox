@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, ensure};
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 use gearbox_packs::assets::{Assets, Car};
 use gearbox_packs::visual::{self, Scene, VisualCache};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 pub fn run(args: &[String]) -> Result<()> {
     let set = crate::game()?.open()?;
@@ -41,11 +41,7 @@ pub fn run(args: &[String]) -> Result<()> {
             let car = cache.car(car)?;
             visual::gltf::export(
                 Path::new(&args[2]),
-                &Scene {
-                    instances: car.instances,
-                    diagnostics: car.diagnostics,
-                    ..Default::default()
-                },
+                &Scene { instances: car.instances, diagnostics: car.diagnostics, ..Default::default() },
                 &cache,
             )?;
         }
@@ -65,10 +61,8 @@ fn stats(name: &str, scene: &Scene, cache: &VisualCache) -> serde_json::Value {
                 .map(|s| i.material_overrides.get(&s.material).copied().unwrap_or(s.material))
         })
         .collect();
-    let textures: BTreeSet<_> = materials
-        .iter()
-        .flat_map(|&m| cache.materials[m].textures.iter().map(|t| t.texture))
-        .collect();
+    let textures: BTreeSet<_> =
+        materials.iter().flat_map(|&m| cache.materials[m].textures.iter().map(|t| t.texture)).collect();
     let mut failures = BTreeMap::<String, BTreeMap<String, usize>>::new();
     for d in &scene.diagnostics {
         *failures.entry(d.feature.clone()).or_default().entry(d.message.clone()).or_default() += 1;

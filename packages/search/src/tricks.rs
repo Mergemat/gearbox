@@ -47,10 +47,7 @@ impl Observation {
         let speed = v.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>().sqrt();
         let heading = f64::from(body.0[2]).atan2(f64::from(body.0[8]));
         let travel = f64::from(v[0]).atan2(f64::from(v[2]));
-        let slip = (travel - heading)
-            .sin()
-            .atan2((travel - heading).cos())
-            .abs();
+        let slip = (travel - heading).sin().atan2((travel - heading).cos()).abs();
         let car = native.vehicle();
         let wheels = std::array::from_fn(|i| car.wheels[i].contact != 0);
         const HARD_CONTACT: u32 = 0x200;
@@ -58,14 +55,7 @@ impl Observation {
         let normal = car.contact_normal.to_array();
         let norm = normal.iter().map(|v| v * v).sum::<f32>().sqrt();
         let wall_contact = body_contact && normal[1].abs() < norm * 0.5;
-        Self {
-            speed,
-            slip,
-            wall_contact,
-            pitch: body.0[5].clamp(-1.0, 1.0).asin(),
-            wheels,
-            body_contact,
-        }
+        Self { speed, slip, wall_contact, pitch: body.0[5].clamp(-1.0, 1.0).asin(), wheels, body_contact }
     }
     pub fn sliding(self) -> bool {
         self.speed > 15.0 && self.slip > 40f64.to_radians() && self.wheels.iter().any(|v| *v)

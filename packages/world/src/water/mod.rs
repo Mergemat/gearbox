@@ -1,38 +1,38 @@
-use std::collections::HashMap;
+use crate::statics::{BlockKey, MapAssets, place};
 use anyhow::{Context, Result, ensure};
-use gearbox_engine::{Aabb, Iso, Quat, Vec3};
 use gearbox_engine::world_water::{Column, Entry, Grid, Layer, ModelBox, Volume, VoxelGrid, Water};
-use crate::statics::{MapAssets, BlockKey, place};
+use gearbox_engine::{Aabb, Iso, Quat, Vec3};
+use std::collections::HashMap;
 
 const EMPTY: u32 = u32::MAX;
 const MAP_CELL: f32 = 32.0;
 
 fn map_grid(size: [u32; 2]) -> Grid {
     Grid {
-        cell: [MAP_CELL; 2], inverse_cell: [1.0 / MAP_CELL; 2],
-        origin: [0.0; 2], size, default_value: EMPTY,
+        cell: [MAP_CELL; 2],
+        inverse_cell: [1.0 / MAP_CELL; 2],
+        origin: [0.0; 2],
+        size,
+        default_value: EMPTY,
     }
 }
 
 pub fn grid(volume: &gearbox_packs::map_model::WaterVolume) -> Result<(VoxelGrid, place::Iso)> {
     ensure!(!volume.boxes.is_empty(), "unsupported empty water volume");
     ensure!(
-        volume.boxes.iter().all(|extent| (0..3).all(|k| extent[k] >= 0 && extent[k] <= extent[k+3])),
+        volume.boxes.iter().all(|extent| (0..3).all(|k| extent[k] >= 0 && extent[k] <= extent[k + 3])),
         "invalid water voxel extent",
     );
     let lo: [i32; 3] = std::array::from_fn(|k| volume.boxes.iter().map(|extent| extent[k]).min().unwrap());
-    let hi: [i32; 3] = std::array::from_fn(|k| volume.boxes.iter().map(|extent| extent[k+3]).max().unwrap());
+    let hi: [i32; 3] =
+        std::array::from_fn(|k| volume.boxes.iter().map(|extent| extent[k + 3]).max().unwrap());
     let size = [(hi[0] - lo[0] + 1) as u32, (hi[2] - lo[2] + 1) as u32];
     ensure!(size[0] as u64 * size[1] as u64 <= 1 << 20, "water grid too large");
     let angle = volume.yaw * std::f32::consts::PI / 180.0;
     let (sin, cos) = gearbox_engine::math::sincos(angle * 0.5);
     let local = place::Iso {
         q: [cos, 0.0, sin, 0.0],
-        p: [
-            volume.position[0],
-            lo[1] as f32 * volume.cell[1] + volume.position[1],
-            volume.position[2],
-        ],
+        p: [volume.position[0], lo[1] as f32 * volume.cell[1] + volume.position[1], volume.position[2]],
     };
     let placement = Iso::from_quat_pos(Quat::from_array(local.q), Vec3::from_array(local.p));
     let mut grid = VoxelGrid {
@@ -42,21 +42,34 @@ pub fn grid(volume: &gearbox_packs::map_model::WaterVolume) -> Result<(VoxelGrid
             cell: [volume.cell[0], volume.cell[2]],
             inverse_cell: [1.0 / volume.cell[0], 1.0 / volume.cell[2]],
             origin: [lo[0] as f32 * volume.cell[0], lo[2] as f32 * volume.cell[2]],
-            size, default_value: EMPTY,
+            size,
+            default_value: EMPTY,
         },
-        heads: Vec::new(), entries: Vec::new(), column_count: size[0] * size[1],
-        height: volume.cell[1], max_y: (hi[1] - lo[1]) as u32, placement,
+        heads: Vec::new(),
+        entries: Vec::new(),
+        column_count: size[0] * size[1],
+        height: volume.cell[1],
+        max_y: (hi[1] - lo[1]) as u32,
+        placement,
     };
     for z in lo[2]..=hi[2] {
         for x in lo[0]..=hi[0] {
-            let mut spans: Vec<_> = volume.boxes.iter()
+            let mut spans: Vec<_> = volume
+                .boxes
+                .iter()
                 .filter(|extent| x >= extent[0] && x <= extent[3] && z >= extent[2] && z <= extent[5])
-                .map(|extent| (extent[1] - lo[1], extent[4] - lo[1])).collect();
+                .map(|extent| (extent[1] - lo[1], extent[4] - lo[1]))
+                .collect();
             crate::sort_by_key(&mut spans, |span| span.0);
             let mut merged: Vec<(i32, i32)> = Vec::new();
             for (bottom, top) in spans {
-                if let Some(last) = merged.last_mut() && bottom <= last.1 + 1 { last.1 = top; }
-                else { merged.push((bottom, top)); }
+                if let Some(last) = merged.last_mut()
+                    && bottom <= last.1 + 1
+                {
+                    last.1 = top;
+                } else {
+                    merged.push((bottom, top));
+                }
             }
             let mut head = EMPTY;
             for (bottom, top) in merged {
@@ -85,12 +98,15 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
     let mut boxes = Vec::new();
     for block in map.blocks.iter().chain(&map.baked_blocks) {
         let key = BlockKey::of(block);
-        let asset = assets.assets.block_in(&block.name, env)
+        let asset = assets
+            .assets
+            .block_in(&block.name, env)
             .with_context(|| format!("water block {}", block.name))?;
         let cache_key = (asset.path.clone(), key.flags & 0x1000 != 0, ((key.flags >> 21) & 0x7f) as usize);
         if !cache.contains_key(&cache_key) {
             let bytes = assets.packs.read_path(&asset.path)?;
-            let volumes = gearbox_packs::map_model::water_volumes(&bytes, &asset.path, cache_key.1, cache_key.2)?;
+            let volumes =
+                gearbox_packs::map_model::water_volumes(&bytes, &asset.path, cache_key.1, cache_key.2)?;
             ensure!(volumes.is_empty() || env == "Stadium", "water material collection not decoded: {env}");
             let mut models = Vec::new();
             for volume in volumes {
@@ -109,14 +125,21 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
             boxes.push(ModelBox { model, placement, inverse: placement.inverse() });
         }
     }
-    if boxes.is_empty() { return Ok(water); }
+    if boxes.is_empty() {
+        return Ok(water);
+    }
     ensure!(map.size[0] > 0 && map.size[2] > 0, "invalid water grid extent");
     let size = [map.size[0] as u32, map.size[2] as u32];
     let cells = size[0] as usize * size[1] as usize;
     let default_column = Column { surface: 0.0, bottom: 1.0, material: EMPTY };
     let mut volume = Volume {
-        grid: map_grid(size), default_column, columns: vec![default_column; cells],
-        box_grid: map_grid(size), boxes, heads: vec![EMPTY; cells], entries: Vec::new(),
+        grid: map_grid(size),
+        default_column,
+        columns: vec![default_column; cells],
+        box_grid: map_grid(size),
+        boxes,
+        heads: vec![EMPTY; cells],
+        entries: Vec::new(),
     };
     for (i, model_box) in volume.boxes.iter().enumerate() {
         let grid = &water.models[model_box.model as usize].grid;

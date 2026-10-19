@@ -1,5 +1,8 @@
+use super::{
+    ForceCtx,
+    common::{HALF_TURN_DEGREES, PI, sign_one},
+};
 use crate::Vec3;
-use super::{ForceCtx, common::{PI, HALF_TURN_DEGREES, sign_one}};
 
 const BOOSTED_DAMPING_SCALE: f32 = 3.0;
 
@@ -80,8 +83,13 @@ pub fn angular_control(ctx: &mut ForceCtx<'_>, no_damping: bool, freeze: bool) {
 }
 
 fn roll_stabilization(
-    vehicle: &mut super::super::Vehicle, tuning: &super::super::Tuning, body: &mut super::VehicleBody<'_>,
-    rotation: [f32; 9], pitch_rate: f32, tick: u32, vertical_velocity: f32,
+    vehicle: &mut super::super::Vehicle,
+    tuning: &super::super::Tuning,
+    body: &mut super::VehicleBody<'_>,
+    rotation: [f32; 9],
+    pitch_rate: f32,
+    tick: u32,
+    vertical_velocity: f32,
 ) {
     let eps = super::common::EPS;
 
@@ -119,12 +127,14 @@ fn roll_stabilization(
         }
         body.add_local_torque(Vec3::new(tq, 0.0, 0.0));
     }
-
 }
 
 fn limit_pitch(
-    vehicle: &mut super::super::Vehicle, tuning: &super::super::Tuning, body: &mut super::VehicleBody<'_>,
-    pitch_rate: f32, mut drag: f32,
+    vehicle: &mut super::super::Vehicle,
+    tuning: &super::super::Tuning,
+    body: &mut super::VehicleBody<'_>,
+    pitch_rate: f32,
+    mut drag: f32,
 ) -> f32 {
     let (gas, brake) = (vehicle.controls.gas, vehicle.controls.brake);
 
@@ -173,7 +183,10 @@ fn limit_pitch(
 }
 
 fn choose_held_yaw(
-    vehicle: &mut super::super::Vehicle, tuning: &super::super::Tuning, yaw_rate: f32, control: bool,
+    vehicle: &mut super::super::Vehicle,
+    tuning: &super::super::Tuning,
+    yaw_rate: f32,
+    control: bool,
 ) -> (f32, bool) {
     let eps = super::common::EPS;
     let mut boosted = false;
@@ -206,8 +219,11 @@ fn choose_held_yaw(
 }
 
 fn apply_air_input(
-    vehicle: &mut super::super::Vehicle, tuning: &super::super::Tuning, body: &mut super::VehicleBody<'_>,
-    angular_velocity: Vec3, dt: f32,
+    vehicle: &mut super::super::Vehicle,
+    tuning: &super::super::Tuning,
+    body: &mut super::VehicleBody<'_>,
+    angular_velocity: Vec3,
+    dt: f32,
 ) -> Vec3 {
     let eps = super::common::EPS;
     let (mut pitch_rate, mut yaw_rate) = (angular_velocity.x, angular_velocity.y);
@@ -236,17 +252,25 @@ fn apply_air_input(
 }
 
 fn damping_torque(
-    body: &mut super::VehicleBody<'_>, tuning: &super::super::Tuning,
-    no_damping: bool, damping_pitch: f32, damping_yaw: f32, damping_roll: f32, eps: f32,
+    body: &mut super::VehicleBody<'_>,
+    tuning: &super::super::Tuning,
+    no_damping: bool,
+    damping_pitch: f32,
+    damping_yaw: f32,
+    damping_roll: f32,
+    eps: f32,
 ) {
     if !no_damping {
-        let len = (damping_yaw * damping_yaw + damping_pitch * damping_pitch + damping_roll
-            * damping_roll).sqrt();
+        let len =
+            (damping_yaw * damping_yaw + damping_pitch * damping_pitch + damping_roll * damping_roll).sqrt();
         if len >= eps {
             let inv = 1.0 / len;
             let k = len * tuning.angular_drag_quadratic * len + len * tuning.angular_drag_linear;
-            body.add_local_torque(Vec3::new(damping_pitch * inv * k, damping_yaw * inv * k,
-                damping_roll * inv * k));
+            body.add_local_torque(Vec3::new(
+                damping_pitch * inv * k,
+                damping_yaw * inv * k,
+                damping_roll * inv * k,
+            ));
         }
     }
 }

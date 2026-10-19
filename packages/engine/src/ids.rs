@@ -10,8 +10,19 @@ macro_rules! ids {
     )*};
 }
 
-ids!(VehicleId, SharedShapeId, SphereId, EllipsoidId, BoxId, CompoundInstanceId,
-    StaticItemId, DynamicItemId, SurfaceId, ShapeEntryId, ContinuousEntryId);
+ids!(
+    VehicleId,
+    SharedShapeId,
+    SphereId,
+    EllipsoidId,
+    BoxId,
+    CompoundInstanceId,
+    StaticItemId,
+    DynamicItemId,
+    SurfaceId,
+    ShapeEntryId,
+    ContinuousEntryId
+);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ShapeId {
@@ -23,7 +34,9 @@ pub enum ShapeId {
 }
 
 impl Default for ShapeId {
-    fn default() -> Self { Self::Shared(SharedShapeId::default()) }
+    fn default() -> Self {
+        Self::Shared(SharedShapeId::default())
+    }
 }
 
 impl ShapeId {
@@ -53,11 +66,15 @@ impl ItemId {
 }
 
 impl From<StaticItemId> for ItemId {
-    fn from(id: StaticItemId) -> Self { Self::Static(id) }
+    fn from(id: StaticItemId) -> Self {
+        Self::Static(id)
+    }
 }
 
 impl From<DynamicItemId> for ItemId {
-    fn from(id: DynamicItemId) -> Self { Self::Dynamic(id) }
+    fn from(id: DynamicItemId) -> Self {
+        Self::Dynamic(id)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

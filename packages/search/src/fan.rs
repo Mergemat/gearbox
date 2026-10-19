@@ -60,29 +60,15 @@ fn inputs(
     family: usize,
     trace: &[Sample],
 ) -> (&'static str, Timeline) {
-    let mut rng = StdRng::seed_from_u64(
-        config
-            .seed
-            .wrapping_add((index as u64).wrapping_mul(0x9e3779b97f4a7c15)),
-    );
+    let mut rng =
+        StdRng::seed_from_u64(config.seed.wrapping_add((index as u64).wrapping_mul(0x9e3779b97f4a7c15)));
     let mut t = Timeline {
         t0,
         seed,
-        controls: vec![
-            Controls {
-                gas: 1.0,
-                brake: 0.0,
-                steer: 0.0
-            };
-            config.horizon_ticks
-        ],
+        controls: vec![Controls { gas: 1.0, brake: 0.0, steer: 0.0 }; config.horizon_ticks],
     };
     let sign = if rng.random::<bool>() { 1.0 } else { -1.0 };
-    let amplitude = if index < 8 {
-        1.0
-    } else {
-        rng.random_range(0.05..=1.0)
-    };
+    let amplitude = if index < 8 { 1.0 } else { rng.random_range(0.05..=1.0) };
     let at = rng.random_range(0..config.horizon_ticks);
     let duration = rng.random_range(1..=20).min(config.horizon_ticks - at);
     match family {
@@ -109,16 +95,10 @@ fn inputs(
         }
         5 => {
             for (i, c) in t.controls.iter_mut().enumerate() {
-                c.steer = if i < at {
-                    sign * amplitude
-                } else {
-                    -sign * amplitude
-                };
+                c.steer = if i < at { sign * amplitude } else { -sign * amplitude };
             }
         }
-        _ => {
-            Mutation::default().explore(&mut t, 0..config.horizon_ticks, trace, 10, index, &mut rng)
-        }
+        _ => Mutation::default().explore(&mut t, 0..config.horizon_ticks, trace, 10, index, &mut rng),
     }
     (FAMILIES[family], t)
 }
@@ -134,16 +114,11 @@ pub fn generate_families(origin: &dyn Origin, config: &Config, families: &[&str]
         config.rollouts > 0 && config.horizon_ticks > 0 && config.sample_every > 0,
         "fan sizes must be positive"
     );
-    ensure!(
-        (1..=MAX_THREADS).contains(&config.threads),
-        "threads must be in 1..={MAX_THREADS}"
-    );
+    ensure!((1..=MAX_THREADS).contains(&config.threads), "threads must be in 1..={MAX_THREADS}");
     let began = Instant::now();
     let mut probe = origin.native()?;
     let (t0, seed) = (probe.race_ms(), probe.seed);
-    let duration_ms = u32::try_from(config.horizon_ticks)?
-        .checked_mul(10)
-        .context("fan clock overflow")?;
+    let duration_ms = u32::try_from(config.horizon_ticks)?.checked_mul(10).context("fan clock overflow")?;
     let until = i64::from(t0) + i64::from(duration_ms);
     ensure!(
         until <= i64::from(i32::MAX)
@@ -152,15 +127,9 @@ pub fn generate_families(origin: &dyn Origin, config: &Config, families: &[&str]
     );
     let mut trace = Vec::with_capacity(config.horizon_ticks);
     for _ in 0..config.horizon_ticks {
-        probe.step(Controls {
-            gas: 1.0,
-            ..Default::default()
-        });
+        probe.step(Controls { gas: 1.0, ..Default::default() });
         let body = Body::from(probe.body());
-        trace.push(Sample {
-            ms: probe.race_ms(),
-            observation: Observation::read(&mut probe, body),
-        });
+        trace.push(Sample { ms: probe.race_ms(), observation: Observation::read(&mut probe, body) });
     }
     drop(probe);
     let next = AtomicUsize::new(0);
@@ -178,11 +147,10 @@ pub fn generate_families(origin: &dyn Origin, config: &Config, families: &[&str]
                             break;
                         }
                         n.restore(&start);
-                        let (family, inputs) = inputs(t0, seed, config, index, slots[index % slots.len()], trace);
-                        let mut trajectory = vec![PoseSample {
-                            tick: 0,
-                            pose: Pose::from_body(Body::from(n.body())),
-                        }];
+                        let (family, inputs) =
+                            inputs(t0, seed, config, index, slots[index % slots.len()], trace);
+                        let mut trajectory =
+                            vec![PoseSample { tick: 0, pose: Pose::from_body(Body::from(n.body())) }];
                         for (i, c) in inputs.controls.iter().enumerate() {
                             n.step(*c);
                             if (i + 1) % config.sample_every == 0 || i + 1 == config.horizon_ticks {
@@ -192,13 +160,7 @@ pub fn generate_families(origin: &dyn Origin, config: &Config, families: &[&str]
                             }
                         }
                         let end = trajectory.last().unwrap().pose;
-                        result.push(Rollout {
-                            index,
-                            family,
-                            inputs,
-                            trajectory,
-                            end,
-                        });
+                        result.push(Rollout { index, family, inputs, trajectory, end });
                     }
                     Ok(result)
                 })
@@ -244,9 +206,7 @@ pub fn snap<'a>(goal: &PoseGoal, fan: &'a Fan) -> Result<Option<Snap<'a>>> {
         .iter()
         .flat_map(|r| r.trajectory.iter().map(move |s| (r, s, goal.error(s.pose))))
         .min_by(|a, b| {
-            a.2.total_cmp(&b.2)
-                .then_with(|| a.1.tick.cmp(&b.1.tick))
-                .then_with(|| a.0.index.cmp(&b.0.index))
+            a.2.total_cmp(&b.2).then_with(|| a.1.tick.cmp(&b.1.tick)).then_with(|| a.0.index.cmp(&b.0.index))
         });
     Ok(best.map(|(r, s, error)| Snap {
         rollout: r,

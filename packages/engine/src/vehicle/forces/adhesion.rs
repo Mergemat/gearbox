@@ -1,7 +1,10 @@
+use super::common::{KMH, TINY, clamp01};
+use super::{
+    ForceCtx,
+    surface::{SurfaceFactors, SurfaceResponse, average_surfaces},
+};
 use crate::Vec3;
 use crate::math::acos;
-use super::{ForceCtx, surface::{SurfaceFactors, SurfaceResponse, average_surfaces}};
-use super::common::{KMH, TINY, clamp01};
 
 const HALF_TURN_DEGREES: f32 = 180.0;
 const NS_PER_MS: i64 = 1_000_000;
@@ -12,11 +15,8 @@ pub fn angle_from_up_reached(ctx: &ForceCtx<'_>, enabled: bool) -> (bool, f32) {
         return (false, 1.0);
     }
     let vehicle = &*ctx.vehicle;
-    let (mut nx, mut ny, mut nz) = (
-        vehicle.adhesion_normal_x,
-        vehicle.adhesion_normal_y,
-        vehicle.adhesion_normal_z,
-    );
+    let (mut nx, mut ny, mut nz) =
+        (vehicle.adhesion_normal_x, vehicle.adhesion_normal_y, vehicle.adhesion_normal_z);
     let squared = ny * ny + nx * nx + nz * nz;
     if squared > TINY && f32::MAX > squared {
         let inverse = 1.0 / squared.sqrt();
@@ -35,7 +35,9 @@ pub fn set_gravity(ctx: &mut ForceCtx<'_>, gravity: f32) {
 }
 
 pub fn surface_adhesion(
-    ctx: &mut ForceCtx<'_>, grip_slope: &mut f32, thrust_slope: &mut f32,
+    ctx: &mut ForceCtx<'_>,
+    grip_slope: &mut f32,
+    thrust_slope: &mut f32,
 ) -> (SurfaceResponse, SurfaceFactors, bool) {
     let vehicle = &*ctx.vehicle;
     let tuning = ctx.tuning;
@@ -48,17 +50,9 @@ pub fn surface_adhesion(
     }
     let contact = vehicle.any_wheel_contact();
     let state = ctx.body.state();
-    let damping = if contact {
-        0.0
-    } else {
-        -tuning.air_linear_drag
-    };
+    let damping = if contact { 0.0 } else { -tuning.air_linear_drag };
     ctx.body.add_force(Vec3::new(damping * state.vel.x, damping * state.vel.y, damping * state.vel.z));
-    let gravity = if contact {
-        tuning.ground_gravity
-    } else {
-        tuning.air_gravity
-    } * gravity_scale;
+    let gravity = if contact { tuning.ground_gravity } else { tuning.air_gravity } * gravity_scale;
     set_gravity(ctx, gravity);
     let (response, factors, normal, class, any) = average_surfaces(ctx);
     if any {

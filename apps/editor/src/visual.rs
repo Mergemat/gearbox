@@ -2,8 +2,8 @@ use std::path::Path;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use glam::{Mat4, Vec3};
 use gearbox_packs::visual::{self as tv, TextureData, VisualCache};
+use glam::{Mat4, Vec3};
 
 use crate::gfx::mesh::Vertex;
 
@@ -67,7 +67,9 @@ pub struct VisualWorld {
 }
 
 pub fn mat4(t: &tv::Transform) -> Mat4 {
-    Mat4::from_cols_array(&[t[0], t[3], t[6], 0.0, t[1], t[4], t[7], 0.0, t[2], t[5], t[8], 0.0, t[9], t[10], t[11], 1.0])
+    Mat4::from_cols_array(&[
+        t[0], t[3], t[6], 0.0, t[1], t[4], t[7], 0.0, t[2], t[5], t[8], 0.0, t[9], t[10], t[11], 1.0,
+    ])
 }
 
 pub fn track_box(map: &gearbox_gbx::Map) -> Option<(Vec3, Vec3)> {
@@ -75,7 +77,9 @@ pub fn track_box(map: &gearbox_gbx::Map) -> Option<(Vec3, Vec3)> {
     for b in &map.blocks {
         let p = match b.free {
             Some((pos, _)) => Vec3::from(pos),
-            None => Vec3::new(b.coord[0] as f32 * 32.0, b.coord[1] as f32 * 8.0 - 64.0, b.coord[2] as f32 * 32.0),
+            None => {
+                Vec3::new(b.coord[0] as f32 * 32.0, b.coord[1] as f32 * 8.0 - 64.0, b.coord[2] as f32 * 32.0)
+            }
         };
         lo = lo.min(p);
         hi = hi.max(p + Vec3::new(32.0, 8.0, 32.0));
@@ -91,7 +95,8 @@ pub fn load(packs: &Path, map: &Path, bc: bool) -> Result<VisualWorld> {
     let t0 = Instant::now();
     let set = gearbox_packs::packs::PackSet::open(packs)?;
     let assets = gearbox_packs::assets::Assets::from_catalog(gearbox_packs::catalog::cached(&set)?);
-    let parsed = gearbox_gbx::Map::parse(&std::fs::read(map)?).with_context(|| format!("parsing {}", map.display()))?;
+    let parsed = gearbox_gbx::Map::parse(&std::fs::read(map)?)
+        .with_context(|| format!("parsing {}", map.display()))?;
     let track = track_box(&parsed);
     let mut cache = VisualCache::new(set);
     let scene = tv::visual_scene(&parsed, &assets, &mut cache)?;
@@ -107,12 +112,16 @@ pub fn load(packs: &Path, map: &Path, bc: bool) -> Result<VisualWorld> {
 
     let t1 = Instant::now();
     let meshes: Vec<MeshData> = cache.meshes.iter().map(mesh_data).collect();
-    let mut materials: Vec<MaterialData> = cache.materials.iter().map(|m| MaterialData {
-        kind: MatKind::Opaque,
-        texture: m.textures.iter().find(|b| b.role == tv::TextureRole::Albedo).map(|b| b.texture),
-        base: m.base_color.unwrap_or([1.0; 4]),
-        gameplay: m.gameplay_id,
-    }).collect::<Vec<_>>();
+    let mut materials: Vec<MaterialData> = cache
+        .materials
+        .iter()
+        .map(|m| MaterialData {
+            kind: MatKind::Opaque,
+            texture: m.textures.iter().find(|b| b.role == tv::TextureRole::Albedo).map(|b| b.texture),
+            base: m.base_color.unwrap_or([1.0; 4]),
+            gameplay: m.gameplay_id,
+        })
+        .collect::<Vec<_>>();
     let n = cache.textures.len();
     let mut textures: Vec<Option<TexData>> = (0..n).map(|_| None).collect();
     let chunk = n.div_ceil(4).max(1);
@@ -143,10 +152,18 @@ pub fn load(packs: &Path, map: &Path, bc: bool) -> Result<VisualWorld> {
                     }
                 }
             }
-            MatKind::Glass => md.base = if m.name.to_ascii_lowercase().contains("water") { [0.32, 0.42, 0.52, 0.72] } else { [0.7, 0.75, 0.8, 0.35] },
+            MatKind::Glass => {
+                md.base = if m.name.to_ascii_lowercase().contains("water") {
+                    [0.32, 0.42, 0.52, 0.72]
+                } else {
+                    [0.7, 0.75, 0.8, 0.35]
+                }
+            }
             MatKind::Holo => {
                 md.texture = emissive;
-                let key = std::iter::once(m.name.as_str()).chain(m.textures.iter().map(|b| cache.textures[b.texture].name.as_str())).collect::<String>();
+                let key = std::iter::once(m.name.as_str())
+                    .chain(m.textures.iter().map(|b| cache.textures[b.texture].name.as_str()))
+                    .collect::<String>();
                 let [r, g, b] = holo_rgb(&key);
                 md.base = [r, g, b, 0.6];
             }
@@ -159,23 +176,36 @@ pub fn load(packs: &Path, map: &Path, bc: bool) -> Result<VisualWorld> {
     }
     let t_tex = t1.elapsed();
 
-    let expand = |inst: &tv::Instance, extra: Mat4, surroundings: &dyn Fn(Mat4, usize) -> bool| -> Vec<Placed> {
-        let tr = extra * mat4(&inst.transform);
-        let m = &cache.meshes[inst.mesh_id];
-        let sur = surroundings(tr, inst.mesh_id);
-        m.submeshes.iter().enumerate().map(|(k, sm)| Placed {
-            mesh: inst.mesh_id,
-            part: k,
-            material: inst.material_overrides.get(&sm.material).copied().unwrap_or(sm.material),
-            transform: tr,
-            surroundings: sur,
-        }).collect()
-    };
-    let centers: Vec<Vec3> = meshes.iter().map(|m| {
-        if m.vertices.is_empty() { return Vec3::ZERO; }
-        let (lo, hi) = m.vertices.iter().fold((Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)), |(lo, hi), v| (lo.min(Vec3::from(v.pos)), hi.max(Vec3::from(v.pos))));
-        (lo + hi) * 0.5
-    }).collect();
+    let expand =
+        |inst: &tv::Instance, extra: Mat4, surroundings: &dyn Fn(Mat4, usize) -> bool| -> Vec<Placed> {
+            let tr = extra * mat4(&inst.transform);
+            let m = &cache.meshes[inst.mesh_id];
+            let sur = surroundings(tr, inst.mesh_id);
+            m.submeshes
+                .iter()
+                .enumerate()
+                .map(|(k, sm)| Placed {
+                    mesh: inst.mesh_id,
+                    part: k,
+                    material: inst.material_overrides.get(&sm.material).copied().unwrap_or(sm.material),
+                    transform: tr,
+                    surroundings: sur,
+                })
+                .collect()
+        };
+    let centers: Vec<Vec3> = meshes
+        .iter()
+        .map(|m| {
+            if m.vertices.is_empty() {
+                return Vec3::ZERO;
+            }
+            let (lo, hi) =
+                m.vertices.iter().fold((Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)), |(lo, hi), v| {
+                    (lo.min(Vec3::from(v.pos)), hi.max(Vec3::from(v.pos)))
+                });
+            (lo + hi) * 0.5
+        })
+        .collect();
     let is_sur = |tr: Mat4, mesh: usize| match track {
         Some((lo, hi)) => {
             let c = tr.transform_point3(centers[mesh]);
@@ -188,13 +218,28 @@ pub fn load(packs: &Path, map: &Path, bc: bool) -> Result<VisualWorld> {
         placed.extend(expand(inst, Mat4::IDENTITY, &is_sur));
     }
     let car = car_visual.map(|cv| {
-        let wheel_set: std::collections::HashSet<usize> = cv.wheels.iter().flat_map(|w| w.instances.iter().copied()).collect();
+        let wheel_set: std::collections::HashSet<usize> =
+            cv.wheels.iter().flat_map(|w| w.instances.iter().copied()).collect();
         let none = |_: Mat4, _: usize| false;
-        let body = cv.instances.iter().enumerate().filter(|(i, _)| !wheel_set.contains(i)).flat_map(|(_, inst)| expand(inst, Mat4::IDENTITY, &none)).collect();
-        let wheels = cv.wheels.iter().map(|w| {
-            let parts = w.instances.iter().flat_map(|&i| expand(&cv.instances[i], Mat4::IDENTITY, &none)).collect();
-            WheelData { pivot: mat4(&w.transform), parts }
-        }).collect();
+        let body = cv
+            .instances
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !wheel_set.contains(i))
+            .flat_map(|(_, inst)| expand(inst, Mat4::IDENTITY, &none))
+            .collect();
+        let wheels = cv
+            .wheels
+            .iter()
+            .map(|w| {
+                let parts = w
+                    .instances
+                    .iter()
+                    .flat_map(|&i| expand(&cv.instances[i], Mat4::IDENTITY, &none))
+                    .collect();
+                WheelData { pivot: mat4(&w.transform), parts }
+            })
+            .collect();
         CarData { body, wheels }
     });
     let triangles: usize = placed.iter().map(|p| meshes[p.mesh].parts[p.part].1 as usize / 3).sum();
@@ -218,7 +263,10 @@ pub fn load(packs: &Path, map: &Path, bc: bool) -> Result<VisualWorld> {
 }
 
 pub fn albedo<'a>(m: &'a tv::Material, textures: &[tv::Texture]) -> Option<&'a tv::TextureBinding> {
-    let mask = |b: &tv::TextureBinding| b.sampler.to_ascii_lowercase().contains("huemask") || textures[b.texture].name.to_ascii_lowercase().contains("huemask");
+    let mask = |b: &tv::TextureBinding| {
+        b.sampler.to_ascii_lowercase().contains("huemask")
+            || textures[b.texture].name.to_ascii_lowercase().contains("huemask")
+    };
     let mut it = m.textures.iter().filter(|b| b.role == tv::TextureRole::Albedo);
     it.clone().find(|b| !mask(b)).or_else(|| it.next())
 }
@@ -226,7 +274,17 @@ pub fn albedo<'a>(m: &'a tv::Material, textures: &[tv::Texture]) -> Option<&'a t
 fn has_alpha(t: &tv::Texture) -> bool {
     use image_dds::ImageFormat as I;
     match &t.data {
-        TextureData::Dds { format, .. } => !matches!(format, I::BC1RgbaUnorm | I::BC1RgbaUnormSrgb | I::BC4RUnorm | I::BC4RSnorm | I::BC5RgUnorm | I::BC5RgSnorm | I::BC6hRgbUfloat | I::BC6hRgbSfloat),
+        TextureData::Dds { format, .. } => !matches!(
+            format,
+            I::BC1RgbaUnorm
+                | I::BC1RgbaUnormSrgb
+                | I::BC4RUnorm
+                | I::BC4RSnorm
+                | I::BC5RgUnorm
+                | I::BC5RgSnorm
+                | I::BC6hRgbUfloat
+                | I::BC6hRgbSfloat
+        ),
         TextureData::Encoded { .. } => true,
     }
 }
@@ -244,18 +302,26 @@ pub fn classify(m: &tv::Material, textures: &[tv::Texture]) -> MatKind {
     let opacity = m.textures.iter().any(|b| b.sampler.eq_ignore_ascii_case("TOpacity"));
     if lname.contains("invisible") {
         MatKind::Skip
-    } else if lname.contains("triggerfx") || (albedo.is_none() && emissive.is_some_and(|e| file_name(&textures[e.texture].name).contains("triggerfx"))) {
+    } else if lname.contains("triggerfx")
+        || (albedo.is_none()
+            && emissive.is_some_and(|e| file_name(&textures[e.texture].name).contains("triggerfx")))
+    {
         MatKind::Holo
     } else if base.starts_with("decal") || albedo_file.starts_with("decal") {
         match albedo {
             Some(a) if opacity || has_alpha(&textures[a.texture]) => MatKind::Decal,
             _ => MatKind::Skip,
         }
-    } else if base.starts_with("water.mat") || lname.contains("glass") || m.textures.iter().any(|b| b.sampler == "Transmittance") {
+    } else if base.starts_with("water.mat")
+        || lname.contains("glass")
+        || m.textures.iter().any(|b| b.sampler == "Transmittance")
+    {
         MatKind::Glass
     } else if albedo.is_none() && emissive.is_some() {
         MatKind::Glow
-    } else if albedo.is_some_and(|a| a.sampler.ends_with("Op")) || (lname.contains("#tree-material") && albedo.is_some_and(|a| has_alpha(&textures[a.texture]))) {
+    } else if albedo.is_some_and(|a| a.sampler.ends_with("Op"))
+        || (lname.contains("#tree-material") && albedo.is_some_and(|a| has_alpha(&textures[a.texture])))
+    {
         MatKind::Cutout
     } else {
         MatKind::Opaque
@@ -281,15 +347,20 @@ fn holo_rgb(key: &str) -> [f32; 3] {
 
 fn mesh_data(m: &tv::Mesh) -> MeshData {
     let uv = m.uvs.first();
-    let vertices = m.positions.iter().enumerate().map(|(i, p)| {
-        let n = m.normals.get(i).copied().map(Vec3::from).unwrap_or(Vec3::ZERO);
-        let t = uv.and_then(|u| u.get(i)).copied().map_or([0.0; 2], |[u, v]| [u, 1.0 - v]);
-        if n == Vec3::ZERO {
-            Vertex { pos: *p, normal: crate::gfx::mesh::FLAT, color: [255; 4], uv: t }
-        } else {
-            Vertex::smooth(Vec3::from(*p), n, [255; 4], t)
-        }
-    }).collect();
+    let vertices = m
+        .positions
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let n = m.normals.get(i).copied().map(Vec3::from).unwrap_or(Vec3::ZERO);
+            let t = uv.and_then(|u| u.get(i)).copied().map_or([0.0; 2], |[u, v]| [u, 1.0 - v]);
+            if n == Vec3::ZERO {
+                Vertex { pos: *p, normal: crate::gfx::mesh::FLAT, color: [255; 4], uv: t }
+            } else {
+                Vertex::smooth(Vec3::from(*p), n, [255; 4], t)
+            }
+        })
+        .collect();
     let parts = m.submeshes.iter().map(|s| (s.first_index, s.index_count, s.material)).collect();
     MeshData { vertices, indices: m.indices.clone(), parts }
 }
@@ -379,27 +450,38 @@ mod tests {
     use super::*;
 
     fn is_fallback(m: &tv::Material, kind: MatKind, textures: &[tv::Texture]) -> bool {
-        matches!(kind, MatKind::Opaque | MatKind::Cutout) && albedo(m, textures).is_none() && m.base_color.is_none()
+        matches!(kind, MatKind::Opaque | MatKind::Cutout)
+            && albedo(m, textures).is_none()
+            && m.base_color.is_none()
     }
 
     #[test]
     fn gates_have_no_opaque_placeholders() {
-        let (Some(data), Ok(game)) = (std::env::var_os("GBX_TEST_DATA"), gearbox_packs::install::Game::locate(None)) else {
+        let (Some(data), Ok(game)) =
+            (std::env::var_os("GBX_TEST_DATA"), gearbox_packs::install::Game::locate(None))
+        else {
             eprintln!("skipped: needs the game and GBX_TEST_DATA");
             return;
         };
         let map = Path::new(&data).join("tmx/effects/179381_No_Grip_Dirt.Map.Gbx");
         let set = game.open().unwrap();
-        let assets = gearbox_packs::assets::Assets::from_catalog(gearbox_packs::catalog::cached(&set).unwrap());
+        let assets =
+            gearbox_packs::assets::Assets::from_catalog(gearbox_packs::catalog::cached(&set).unwrap());
         let parsed = gearbox_gbx::Map::parse(&std::fs::read(&map).unwrap()).unwrap();
         let mut cache = VisualCache::new(set);
         let scene = tv::visual_scene(&parsed, &assets, &mut cache).unwrap();
         let mut holo = 0;
         for inst in scene.instances.iter().filter(|i| i.name.starts_with("Gate")) {
             for sm in &cache.meshes[inst.mesh_id].submeshes {
-                let m = &cache.materials[inst.material_overrides.get(&sm.material).copied().unwrap_or(sm.material)];
+                let m = &cache.materials
+                    [inst.material_overrides.get(&sm.material).copied().unwrap_or(sm.material)];
                 let kind = classify(m, &cache.textures);
-                assert!(!is_fallback(m, kind, &cache.textures), "{} draws {} as an opaque placeholder", inst.name, m.name);
+                assert!(
+                    !is_fallback(m, kind, &cache.textures),
+                    "{} draws {} as an opaque placeholder",
+                    inst.name,
+                    m.name
+                );
                 if m.name.contains("RaceTriggerFXCheckpoint") {
                     assert_eq!(kind, MatKind::Holo, "{}", m.name);
                     holo += 1;

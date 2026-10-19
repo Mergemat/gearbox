@@ -1,9 +1,7 @@
-use crate::math::{minss, sincos as sincos_value};
-use super::gearbox::GearboxState;
 use super::ForceCtx;
-use super::common::{
-    EPS, PEDAL_THRESHOLD, KMH, PI, TINY, HALF_TURN_DEGREES, PedalMode, clamp01, sign_one,
-};
+use super::common::{EPS, HALF_TURN_DEGREES, KMH, PEDAL_THRESHOLD, PI, PedalMode, TINY, clamp01, sign_one};
+use super::gearbox::GearboxState;
+use crate::math::{minss, sincos as sincos_value};
 
 const DRIFT_IDLE: u8 = 0;
 const DRIFT_LEFT: u8 = 1;
@@ -28,7 +26,10 @@ pub fn drive_forces(ctx: &mut ForceCtx<'_>, blend: f32, dt_ms: f32) {
     let average_drive = if ctx.geometry.wheels.is_empty() {
         0.0
     } else {
-        ctx.vehicle.wheels.iter().take(ctx.geometry.wheels.len())
+        ctx.vehicle
+            .wheels
+            .iter()
+            .take(ctx.geometry.wheels.len())
             .fold(0.0, |sum, wheel| sum + wheel.drive_coefficient)
             / ctx.geometry.wheels.len() as f32
     };
@@ -80,8 +81,14 @@ fn update_drift_direction(ctx: &mut ForceCtx<'_>, steer: f32) {
 }
 
 fn drive_wheel(
-    ctx: &mut ForceCtx<'_>, index: usize, blend: f32, dt_ms: f32,
-    yaw: f32, steering_grip: f32, grip_scale: f32, steering_magnitude: f32,
+    ctx: &mut ForceCtx<'_>,
+    index: usize,
+    blend: f32,
+    dt_ms: f32,
+    yaw: f32,
+    steering_grip: f32,
+    grip_scale: f32,
+    steering_magnitude: f32,
 ) {
     let anchor = ctx.geometry.wheels[index].anchor.to_array();
     let point_velocity = ctx.body.local_point_velocity(ctx.geometry.wheels[index].anchor).to_array();
@@ -105,19 +112,36 @@ fn drive_wheel(
     let yaw_sin_cos = sincos_value(yaw);
     let thrust = pedal_thrust(ctx, blend);
     aligned_thrust(
-        ctx, blend, dt_ms, yaw_sin_cos, steering_grip, steering_magnitude,
-        forward_alignment, right_axis, forward_axis, velocity, point_velocity, anchor, thrust,
+        ctx,
+        blend,
+        dt_ms,
+        yaw_sin_cos,
+        steering_grip,
+        steering_magnitude,
+        forward_alignment,
+        right_axis,
+        forward_axis,
+        velocity,
+        point_velocity,
+        anchor,
+        thrust,
     );
 }
 
 fn wheel_drag(
-    ctx: &mut ForceCtx<'_>, anchor: [f32; 3], point_velocity: [f32; 3], velocity: [f32; 3],
-    grip_scale: f32, blend: f32, steering_magnitude: f32,
+    ctx: &mut ForceCtx<'_>,
+    anchor: [f32; 3],
+    point_velocity: [f32; 3],
+    velocity: [f32; 3],
+    grip_scale: f32,
+    blend: f32,
+    steering_magnitude: f32,
 ) {
     let tuning = ctx.tuning;
     let point_friction = tuning.drive_lateral_friction.eval((point_velocity[0] * KMH).abs());
     let side_sign = sign_one(point_velocity[0]);
-    let side_response = tuning.drive_lateral_force_by_side_speed
+    let side_response = tuning
+        .drive_lateral_force_by_side_speed
         .eval(((velocity[1] * 0.0 + velocity[0]) + velocity[2] * 0.0).abs());
     let side_force = side_response * (-side_sign * point_friction) * grip_scale * blend;
     ctx.body.add_local_force_at(([side_force, side_force * 0.0, side_force * 0.0]).into(), (anchor).into());
@@ -125,12 +149,14 @@ fn wheel_drag(
     let steering_force = -sign_one(velocity[2]) * steering_drag * grip_scale * blend;
     let steering_zero = steering_force * 0.0 * steering_magnitude;
     ctx.body.add_local_force_at(
-        [steering_zero, steering_zero, steering_force * steering_magnitude].into(), anchor.into(),
+        [steering_zero, steering_zero, steering_force * steering_magnitude].into(),
+        anchor.into(),
     );
     let longitudinal_drag = tuning.drive_longitudinal_drag.eval((velocity[2] * KMH).abs());
     let longitudinal_force = -(longitudinal_drag * grip_scale) * velocity[2] * blend;
     ctx.body.add_local_force_at(
-        [longitudinal_force * 0.0, longitudinal_force * 0.0, longitudinal_force].into(), anchor.into(),
+        [longitudinal_force * 0.0, longitudinal_force * 0.0, longitudinal_force].into(),
+        anchor.into(),
     );
 }
 
@@ -156,8 +182,13 @@ fn yaw_axes(yaw: f32) -> ([f32; 3], [f32; 3]) {
 }
 
 fn wheel_yaw(
-    ctx: &mut ForceCtx<'_>, velocity: [f32; 3], blend: f32,
-    steering_grip: f32, grip_scale: f32, steering_magnitude: f32, forward_alignment: f32,
+    ctx: &mut ForceCtx<'_>,
+    velocity: [f32; 3],
+    blend: f32,
+    steering_grip: f32,
+    grip_scale: f32,
+    steering_magnitude: f32,
+    forward_alignment: f32,
 ) {
     let tuning = ctx.tuning;
 
@@ -184,14 +215,10 @@ fn wheel_yaw(
         }
     };
     let yaw_response = tuning.drive_yaw_by_speed.eval(velocity[2] * KMH);
-    let yaw_sign = if state == Some(YAW_REVERSE) {
-        -1.0f32
-    } else {
-        1.0
-    };
+    let yaw_sign = if state == Some(YAW_REVERSE) { -1.0f32 } else { 1.0 };
     let input_yaw = -yaw_response * (blend * ctx.vehicle.controls.steer * yaw_sign);
-    let input_torque = clamp01(ctx.geometry.steering_scale * ctx.vehicle.steering_scale)
-        * steering_grip * input_yaw;
+    let input_torque =
+        clamp01(ctx.geometry.steering_scale * ctx.vehicle.steering_scale) * steering_grip * input_yaw;
     ctx.body.add_local_torque(([0.0, input_torque, 0.0]).into());
     let (mut wx, mut wy, mut wz) = (velocity[0], velocity[1], velocity[2]);
     let l2 = (wy * wy + wx * wx) + wz * wz;
@@ -204,8 +231,8 @@ fn wheel_yaw(
     let rate_response = tuning.drive_yaw_by_rate.eval((yaw_rate * HALF_TURN_DEGREES / PI).abs());
     let alignment_response = tuning.drive_yaw_by_alignment.eval(1.0 - forward_component.abs());
     let damping = alignment_response * (-sign_one(yaw_rate) * rate_response);
-    let speed_kmh = ((velocity[0] * velocity[0] + velocity[1] * velocity[1]) + velocity[2]
-        * velocity[2]).sqrt() * KMH;
+    let speed_kmh =
+        ((velocity[0] * velocity[0] + velocity[1] * velocity[1]) + velocity[2] * velocity[2]).sqrt() * KMH;
     let speed_response = tuning.drive_yaw_by_total_speed.eval(speed_kmh);
     let damping_torque = speed_response * damping * (grip_scale * blend);
     ctx.body.add_local_torque(([damping_torque * 0.0, damping_torque, damping_torque * 0.0]).into());
@@ -215,8 +242,8 @@ fn pedal_thrust(ctx: &mut ForceCtx<'_>, blend: f32) -> f32 {
     let tuning = ctx.tuning;
     let velocity = ctx.local_velocity.to_array();
     let tick = ctx.tick;
-    let thrust_scale = clamp01(ctx.geometry.thrust_scale * ctx.vehicle.thrust_scale)
-        * tuning.effect_minimum_grip;
+    let thrust_scale =
+        clamp01(ctx.geometry.thrust_scale * ctx.vehicle.thrust_scale) * tuning.effect_minimum_grip;
     let reversing = ctx.vehicle.reversing != 0;
     let thrust_curve = if !reversing && 0.0 > velocity[2] {
         &tuning.drive_transition_thrust
@@ -236,43 +263,48 @@ fn pedal_thrust(ctx: &mut ForceCtx<'_>, blend: f32) -> f32 {
         let drag_time_response = tuning.boost_drag_by_time.eval(boost_elapsed);
         let drag_speed_response = tuning.boost_drag_by_speed.eval(absolute_speed_kmh);
         let drag_scale = -(drag_speed_response * drag_time_response);
-        ctx.body.add_local_force(([velocity[0] * drag_scale, velocity[1] * drag_scale, velocity[2]
-            * drag_scale]).into());
+        ctx.body.add_local_force(
+            ([velocity[0] * drag_scale, velocity[1] * drag_scale, velocity[2] * drag_scale]).into(),
+        );
     }
-    let mut thrust
-        = if GearboxState::from_code(ctx.vehicle.gearbox_state) == Some(GearboxState::Shifting)
-        && !reversing {
-        0.0
-    } else {
-        let slip_response = tuning.drive_thrust_by_slip.eval(blend);
-        slip_response * (timed_thrust * blend)
-    };
+    let mut thrust =
+        if GearboxState::from_code(ctx.vehicle.gearbox_state) == Some(GearboxState::Shifting) && !reversing {
+            0.0
+        } else {
+            let slip_response = tuning.drive_thrust_by_slip.eval(blend);
+            slip_response * (timed_thrust * blend)
+        };
     let gas = if ctx.vehicle.effect_mode_is(PedalMode::Full) {
         1.0
     } else if ctx.vehicle.effect_mode_is(PedalMode::Cut) {
         0.0
     } else {
-        (if reversing {
-            -1.0f32
-        } else {
-            0.0
-        }) * ctx.vehicle.controls.brake + ctx.vehicle.controls.gas
+        (if reversing { -1.0f32 } else { 0.0 }) * ctx.vehicle.controls.brake + ctx.vehicle.controls.gas
     };
     thrust = thrust * gas;
     if ctx.vehicle.turbo_active != 0 {
         let turbo_response = tuning.engine_thrust.eval(velocity[2] * KMH);
-        let turbo_force = turbo_response * tuning.effect_minimum_grip
-            * ctx.vehicle.turbo_thrust_scale * blend;
+        let turbo_force =
+            turbo_response * tuning.effect_minimum_grip * ctx.vehicle.turbo_thrust_scale * blend;
         ctx.body.add_local_force(([0.0, 0.0, turbo_force]).into());
     }
     thrust
 }
 
 fn aligned_thrust(
-    ctx: &mut ForceCtx<'_>, blend: f32, dt_ms: f32, yaw_sin_cos: (f32, f32), steering_grip: f32,
-        steering_magnitude: f32,
-    forward_alignment: f32, right_axis: [f32; 3], forward_axis: [f32; 3], velocity: [f32; 3],
-    point_velocity: [f32; 3], anchor: [f32; 3], thrust: f32,
+    ctx: &mut ForceCtx<'_>,
+    blend: f32,
+    dt_ms: f32,
+    yaw_sin_cos: (f32, f32),
+    steering_grip: f32,
+    steering_magnitude: f32,
+    forward_alignment: f32,
+    right_axis: [f32; 3],
+    forward_axis: [f32; 3],
+    velocity: [f32; 3],
+    point_velocity: [f32; 3],
+    anchor: [f32; 3],
+    thrust: f32,
 ) {
     let tuning = ctx.tuning;
     let time_ns = ctx.time_ns;
@@ -318,23 +350,26 @@ fn aligned_thrust(
         1.0
     };
     let start_boost = super::boost::start_boost(ctx);
-    let thrust = thrust * ctx.vehicle.drift_thrust_scale * side_boost * impact_boost * contact_boost
-        * alignment_boost * 0.5;
+    let thrust = thrust
+        * ctx.vehicle.drift_thrust_scale
+        * side_boost
+        * impact_boost
+        * contact_boost
+        * alignment_boost
+        * 0.5;
     let scaled_thrust = start_boost * thrust;
     let (ca0, sa0) = (ca * 0.0, sa * 0.0);
-    ctx.body.add_local_force(([(ca0 + sa) * scaled_thrust, (ca0 + sa0) * scaled_thrust, (ca + sa0)
-        * scaled_thrust]).into());
-    let pedal = if reversing {
-        ctx.vehicle.controls.gas
-    } else {
-        -ctx.vehicle.controls.brake
-    };
-    let point_speed = ((point_velocity[1] * point_velocity[1] + point_velocity[0]
-        * point_velocity[0]) + point_velocity[2] * point_velocity[2]).sqrt();
+    ctx.body.add_local_force(
+        ([(ca0 + sa) * scaled_thrust, (ca0 + sa0) * scaled_thrust, (ca + sa0) * scaled_thrust]).into(),
+    );
+    let pedal = if reversing { ctx.vehicle.controls.gas } else { -ctx.vehicle.controls.brake };
+    let point_speed = ((point_velocity[1] * point_velocity[1] + point_velocity[0] * point_velocity[0])
+        + point_velocity[2] * point_velocity[2])
+        .sqrt();
     let brake_response = tuning.drive_brake_by_speed.eval(point_speed * KMH);
     let brake_scale = brake_response * (pedal * 0.5) * blend;
-    let brake_force = [brake_scale * point_velocity[0], point_velocity[1] * brake_scale,
-        point_velocity[2] * brake_scale];
+    let brake_force =
+        [brake_scale * point_velocity[0], point_velocity[1] * brake_scale, point_velocity[2] * brake_scale];
     ctx.body.add_local_force((brake_force).into());
     ctx.body.add_local_force_at((brake_force).into(), (anchor).into());
 }
@@ -352,11 +387,7 @@ fn recover_drift_thrust(ctx: &mut ForceCtx<'_>, dt_ms: f32, side_boost: f32) {
             side_boost
         } else {
             let scaled_thrust = dt_ms / recovery_ms as f32 + slip;
-            if scaled_thrust >= 1.0 {
-                minss(scaled_thrust, side_boost)
-            } else {
-                1.0
-            }
+            if scaled_thrust >= 1.0 { minss(scaled_thrust, side_boost) } else { 1.0 }
         }
     } else {
         side_boost

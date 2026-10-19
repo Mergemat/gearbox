@@ -40,7 +40,8 @@ impl Blowfish {
 
     #[inline(always)]
     fn f(&self, x: u32) -> u32 {
-        let (a, b, c, d) = ((x >> 24) as usize, (x >> 16 & 0xff) as usize, (x >> 8 & 0xff) as usize, (x & 0xff) as usize);
+        let (a, b, c, d) =
+            ((x >> 24) as usize, (x >> 16 & 0xff) as usize, (x >> 8 & 0xff) as usize, (x & 0xff) as usize);
         (self.s[0][a].wrapping_add(self.s[1][b]) ^ self.s[2][c]).wrapping_add(self.s[3][d])
     }
 

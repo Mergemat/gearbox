@@ -91,14 +91,22 @@ impl Quat {
         let n2 = ((a * wy - d * wx) + wz * b) * 0.5 * dt + c;
         let n3 = ((c * wx - wy * b) + a * wz) * 0.5 * dt + d;
         let inv = 1.0 / (n0 * n0 + n1 * n1 + n2 * n2 + n3 * n3).sqrt();
-        if inv <= MIN_INV_NORM || f32::MAX <= inv { Quat::IDENTITY } else { Quat::new(n0 * inv, n1 * inv, inv * n2, inv * n3) }
+        if inv <= MIN_INV_NORM || f32::MAX <= inv {
+            Quat::IDENTITY
+        } else {
+            Quat::new(n0 * inv, n1 * inv, inv * n2, inv * n3)
+        }
     }
 
     pub fn normalised_or_identity(self) -> Quat {
         let Quat { w, x, y, z } = self;
         let n = x * x + w * w + y * y + z * z;
         let inv = 1.0 / n.sqrt();
-        if inv > MIN_INV_NORM && f32::MAX > inv { Quat::new(w * inv, x * inv, y * inv, z * inv) } else { Quat::IDENTITY }
+        if inv > MIN_INV_NORM && f32::MAX > inv {
+            Quat::new(w * inv, x * inv, y * inv, z * inv)
+        } else {
+            Quat::IDENTITY
+        }
     }
 
     pub fn angular_velocity_to(self, to: Quat, dt: f32) -> Vec3 {
@@ -107,7 +115,11 @@ impl Quat {
         let s = 2.0 / dt;
         let (d0, d1, d2, d3) = ((b0 - a0) * s, (b1 - a1) * s, (b2 - a2) * s, (b3 - a3) * s);
         let (n1, n2, n3) = (-a1, -a2, -a3);
-        Vec3::new(d1 * a0 + d0 * n1 + d2 * n3 - d3 * n2, d2 * a0 + d0 * n2 + d3 * n1 - d1 * n3, d3 * a0 + d0 * n3 + d1 * n2 - d2 * n1)
+        Vec3::new(
+            d1 * a0 + d0 * n1 + d2 * n3 - d3 * n2,
+            d2 * a0 + d0 * n2 + d3 * n1 - d1 * n3,
+            d3 * a0 + d0 * n3 + d1 * n2 - d2 * n1,
+        )
     }
 
     pub fn about_y(angle: f32) -> Quat {
@@ -123,10 +135,20 @@ impl Quat {
         let ccca = cc * ca;
         let ccsa = cc * sa;
         let scca = sc * ca;
-        Quat::new(scsa * sb - ccca * cb, (-scsa) * cb - ccca * sb, (-scca) * sb - ccsa * cb, ccsa * sb - scca * cb)
+        Quat::new(
+            scsa * sb - ccca * cb,
+            (-scsa) * cb - ccca * sb,
+            (-scca) * sb - ccsa * cb,
+            ccsa * sb - scca * cb,
+        )
     }
 
     pub fn quantize(self, step: f32) -> Quat {
-        Quat::new(quantize(self.w, step), quantize(self.x, step), quantize(self.y, step), quantize(self.z, step))
+        Quat::new(
+            quantize(self.w, step),
+            quantize(self.x, step),
+            quantize(self.y, step),
+            quantize(self.z, step),
+        )
     }
 }

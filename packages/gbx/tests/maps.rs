@@ -29,11 +29,7 @@ fn spawns(map: &Map) -> Vec<[f32; 3]> {
     let blocks = map
         .blocks
         .iter()
-        .filter(|b| {
-            b.waypoint
-                .as_ref()
-                .is_some_and(|w| w.tag.as_deref() == Some("Spawn"))
-        })
+        .filter(|b| b.waypoint.as_ref().is_some_and(|w| w.tag.as_deref() == Some("Spawn")))
         .map(|b| match b.free {
             Some((pos, _)) => pos,
             None => [
@@ -45,11 +41,7 @@ fn spawns(map: &Map) -> Vec<[f32; 3]> {
     let items = map
         .items
         .iter()
-        .filter(|i| {
-            i.waypoint
-                .as_ref()
-                .is_some_and(|w| w.tag.as_deref() == Some("Spawn"))
-        })
+        .filter(|i| i.waypoint.as_ref().is_some_and(|w| w.tag.as_deref() == Some("Spawn")))
         .map(|i| i.position);
     blocks.chain(items).collect()
 }
@@ -65,19 +57,11 @@ fn first_car_sample_is_at_the_spawn() {
         let replay = Replay::parse(&std::fs::read(&path).unwrap()).unwrap();
         let map = Map::parse(replay.map_gbx.as_deref().unwrap()).unwrap();
         let spawns = spawns(&map);
-        assert_eq!(
-            spawns.len(),
-            1,
-            "{path:?}: expected one spawn, got {spawns:?}"
-        );
+        assert_eq!(spawns.len(), 1, "{path:?}: expected one spawn, got {spawns:?}");
         let spawn = spawns[0];
         for ghost in &replay.ghosts {
             let rec = ghost.record.as_ref().unwrap();
-            let car = rec
-                .entities
-                .iter()
-                .find(|e| e.class_id == CLASS_VEHICLE_VIS)
-                .unwrap();
+            let car = rec.entities.iter().find(|e| e.class_id == CLASS_VEHICLE_VIS).unwrap();
             let first = car.samples[0].vehicle.as_ref().unwrap().position;
             let horizontal = ((first[0] - spawn[0]).powi(2) + (first[2] - spawn[2]).powi(2)).sqrt();
             let vertical = first[1] - spawn[1];

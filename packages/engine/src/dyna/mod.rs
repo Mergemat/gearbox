@@ -1,18 +1,18 @@
-mod types;
 mod bodies;
 pub mod constants;
 mod flags;
 pub mod kinematic;
 pub mod solver;
+mod types;
 
-pub use types::*;
+pub use bodies::{Body, BodyHandle, BodyParams, ForceModels, Handles, grow_capacity};
 pub use flags::{BodyOptions, SolverFlags};
 pub use kinematic::KinematicModel;
-pub use bodies::{Body, BodyHandle, BodyParams, ForceModels, Handles, grow_capacity};
+pub use types::*;
 
 use crate::{DynamicItemId, Iso, Vec3};
-use solver::{CollisionRecord, SolverWork};
 use constants::NULL_INDEX;
+use solver::{CollisionRecord, SolverWork};
 
 pub trait Collision {
     fn placement(&self, item: DynamicItemId) -> Iso;
@@ -53,16 +53,8 @@ pub struct Dyna {
 
 impl Dyna {
     pub fn kinematic_update(&mut self, now: i64, collision: &mut impl Collision) {
-        let start = if self.race_origin == NULL_INDEX {
-            0
-        } else {
-            self.race_origin as i64 * 1_000_000
-        };
-        let t = if now > start {
-            now - start
-        } else {
-            10_000_000
-        };
+        let start = if self.race_origin == NULL_INDEX { 0 } else { self.race_origin as i64 * 1_000_000 };
+        let t = if now > start { now - start } else { 10_000_000 };
         for motion in &mut self.animations {
             motion.current = motion.model.transform(t, motion.phase);
             motion.past = motion.model.transform(t - 1_000_000, motion.phase);
@@ -85,7 +77,9 @@ impl Dyna {
         if !self.pending_wakes.is_empty() {
             todo!("pending wake list");
         }
-        let free = self.bodies.iter()
+        let free = self
+            .bodies
+            .iter()
             .filter(|b| b.model.is_externally_simulated() && b.owner_item.is_none())
             .count();
         self.tick_ms = tick.ms;

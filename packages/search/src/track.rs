@@ -23,13 +23,16 @@ impl Cells {
             let e1 = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
             let e2 = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
             let len = |e: [f32; 3]| (e[0] * e[0] + e[1] * e[1] + e[2] * e[2]).sqrt();
-            let n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+            let n =
+                [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
             let climbable = len(n) > 0.0 && (n[1] / len(n)).abs() >= CLIMBABLE_NY;
             let n = ((len(e1).max(len(e2)) / (cell * 0.5)).ceil() as usize).clamp(1, 400);
             for i in 0..=n {
                 for j in 0..=(n - i) {
                     let (a, b) = (i as f32 / n as f32, j as f32 / n as f32);
-                    let c = surface.entry(key(std::array::from_fn(|k| t[0][k] + a * e1[k] + b * e2[k]))).or_insert(false);
+                    let c = surface
+                        .entry(key(std::array::from_fn(|k| t[0][k] + a * e1[k] + b * e2[k])))
+                        .or_insert(false);
                     *c |= climbable;
                 }
             }
@@ -42,10 +45,24 @@ impl Cells {
             }
         }
         if surface.is_empty() {
-            return Self { cell, lo: [0; 3], dims: [0; 3], grid: Vec::new(), keys: Vec::new(), climb: Vec::new() };
+            return Self {
+                cell,
+                lo: [0; 3],
+                dims: [0; 3],
+                grid: Vec::new(),
+                keys: Vec::new(),
+                climb: Vec::new(),
+            };
         }
         let dims = [hi[0] - lo[0] + 1, hi[1] - lo[1] + 1, hi[2] - lo[2] + 1];
-        let mut cells = Self { cell, lo, dims, grid: vec![0; (dims[0] * dims[1] * dims[2]) as usize], keys: Vec::new(), climb: Vec::new() };
+        let mut cells = Self {
+            cell,
+            lo,
+            dims,
+            grid: vec![0; (dims[0] * dims[1] * dims[2]) as usize],
+            keys: Vec::new(),
+            climb: Vec::new(),
+        };
         let mut keys: Vec<[i32; 3]> = surface.keys().copied().collect();
         keys.sort_unstable();
         for s in keys {
@@ -67,7 +84,8 @@ impl Cells {
 
     fn slot(&self, k: [i32; 3]) -> Option<usize> {
         let r = [k[0] - self.lo[0], k[1] - self.lo[1], k[2] - self.lo[2]];
-        ((0..3).all(|a| (0..self.dims[a]).contains(&r[a]))).then(|| ((r[0] * self.dims[1] + r[1]) * self.dims[2] + r[2]) as usize)
+        ((0..3).all(|a| (0..self.dims[a]).contains(&r[a])))
+            .then(|| ((r[0] * self.dims[1] + r[1]) * self.dims[2] + r[2]) as usize)
     }
 
     fn get(&self, k: [i32; 3]) -> Option<u32> {
@@ -210,7 +228,9 @@ mod tests {
     use super::*;
 
     fn u_track() -> Vec<[[f32; 3]; 3]> {
-        let quad = |x0: f32, x1: f32, z0: f32, z1: f32| [[[x0, 0.0, z0], [x1, 0.0, z0], [x1, 0.0, z1]], [[x0, 0.0, z0], [x1, 0.0, z1], [x0, 0.0, z1]]];
+        let quad = |x0: f32, x1: f32, z0: f32, z1: f32| {
+            [[[x0, 0.0, z0], [x1, 0.0, z0], [x1, 0.0, z1]], [[x0, 0.0, z0], [x1, 0.0, z1], [x0, 0.0, z1]]]
+        };
         let mut t = Vec::new();
         t.extend(quad(0.0, 10.0, 0.0, 100.0));
         t.extend(quad(40.0, 50.0, 0.0, 100.0));
@@ -234,8 +254,16 @@ mod tests {
     fn a_sheer_wall_cannot_be_climbed_but_a_ramp_can() {
         let goal = |p: [f32; 3]| p[0] > 50.0 && p[1] > 9.0;
         let before = [5.0, 1.0, 10.0];
-        let walled = GoalField::build(Arc::new(Cells::build(platform(false).into_iter(), 2.0, 6)), [55.0, 11.0, 10.0], goal);
-        let ramped = GoalField::build(Arc::new(Cells::build(platform(true).into_iter(), 2.0, 6)), [55.0, 11.0, 10.0], goal);
+        let walled = GoalField::build(
+            Arc::new(Cells::build(platform(false).into_iter(), 2.0, 6)),
+            [55.0, 11.0, 10.0],
+            goal,
+        );
+        let ramped = GoalField::build(
+            Arc::new(Cells::build(platform(true).into_iter(), 2.0, 6)),
+            [55.0, 11.0, 10.0],
+            goal,
+        );
         let (w, r) = (walled.distance(before).unwrap(), ramped.distance(before).unwrap());
         assert!(r < 70.0, "{r}");
         assert!(w > r + 40.0, "{w} vs {r}");

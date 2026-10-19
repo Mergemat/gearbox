@@ -17,7 +17,11 @@ fn variant(b: &BlockInfo, kind: VariantKind, index: usize) -> &gearbox_packs::bl
 
 #[test]
 fn pillar_with_a_nested_symmetrical_block_info() {
-    let Some(b) = block("Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoPillar\\TrackWallChicaneX2LeftPillar.EDClassic.Gbx") else { return };
+    let Some(b) = block(
+        "Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoPillar\\TrackWallChicaneX2LeftPillar.EDClassic.Gbx",
+    ) else {
+        return;
+    };
     assert_eq!(b.variants.len(), 4);
     assert_eq!(variant(&b, VariantKind::Ground, 0).units, [[0, 0, 0], [0, 0, 1], [1, 0, 0], [1, 0, 1]]);
     assert_eq!(variant(&b, VariantKind::Air, 1).units, [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]]);
@@ -27,7 +31,11 @@ fn pillar_with_a_nested_symmetrical_block_info() {
 
 #[test]
 fn free_clip_type_and_mobil_offset() {
-    let Some(b) = block("Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoClip\\PlatformWallStraightFCTRacing.EDClip.Gbx") else { return };
+    let Some(b) =
+        block("Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoClip\\PlatformWallStraightFCTRacing.EDClip.Gbx")
+    else {
+        return;
+    };
     assert_eq!(b.clip_type, 2);
     let air = variant(&b, VariantKind::Air, 0);
     assert_eq!(air.units, [[0, 0, 0]]);
@@ -38,23 +46,40 @@ fn free_clip_type_and_mobil_offset() {
 
 #[test]
 fn clip_mirror_image() {
-    let Some(b) = block("GreenCoast\\GameCtnBlockInfo\\GameCtnBlockInfoClip\\Stadium\\DecoWallSlope2End2VFCRight.EDVerticalClip.Gbx") else { return };
+    let Some(b) = block(
+        "GreenCoast\\GameCtnBlockInfo\\GameCtnBlockInfoClip\\Stadium\\DecoWallSlope2End2VFCRight.EDVerticalClip.Gbx",
+    ) else {
+        return;
+    };
     assert_eq!(b.symmetrical_clip.as_deref(), Some("DecoWallSlope2End2VFCLeft"));
-    let Some(b) = block("Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoClip\\PlatformWallStraightFCTRacing.EDClip.Gbx") else { return };
+    let Some(b) =
+        block("Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoClip\\PlatformWallStraightFCTRacing.EDClip.Gbx")
+    else {
+        return;
+    };
     assert_eq!(b.symmetrical_clip.as_deref(), Some("PlatformWallStraightFCB"));
 }
 
 #[test]
 fn block_collector_id_differs_from_filename() {
-    let Some(b) = block("Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoClassic\\GateSpecialBoost2.EDClassic.Gbx") else { return };
+    let Some(b) =
+        block("Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoClassic\\GateSpecialBoost2.EDClassic.Gbx")
+    else {
+        return;
+    };
     assert_eq!(b.name.as_deref(), Some("GateSpecialBoost2Oriented"));
-    let Some(b) = block("Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoClassic\\Deprecated\\GateSpecialBoost2.EDClassic.Gbx") else { return };
+    let Some(b) = block(
+        "Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoClassic\\Deprecated\\GateSpecialBoost2.EDClassic.Gbx",
+    ) else {
+        return;
+    };
     assert_eq!(b.name.as_deref(), Some("GateSpecialBoost2"));
 }
 
 #[test]
 fn nested_pillar_variants_do_not_supply_water() {
-    let path = "Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoPillar\\TrackWallChicaneX2LeftPillar.EDClassic.Gbx";
+    let path =
+        "Stadium\\GameCtnBlockInfo\\GameCtnBlockInfoPillar\\TrackWallChicaneX2LeftPillar.EDClassic.Gbx";
     let Some(buf) = archive(path) else { return };
     for ground in [false, true] {
         for index in 0..2 {

@@ -26,18 +26,9 @@ fn chunk(b: &[u8], class: u32, id: u32) -> Result<Reader<'_>> {
         .enumerate()
         .filter(|(_, v)| *v == id.to_le_bytes())
         .map(|(i, _)| i + l.head.body_start)
-        .filter(|&p| {
-            !l.nodes
-                .iter()
-                .skip(1)
-                .any(|n| n.start <= p && n.end.is_some_and(|e| p < e))
-        })
+        .filter(|&p| !l.nodes.iter().skip(1).any(|n| n.start <= p && n.end.is_some_and(|e| p < e)))
         .collect();
-    ensure!(
-        matches.len() == 1,
-        "expected one car chunk {id:08x}, got {}",
-        matches.len()
-    );
+    ensure!(matches.len() == 1, "expected one car chunk {id:08x}, got {}", matches.len());
     let mut r = Reader::new(b);
     r.skip(matches[0] + 4)?;
     Ok(r)
@@ -55,30 +46,16 @@ pub fn selection(packs: &PackSet, car: &str) -> Result<(String, String)> {
     let own = format!("Vehicles/Items/Cars/{car}.Item.Gbx");
     let b = packs.read_path(&own)?;
     let l = nodes::layout(&b)?;
-    let n = l
-        .nodes
-        .iter()
-        .find(|n| n.class_id == 0x2e01c000)
-        .context("VehicleStruct absent")?;
+    let n = l.nodes.iter().find(|n| n.class_id == 0x2e01c000).context("VehicleStruct absent")?;
     let mut r = Reader::new(&b);
     r.skip(n.start)?;
-    ensure!(
-        r.u32()? == 0x2e01c000 && r.u32()? == 3,
-        "unsupported VehicleStruct version"
-    );
+    ensure!(r.u32()? == 0x2e01c000 && r.u32()? == 3, "unsupported VehicleStruct version");
     let model = r.u32()?;
     let visual = r.u32()?;
-    ensure!(
-        r.u32()? == 0 && r.u32()? == 0 && r.u32()? == FACADE,
-        "unsupported VehicleStruct extra objects"
-    );
+    ensure!(r.u32()? == 0 && r.u32()? == 0 && r.u32()? == FACADE, "unsupported VehicleStruct extra objects");
     Ok((
-        l.head
-            .ref_path(&own, model)
-            .context("VehicleStruct physics reference")?,
-        l.head
-            .ref_path(&own, visual)
-            .context("VehicleStruct visual reference")?,
+        l.head.ref_path(&own, model).context("VehicleStruct physics reference")?,
+        l.head.ref_path(&own, visual).context("VehicleStruct visual reference")?,
     ))
 }
 
@@ -87,9 +64,7 @@ pub fn load(packs: &PackSet, visual: &str, paths: &[Option<String>; 2]) -> Resul
     let h = head(&b)?;
     let mut r = chunk(&b, 0x090e7000, 0x090e7000)?;
     ensure!(r.u32()? == 18, "unsupported visual model version");
-    let shared_path = h
-        .ref_path(visual, r.u32()?)
-        .context("shared visual reference")?;
+    let shared_path = h.ref_path(visual, r.u32()?).context("shared visual reference")?;
     let mut r = chunk(&b, 0x090e7000, 0x090e7002)?;
     ensure!(r.u32()? == 5, "unsupported visual thresholds version");
     let wheel_impact_max = r.f32()?;
@@ -110,10 +85,7 @@ pub fn load(packs: &PackSet, visual: &str, paths: &[Option<String>; 2]) -> Resul
     let mut groups = Vec::new();
     for _ in 0..n {
         r.u32()?;
-        ensure!(
-            r.u32()? == 0x090e9000 && r.u32()? == 0x090e9000,
-            "material group class/chunk"
-        );
+        ensure!(r.u32()? == 0x090e9000 && r.u32()? == 0x090e9000, "material group class/chunk");
         let count = r.u32()?;
         ensure!(count < 256, "material group size");
         let mut ids = Vec::new();
@@ -198,11 +170,33 @@ fn material(r: &mut Reader<'_>) -> Result<SurfaceMaterial> {
     let yaw_drag = r.f32()?;
     ensure!(r.u32()? == FACADE, "material end");
     Ok(SurfaceMaterial {
-        speed_limit_scale, thrust_scale, brake_scale, grip_scale, rolling_response, sliding_response,
-        contact_response, lateral_drag, lateral_thrust, yaw_drag, gripping, immersion_brake_drain,
-        steering_rate, steering_visual_rate, pivot_enabled, bump_scale, bump_limit, bumps_enabled,
-        bump_period_x, bump_period_z, index, thrust_by_speed, steering_angle_by_speed,
-        steering_by_speed, grip_by_immersion, thrust_by_alignment, bump_speed_period,
+        speed_limit_scale,
+        thrust_scale,
+        brake_scale,
+        grip_scale,
+        rolling_response,
+        sliding_response,
+        contact_response,
+        lateral_drag,
+        lateral_thrust,
+        yaw_drag,
+        gripping,
+        immersion_brake_drain,
+        steering_rate,
+        steering_visual_rate,
+        pivot_enabled,
+        bump_scale,
+        bump_limit,
+        bumps_enabled,
+        bump_period_x,
+        bump_period_z,
+        index,
+        thrust_by_speed,
+        steering_angle_by_speed,
+        steering_by_speed,
+        grip_by_immersion,
+        thrust_by_alignment,
+        bump_speed_period,
         bump_amplitude_scale,
     })
 }

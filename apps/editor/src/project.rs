@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context as _, Result, ensure};
 use crate::engine::input::InputFile;
+use anyhow::{Context as _, Result, ensure};
 use serde::{Deserialize, Serialize};
 
 use crate::doc::{Bookmark, Doc, Goal, Origin, Run, StartState};
@@ -60,7 +60,10 @@ pub struct ProjectJson {
 }
 
 fn slug(s: &str) -> String {
-    let s: String = s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c.to_ascii_lowercase() } else { '_' }).collect();
+    let s: String = s
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c.to_ascii_lowercase() } else { '_' })
+        .collect();
     let s = s.trim_matches('_').to_string();
     if s.is_empty() { "run".into() } else { s }
 }
@@ -75,13 +78,35 @@ pub fn abs(home: &Path, s: &str) -> PathBuf {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn save(path: &Path, home: &Path, name: &str, finishes: &Finishes, map: &Path, doc: &Doc, search: &Spec, route: &crate::lab::RouteSpec, ghosts: &[PathBuf]) -> Result<Vec<PathBuf>> {
+pub fn save(
+    path: &Path,
+    home: &Path,
+    name: &str,
+    finishes: &Finishes,
+    map: &Path,
+    doc: &Doc,
+    search: &Spec,
+    route: &crate::lab::RouteSpec,
+    ghosts: &[PathBuf],
+) -> Result<Vec<PathBuf>> {
     let dir = path.parent().context("project path has no directory")?;
     std::fs::create_dir_all(dir)?;
-    let stem = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".tmproj.json")).context("project files end in .tmproj.json")?.to_string();
+    let stem = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_suffix(".tmproj.json"))
+        .context("project files end in .tmproj.json")?
+        .to_string();
     let mut written = Vec::new();
     let mut used = std::collections::HashSet::new();
-    let mut write_run = |name: &str, inputs: &InputFile, len: usize, start: &Option<StartState>, origin: &Origin, at: &str, finish_ms: Option<i32>| -> Result<RunJson> {
+    let mut write_run = |name: &str,
+                         inputs: &InputFile,
+                         len: usize,
+                         start: &Option<StartState>,
+                         origin: &Origin,
+                         at: &str,
+                         finish_ms: Option<i32>|
+     -> Result<RunJson> {
         let mut s = slug(name);
         while !used.insert(s.clone()) {
             s.push('_');
@@ -90,10 +115,33 @@ pub fn save(path: &Path, home: &Path, name: &str, finishes: &Finishes, map: &Pat
         let p = dir.join(&file);
         inputs.trimmed().write(&p)?;
         written.push(p);
-        Ok(RunJson { name: name.into(), inputs: file, len, start: start.clone(), origin: origin.clone(), at: at.into(), finish_ms })
+        Ok(RunJson {
+            name: name.into(),
+            inputs: file,
+            len,
+            start: start.clone(),
+            origin: origin.clone(),
+            at: at.into(),
+            finish_ms,
+        })
     };
     let run = write_run(&doc.run_name, &doc.inputs, doc.len, &doc.start, &doc.run_origin, "", finishes.run)?;
-    let runs = doc.runs.iter().enumerate().map(|(i, r)| write_run(&r.name, &r.inputs, r.len, &r.start, &r.origin, &r.at, finishes.runs.get(i).copied().flatten())).collect::<Result<Vec<_>>>()?;
+    let runs = doc
+        .runs
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            write_run(
+                &r.name,
+                &r.inputs,
+                r.len,
+                &r.start,
+                &r.origin,
+                &r.at,
+                finishes.runs.get(i).copied().flatten(),
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
     let j = ProjectJson {
         version: 1,
         name: Some(name.to_string()),
@@ -111,7 +159,8 @@ pub fn save(path: &Path, home: &Path, name: &str, finishes: &Finishes, map: &Pat
         route: Some(route.clone()),
         ghosts: ghosts.iter().map(|g| rel(home, g)).collect(),
     };
-    std::fs::write(path, serde_json::to_string_pretty(&j)?).with_context(|| format!("writing {}", path.display()))?;
+    std::fs::write(path, serde_json::to_string_pretty(&j)?)
+        .with_context(|| format!("writing {}", path.display()))?;
     written.insert(0, path.to_path_buf());
     Ok(written)
 }
@@ -128,7 +177,8 @@ pub struct Loaded {
 
 pub fn load(path: &Path, home: &Path) -> Result<Loaded> {
     let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    let j: ProjectJson = serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
+    let j: ProjectJson =
+        serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
     ensure!(j.version == 1, "project version {} (this editor reads 1)", j.version);
     let dir = path.parent().unwrap_or(Path::new("."));
     let read = |r: &RunJson| InputFile::read(&dir.join(&r.inputs));
@@ -146,12 +196,30 @@ pub fn load(path: &Path, home: &Path) -> Result<Loaded> {
     doc.next_id = doc.next_id.max(doc.setups.iter().map(|g| g.id + 1).max().unwrap_or(1));
     for r in &j.runs {
         let id = doc.id();
-        doc.runs.push(Run { id, name: r.name.clone(), inputs: Arc::new(read(r)?), len: r.len, start: r.start.clone(), origin: r.origin.clone(), at: r.at.clone() });
+        doc.runs.push(Run {
+            id,
+            name: r.name.clone(),
+            inputs: Arc::new(read(r)?),
+            len: r.len,
+            start: r.start.clone(),
+            origin: r.origin.clone(),
+            at: r.at.clone(),
+        });
     }
     let name = j.name.clone().unwrap_or_else(|| default_name(path));
-    let search = j.search.map(|v| Spec::from_saved(v, &doc.goals)).transpose().context("reading the search setup")?;
-    let finishes = Finishes { run: j.finish_ms.or(j.run.finish_ms), runs: j.runs.iter().map(|r| r.finish_ms).collect() };
-    Ok(Loaded { map: abs(home, &j.map), doc, search, route: j.route, ghosts: j.ghosts.iter().map(|g| abs(home, g)).collect(), name, finishes })
+    let search =
+        j.search.map(|v| Spec::from_saved(v, &doc.goals)).transpose().context("reading the search setup")?;
+    let finishes =
+        Finishes { run: j.finish_ms.or(j.run.finish_ms), runs: j.runs.iter().map(|r| r.finish_ms).collect() };
+    Ok(Loaded {
+        map: abs(home, &j.map),
+        doc,
+        search,
+        route: j.route,
+        ghosts: j.ghosts.iter().map(|g| abs(home, g)).collect(),
+        name,
+        finishes,
+    })
 }
 
 pub fn library(home: &Path) -> PathBuf {
@@ -159,13 +227,16 @@ pub fn library(home: &Path) -> PathBuf {
 }
 
 fn in_library(path: &Path) -> bool {
-    path.file_name().and_then(|n| n.to_str()) == Some("project.tmproj.json") && path.parent().and_then(Path::parent).is_some_and(|l| l.ends_with("editor/projects"))
+    path.file_name().and_then(|n| n.to_str()) == Some("project.tmproj.json")
+        && path.parent().and_then(Path::parent).is_some_and(|l| l.ends_with("editor/projects"))
 }
 
 fn default_name(path: &Path) -> String {
     let file = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     if in_library(path) {
-        path.parent().and_then(|d| d.file_name()).map_or("Project".into(), |d| d.to_string_lossy().into_owned())
+        path.parent()
+            .and_then(|d| d.file_name())
+            .map_or("Project".into(), |d| d.to_string_lossy().into_owned())
     } else {
         file.strip_suffix(".tmproj.json").unwrap_or(file).to_string()
     }
@@ -193,10 +264,17 @@ impl Entry {
 pub fn list(home: &Path) -> Vec<Entry> {
     let mut files: Vec<(PathBuf, bool)> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(library(home)) {
-        files.extend(rd.flatten().map(|e| (e.path().join("project.tmproj.json"), false)).filter(|(p, _)| p.exists()));
+        files.extend(
+            rd.flatten().map(|e| (e.path().join("project.tmproj.json"), false)).filter(|(p, _)| p.exists()),
+        );
     }
     if let Ok(rd) = std::fs::read_dir(home.join("inputs")) {
-        files.extend(rd.flatten().map(|e| e.path()).filter(|p| p.to_string_lossy().ends_with(".tmproj.json")).map(|p| (p, true)));
+        files.extend(
+            rd.flatten()
+                .map(|e| e.path())
+                .filter(|p| p.to_string_lossy().ends_with(".tmproj.json"))
+                .map(|p| (p, true)),
+        );
     }
     let mut out: Vec<Entry> = files
         .into_iter()
@@ -208,7 +286,17 @@ pub fn list(home: &Path) -> Vec<Entry> {
             let named = name != default_name(&path) && Some(&name) != crate::catalog::map_stem(&map).as_ref();
             let mut runs = vec![(j.run.name.clone(), j.finish_ms.or(j.run.finish_ms))];
             runs.extend(j.runs.iter().map(|r| (r.name.clone(), r.finish_ms)));
-            Some(Entry { name, named, map, modified, runs, goals: j.goals.len(), setups: j.setups.len(), legacy, path })
+            Some(Entry {
+                name,
+                named,
+                map,
+                modified,
+                runs,
+                goals: j.goals.len(),
+                setups: j.setups.len(),
+                legacy,
+                path,
+            })
         })
         .collect();
     out.sort_by(|a, b| b.modified.cmp(&a.modified));
@@ -238,7 +326,17 @@ pub fn duplicate(path: &Path, home: &Path) -> Result<PathBuf> {
     let l = load(path, home)?;
     let name = format!("{} copy", l.name);
     let to = new_path(home, &name);
-    save(&to, home, &name, &l.finishes, &l.map, &l.doc, &l.search.unwrap_or_default(), &l.route.unwrap_or_default(), &l.ghosts)?;
+    save(
+        &to,
+        home,
+        &name,
+        &l.finishes,
+        &l.map,
+        &l.doc,
+        &l.search.unwrap_or_default(),
+        &l.route.unwrap_or_default(),
+        &l.ghosts,
+    )?;
     Ok(to)
 }
 
@@ -247,11 +345,18 @@ pub fn files(path: &Path) -> Result<Vec<PathBuf>> {
     if in_library(path) {
         return Ok(vec![dir.to_path_buf()]);
     }
-    let stem = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".tmproj.json")).context("project file")?.to_string();
+    let stem = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_suffix(".tmproj.json"))
+        .context("project file")?
+        .to_string();
     let mut out = Vec::new();
     for e in std::fs::read_dir(dir)?.flatten() {
         let n = e.file_name().to_string_lossy().into_owned();
-        if n == format!("{stem}.tmproj.json") || (n.starts_with(&format!("{stem}.")) && n.ends_with(".txt.in")) {
+        if n == format!("{stem}.tmproj.json")
+            || (n.starts_with(&format!("{stem}.")) && n.ends_with(".txt.in"))
+        {
             out.push(e.path());
         }
     }
@@ -275,7 +380,9 @@ fn trash_item(p: &Path) -> Result<PathBuf> {
     use objc2_foundation::{NSFileManager, NSString, NSURL};
     let url = NSURL::fileURLWithPath(&NSString::from_str(&p.to_string_lossy()));
     let mut out = None;
-    NSFileManager::defaultManager().trashItemAtURL_resultingItemURL_error(&url, Some(&mut out)).map_err(|e| anyhow::anyhow!("moving {} to the Trash: {}", p.display(), e.localizedDescription()))?;
+    NSFileManager::defaultManager()
+        .trashItemAtURL_resultingItemURL_error(&url, Some(&mut out))
+        .map_err(|e| anyhow::anyhow!("moving {} to the Trash: {}", p.display(), e.localizedDescription()))?;
     out.and_then(|u| u.path()).map(|s| PathBuf::from(s.to_string())).context("the Trash gave no location")
 }
 
@@ -300,7 +407,15 @@ pub struct Layout {
 
 impl Default for Layout {
     fn default() -> Self {
-        Self { left: 248.0, right: 350.0, bottom: 300.0, bottom_tab: 0, right_tab: 0, guide_dismissed: false, trackpad_orbit: false }
+        Self {
+            left: 248.0,
+            right: 350.0,
+            bottom: 300.0,
+            bottom_tab: 0,
+            right_tab: 0,
+            guide_dismissed: false,
+            trackpad_orbit: false,
+        }
     }
 }
 
@@ -309,7 +424,10 @@ impl Layout {
         home.join("layout.json")
     }
     pub fn load(home: &Path) -> Self {
-        std::fs::read_to_string(Self::path(home)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        std::fs::read_to_string(Self::path(home))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
     }
     pub fn save(&self, home: &Path) -> Result<()> {
         let p = Self::path(home);
@@ -351,22 +469,66 @@ mod tests {
         let mut doc = Doc::new(InputFile::parse("T0 -1500\n1 0 0.5\n1 1 -1\n").unwrap(), 600, Origin::Blank);
         doc.run_name = "Main line".into();
         let id = doc.id();
-        doc.goals.push(Goal { id, name: "P1".into(), kind: GoalKind::Point { pos: [1.0, 2.0, 3.0], radius: 4.0 }, visible: true, when: Default::default() });
+        doc.goals.push(Goal {
+            id,
+            name: "P1".into(),
+            kind: GoalKind::Point { pos: [1.0, 2.0, 3.0], radius: 4.0 },
+            visible: true,
+            when: Default::default(),
+        });
         let id = doc.id();
-        doc.goals.push(Goal { id, name: "Pose 1".into(), kind: GoalKind::Pose(PoseSpec::at(glam::Vec3::new(5.0, 6.0, 7.0), 45.0)), visible: false, when: When { min_kmh: Some(250.0), pitch: Some([-90.0, -50.0]), slide: None } });
-        doc.start = Some(StartState { tick: 150, pos: [1.0, 2.0, 3.0], ypr: [10.0, 0.0, 0.0], velocity: [0.0, 0.0, 20.0], angular: [0.0; 3], reset_contacts: true });
+        doc.goals.push(Goal {
+            id,
+            name: "Pose 1".into(),
+            kind: GoalKind::Pose(PoseSpec::at(glam::Vec3::new(5.0, 6.0, 7.0), 45.0)),
+            visible: false,
+            when: When { min_kmh: Some(250.0), pitch: Some([-90.0, -50.0]), slide: None },
+        });
+        doc.start = Some(StartState {
+            tick: 150,
+            pos: [1.0, 2.0, 3.0],
+            ypr: [10.0, 0.0, 0.0],
+            velocity: [0.0, 0.0, 20.0],
+            angular: [0.0; 3],
+            reset_contacts: true,
+        });
         doc.lock(10..20);
-        doc.bookmarks.push(Bookmark { name: "Jump".into(), pivot: [1.0, 2.0, 3.0], yaw: 0.5, pitch: 0.3, distance: 40.0 });
-        doc.guides.push(crate::doc::Guide { id: 77, name: "Cut".into(), points: vec![[0.0, 1.0, 2.0], [10.0, 1.0, 2.0]] });
+        doc.bookmarks.push(Bookmark {
+            name: "Jump".into(),
+            pivot: [1.0, 2.0, 3.0],
+            yaw: 0.5,
+            pitch: 0.3,
+            distance: 40.0,
+        });
+        doc.guides.push(crate::doc::Guide {
+            id: 77,
+            name: "Cut".into(),
+            points: vec![[0.0, 1.0, 2.0], [10.0, 1.0, 2.0]],
+        });
         let placed = doc.start.clone().unwrap();
-        doc.setups.push(crate::doc::Setup { id: 90, name: "Nosebug".into(), start: placed, controls: vec![[1.0, 0.0, -0.5], [0.0, 1.0, 1.0]], end_pos: [4.0, 5.0, 6.0], end_ypr: [1.0, -40.0, 0.0], end_velocity: [0.0, -3.0, 50.0], tricks: Some([40, 0, 2]) });
+        doc.setups.push(crate::doc::Setup {
+            id: 90,
+            name: "Nosebug".into(),
+            start: placed,
+            controls: vec![[1.0, 0.0, -0.5], [0.0, 1.0, 1.0]],
+            end_pos: [4.0, 5.0, 6.0],
+            end_ypr: [1.0, -40.0, 0.0],
+            end_velocity: [0.0, -3.0, 50.0],
+            tricks: Some([40, 0, 2]),
+        });
         let alt = doc.current(Origin::Edit);
         doc.runs.push(Run { name: "Alt".into(), ..alt });
         let spec = Spec { seed: 7, ..Default::default() };
         let p = new_path(&data, "My project");
-        let route = crate::lab::RouteSpec { from: crate::lab::RouteFrom::Stop(2), to: crate::lab::RouteAt::Goal(id), seconds: 30.0 };
+        let route = crate::lab::RouteSpec {
+            from: crate::lab::RouteFrom::Stop(2),
+            to: crate::lab::RouteAt::Goal(id),
+            seconds: 30.0,
+        };
         let fin = Finishes { run: Some(12_340), runs: vec![None] };
-        let files = save(&p, &data, "test", &fin, &map, &doc, &spec, &route, &[data.join("tmx/x/1_a.Replay.Gbx")]).unwrap();
+        let files =
+            save(&p, &data, "test", &fin, &map, &doc, &spec, &route, &[data.join("tmx/x/1_a.Replay.Gbx")])
+                .unwrap();
         assert_eq!(files.len(), 3);
         let back = load(&p, &data).unwrap();
         assert_eq!(back.map, map);

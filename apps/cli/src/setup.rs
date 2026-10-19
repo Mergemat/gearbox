@@ -32,9 +32,14 @@ pub fn main(args: Vec<String>) -> Result<()> {
     let began = Instant::now();
     let set = game.open()?;
     let catalog = gearbox_packs::catalog::cached(&set)?;
-    println!("pack catalog: {} blocks, {} items, {} surfaces in {:.1} s, cached in {}",
-        catalog.index.blocks.len(), catalog.index.items.len(), catalog.surfaces.len(),
-        began.elapsed().as_secs_f64(), install::cache_dir().display());
+    println!(
+        "pack catalog: {} blocks, {} items, {} surfaces in {:.1} s, cached in {}",
+        catalog.index.blocks.len(),
+        catalog.index.items.len(),
+        catalog.surfaces.len(),
+        began.elapsed().as_secs_f64(),
+        install::cache_dir().display()
+    );
     println!("editor projects and layout: {}", install::data_dir().join("editor").display());
     for maps in install::maps_dirs(Some(&game)) {
         println!("your maps: {}", maps.display());

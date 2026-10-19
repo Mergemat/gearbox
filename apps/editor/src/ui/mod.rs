@@ -17,8 +17,9 @@ use std::time::{Duration, Instant};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Context, DispatchPhase, FontWeight, InteractiveElement, IntoElement, KeyDownEvent, KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseMoveEvent, MouseUpEvent,
-    ParentElement, Render, StatefulInteractiveElement, Styled, Window, anchored, canvas, deferred, div, px,
+    AnyElement, Context, DispatchPhase, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
+    KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement, Render,
+    StatefulInteractiveElement, Styled, Window, anchored, canvas, deferred, div, px,
 };
 
 use crate::app::*;
@@ -67,30 +68,38 @@ impl Render for Editor {
                 this.shift_down = e.modifiers.shift;
                 this.alt_down = e.modifiers.alt;
             }))
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                if this.popup.take().is_some() {
-                    cx.notify();
-                }
-                if this.editing.is_some() && this.palette.is_none() {
-                    this.commit_field(cx);
-                }
-            }));
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    if this.popup.take().is_some() {
+                        cx.notify();
+                    }
+                    if this.editing.is_some() && this.palette.is_none() {
+                        this.commit_field(cx);
+                    }
+                }),
+            );
         let root = self.register_actions(root, cx);
         let root = root.child(self.global_listeners(cx)).child(self.title_bar(cx));
         let root = if self.projects_open {
             root.child(self.projects_screen(window, cx))
         } else {
-            root.child(self.main_row(cx)).child(self.splitter_h(cx)).child(self.bottom_panel(cx)).child(self.status_bar(cx))
+            root.child(self.main_row(cx))
+                .child(self.splitter_h(cx))
+                .child(self.bottom_panel(cx))
+                .child(self.status_bar(cx))
         };
-        root
-            .children(self.popup_menu(cx))
+        root.children(self.popup_menu(cx))
             .children(self.palette_overlay(cx))
             .children(self.cheatsheet.then(|| self.cheatsheet_overlay(cx)))
     }
 }
 
 pub fn pretty_name(s: &str) -> String {
-    let t = s.split_once('_').filter(|(id, _)| !id.is_empty() && id.chars().all(|c| c.is_ascii_digit())).map_or(s, |(_, rest)| rest);
+    let t = s
+        .split_once('_')
+        .filter(|(id, _)| !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()))
+        .map_or(s, |(_, rest)| rest);
     let t = t.replace('_', " ");
     let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
     if t.is_empty() { s.to_string() } else { t }
@@ -98,18 +107,26 @@ pub fn pretty_name(s: &str) -> String {
 
 impl Editor {
     pub fn camera_moving(&self) -> bool {
-        self.camera.goal != self.camera.cur || self.camera.mode == crate::camera::Mode::Follow || self.fly_keys.iter().any(|k| *k)
+        self.camera.goal != self.camera.cur
+            || self.camera.mode == crate::camera::Mode::Follow
+            || self.fly_keys.iter().any(|k| *k)
     }
 
-    fn register_actions(&mut self, d: gpui::Stateful<gpui::Div>, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+    fn register_actions(
+        &mut self,
+        d: gpui::Stateful<gpui::Div>,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
         macro_rules! on {
             ($d:expr, $a:ty, $body:expr) => {
-                $d.on_action(cx.listener(move |this: &mut Editor, _: &$a, window: &mut Window, cx: &mut Context<Editor>| {
-                    let f: &dyn Fn(&mut Editor, &mut Window, &mut Context<Editor>) = &$body;
-                    f(this, window, cx);
-                    this.dirty = true;
-                    cx.notify();
-                }))
+                $d.on_action(cx.listener(
+                    move |this: &mut Editor, _: &$a, window: &mut Window, cx: &mut Context<Editor>| {
+                        let f: &dyn Fn(&mut Editor, &mut Window, &mut Context<Editor>) = &$body;
+                        f(this, window, cx);
+                        this.dirty = true;
+                        cx.notify();
+                    },
+                ))
             };
         }
         let d = on!(d, TogglePlay, |e, _, _| e.toggle_play());
@@ -186,7 +203,11 @@ impl Editor {
             if !e.record_mode {
                 e.stop_recording();
             }
-            let m = if e.record_mode { "record mode: Space records from the cursor; arrows/WASD drive, Shift half steer" } else { "record mode off" };
+            let m = if e.record_mode {
+                "record mode: Space records from the cursor; arrows/WASD drive, Shift half steer"
+            } else {
+                "record mode off"
+            };
             e.info("edit", m);
         });
         let d = on!(d, RunSearch, |e, _, _| {
@@ -278,7 +299,12 @@ impl Editor {
     }
 
     pub fn tool_groups(&self) -> Vec<Vec<Tool>> {
-        vec![vec![Tool::Select, Tool::Move, Tool::Rotate, Tool::Scale], vec![Tool::PlaceCar], vec![Tool::GateGoal, Tool::PointGoal, Tool::BoxGoal, Tool::PoseGoal], vec![Tool::Line]]
+        vec![
+            vec![Tool::Select, Tool::Move, Tool::Rotate, Tool::Scale],
+            vec![Tool::PlaceCar],
+            vec![Tool::GateGoal, Tool::PointGoal, Tool::BoxGoal, Tool::PoseGoal],
+            vec![Tool::Line],
+        ]
     }
 
     pub fn simulate_from_start(&mut self) {
@@ -415,7 +441,9 @@ impl Editor {
                 match which {
                     Split::Left => self.layout.left = (size0 + d).clamp(170.0, 520.0),
                     Split::Right => self.layout.right = (size0 - d).clamp(260.0, 640.0),
-                    Split::Bottom => self.layout.bottom = (size0 - d).clamp(120.0, f32::from(wb.height) * 0.7),
+                    Split::Bottom => {
+                        self.layout.bottom = (size0 - d).clamp(120.0, f32::from(wb.height) * 0.7)
+                    }
                 }
                 self.dirty = true;
                 cx.notify();
@@ -457,7 +485,12 @@ impl Editor {
             .items_center()
             .justify_center()
             .bg(c(theme::BG))
-            .child(div().when(vertical, |d| d.w(px(1.0)).h_full()).when(!vertical, |d| d.h(px(1.0)).w_full()).bg(c(if active { theme::PIN } else { theme::HAIRLINE })))
+            .child(
+                div()
+                    .when(vertical, |d| d.w(px(1.0)).h_full())
+                    .when(!vertical, |d| d.h(px(1.0)).w_full())
+                    .bg(c(if active { theme::PIN } else { theme::HAIRLINE })),
+            )
             .hover(|s| s.bg(c(theme::RAISED)))
             .on_mouse_down(
                 MouseButton::Left,
@@ -518,30 +551,41 @@ impl Editor {
     pub fn right_tabs(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let tab = self.layout.right_tab;
         let running = self.search.running();
-        div().h(px(theme::H_BAR)).flex_none().flex().items_end().px(px(theme::SP2)).gap(px(2.0)).border_b_1().border_color(c(theme::HAIRLINE)).children([("Properties", 0u8), ("Search", 1)].map(|(name, i)| {
-            let on = tab == i;
-            div()
-                .id(("rtab", i as usize))
-                .relative()
-                .child(widgets::track(format!("rtab-{i}")))
-                .h(px(theme::H_BAR))
-                .px(px(theme::PAD))
-                .flex()
-                .items_center()
-                .gap(px(theme::SP2))
-                .text_size(px(theme::FS_BODY))
-                .cursor_pointer()
-                .when(on, |d| d.text_color(c(theme::TEXT)).border_b_2().border_color(c(theme::PIN)))
-                .when(!on, |d| d.text_color(c(theme::MUTED)).hover(|s| s.text_color(c(theme::TEXT))))
-                .child(name)
-                .when(i == 1 && running, |d| d.child(div().size(px(6.0)).rounded_full().bg(c(theme::PIN))))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.layout.right_tab = i;
-                    this.save_layout();
-                    cx.notify();
-                }))
-        }))
-        .into_any_element()
+        div()
+            .h(px(theme::H_BAR))
+            .flex_none()
+            .flex()
+            .items_end()
+            .px(px(theme::SP2))
+            .gap(px(2.0))
+            .border_b_1()
+            .border_color(c(theme::HAIRLINE))
+            .children([("Properties", 0u8), ("Search", 1)].map(|(name, i)| {
+                let on = tab == i;
+                div()
+                    .id(("rtab", i as usize))
+                    .relative()
+                    .child(widgets::track(format!("rtab-{i}")))
+                    .h(px(theme::H_BAR))
+                    .px(px(theme::PAD))
+                    .flex()
+                    .items_center()
+                    .gap(px(theme::SP2))
+                    .text_size(px(theme::FS_BODY))
+                    .cursor_pointer()
+                    .when(on, |d| d.text_color(c(theme::TEXT)).border_b_2().border_color(c(theme::PIN)))
+                    .when(!on, |d| d.text_color(c(theme::MUTED)).hover(|s| s.text_color(c(theme::TEXT))))
+                    .child(name)
+                    .when(i == 1 && running, |d| {
+                        d.child(div().size(px(6.0)).rounded_full().bg(c(theme::PIN)))
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.layout.right_tab = i;
+                        this.save_layout();
+                        cx.notify();
+                    }))
+            }))
+            .into_any_element()
     }
 
     fn bottom_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -573,7 +617,17 @@ impl Editor {
                     .when(on, |d| d.border_b_2().border_color(c(theme::PIN)).text_color(c(theme::TEXT)))
                     .when(!on, |d| d.text_color(c(theme::MUTED)).hover(|s| s.text_color(c(theme::TEXT))))
                     .child(name)
-                    .when(i == 2 && errors > 0, |d| d.child(div().px(px(theme::SP1)).rounded(px(6.0)).bg(c(theme::ERROR)).text_color(c(theme::BG)).text_size(px(theme::FS_SMALL)).child(errors.to_string())))
+                    .when(i == 2 && errors > 0, |d| {
+                        d.child(
+                            div()
+                                .px(px(theme::SP1))
+                                .rounded(px(6.0))
+                                .bg(c(theme::ERROR))
+                                .text_color(c(theme::BG))
+                                .text_size(px(theme::FS_SMALL))
+                                .child(errors.to_string()),
+                        )
+                    })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.layout.bottom_tab = i;
                         this.save_layout();
@@ -585,7 +639,14 @@ impl Editor {
             2 => self.console(cx).into_any_element(),
             _ => self.dopesheet(cx).into_any_element(),
         };
-        div().h(px(self.layout.bottom)).flex_none().flex().flex_col().bg(c(theme::PANEL)).child(header).child(div().flex_1().min_h_0().child(body))
+        div()
+            .h(px(self.layout.bottom))
+            .flex_none()
+            .flex()
+            .flex_col()
+            .bg(c(theme::PANEL))
+            .child(header)
+            .child(div().flex_1().min_h_0().child(body))
     }
 
     fn title_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -594,7 +655,12 @@ impl Editor {
             (None, Some(m)) if self.open_error.is_some() => crate::catalog::map_stem(m).unwrap_or_default(),
             _ => "Opening\u{2026}".to_string(),
         };
-        let drag_area = || div().flex_1().h_full().on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move());
+        let drag_area = || {
+            div()
+                .flex_1()
+                .h_full()
+                .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
+        };
         let dirty = self.dirty_doc();
         let in_editor = !self.projects_open && self.map.is_some();
         let icon_btn = |id: String, icon: &'static str, on: bool| {
@@ -610,7 +676,11 @@ impl Editor {
                 .cursor_pointer()
                 .when(on, |d| d.bg(c(theme::SELECT)))
                 .when(!on, |d| d.hover(|s| s.bg(c(theme::RAISED))))
-                .child(gpui::svg().path(icon).size(px(16.0)).text_color(c(if on { theme::TEXT } else { theme::MUTED })))
+                .child(gpui::svg().path(icon).size(px(16.0)).text_color(c(if on {
+                    theme::TEXT
+                } else {
+                    theme::MUTED
+                })))
         };
         let palette = div()
             .id("palette-open")
@@ -628,14 +698,24 @@ impl Editor {
             .border_color(c(theme::HAIRLINE))
             .cursor_pointer()
             .hover(|s| s.border_color(c(theme::FAINT)))
-            .child(div().flex_1().text_size(px(theme::FS_BODY)).text_color(c(theme::FAINT)).child("Search commands, objects, checkpoints\u{2026}"))
+            .child(
+                div()
+                    .flex_1()
+                    .text_size(px(theme::FS_BODY))
+                    .text_color(c(theme::FAINT))
+                    .child("Search commands, objects, checkpoints\u{2026}"),
+            )
             .child(widgets::kbd("\u{2318}K"))
             .on_click(cx.listener(|this, _, _, cx| {
                 this.open_palette();
                 cx.notify();
             }));
         let job = self.job_pill(cx);
-        let title = if self.projects_open || self.map.is_none() { "Projects".to_string() } else { pretty_name(&self.project_name) };
+        let title = if self.projects_open || self.map.is_none() {
+            "Projects".to_string()
+        } else {
+            pretty_name(&self.project_name)
+        };
         div()
             .h(px(40.0))
             .flex_none()
@@ -661,52 +741,116 @@ impl Editor {
                     .cursor_pointer()
                     .hover(|s| s.bg(c(theme::RAISED)))
                     .child(div().text_size(px(theme::FS_BODY)).font_weight(FontWeight::SEMIBOLD).child(title))
-                    .when(in_editor && (dirty || self.project_path.is_none()), |d| d.child(div().size(px(6.0)).rounded_full().bg(c(theme::MUTED))))
+                    .when(in_editor && (dirty || self.project_path.is_none()), |d| {
+                        d.child(div().size(px(6.0)).rounded_full().bg(c(theme::MUTED)))
+                    })
                     .child(div().text_size(px(theme::FS_SMALL)).text_color(c(theme::MUTED)).child("\u{25be}"))
-                    .tooltip(tip(if self.project_path.is_none() { "Not saved yet" } else if dirty { "Saving\u{2026}" } else { "Saved" }, Some(&format!("Map: {name}. Projects save themselves; this menu has the rest."))))
-                            .on_click(cx.listener(|this, e: &gpui::ClickEvent, _, cx| {
-                                type Item = (String, Option<String>, std::rc::Rc<dyn Fn(&mut Editor, &mut Context<Editor>)>);
-                                let mut items: Vec<Item> = vec![("All projects\t\u{2318}O".into(), None, std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show_projects()))];
-                                items.push(("New project\u{2026}\t\u{2318}\u{21e7}O".into(), None, std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show_maps(None))));
-                                if let Some(p) = this.project_path.clone().filter(|p| p.exists()) {
-                                    let (p1, p2, p3) = (p.clone(), p.clone(), p);
-                                    items.push(("-".into(), None, std::rc::Rc::new(|_: &mut Editor, _: &mut Context<Editor>| {})));
-                                    items.push(("Rename\u{2026}".into(), None, std::rc::Rc::new(move |e: &mut Editor, _: &mut Context<Editor>| {
-                                        e.show_projects();
-                                        e.pm_begin_rename(&p1);
-                                    })));
-                                    items.push(("Duplicate".into(), None, std::rc::Rc::new(move |e: &mut Editor, _: &mut Context<Editor>| {
-                                        e.duplicate_project(&p2);
-                                        e.show_projects();
-                                    })));
-                                    items.push(("Show in Finder".into(), None, std::rc::Rc::new(move |_: &mut Editor, _: &mut Context<Editor>| projects::reveal(&p3))));
-                                }
-                                let recent: Vec<crate::project::Entry> = crate::project::list(&this.home).into_iter().filter(|x| this.project_path.as_ref() != Some(&x.path)).take(5).collect();
-                                if !recent.is_empty() {
-                                    items.push(("-".into(), None, std::rc::Rc::new(|_: &mut Editor, _: &mut Context<Editor>| {})));
-                                    items.push(("#Open recent".into(), None, std::rc::Rc::new(|_: &mut Editor, _: &mut Context<Editor>| {})));
-                                    for x in recent {
-                                        let label = this.entry_name(&x);
-                                        items.push((label, None, std::rc::Rc::new(move |e: &mut Editor, cx: &mut Context<Editor>| e.open_listed(&x.path, cx))));
-                                    }
-                                }
-                                this.popup = Some(Popup { at: e.position(), items });
-                                cx.stop_propagation();
-                                cx.notify();
-                            })),
+                    .tooltip(tip(
+                        if self.project_path.is_none() {
+                            "Not saved yet"
+                        } else if dirty {
+                            "Saving\u{2026}"
+                        } else {
+                            "Saved"
+                        },
+                        Some(&format!("Map: {name}. Projects save themselves; this menu has the rest.")),
+                    ))
+                    .on_click(cx.listener(|this, e: &gpui::ClickEvent, _, cx| {
+                        type Item =
+                            (String, Option<String>, std::rc::Rc<dyn Fn(&mut Editor, &mut Context<Editor>)>);
+                        let mut items: Vec<Item> = vec![(
+                            "All projects\t\u{2318}O".into(),
+                            None,
+                            std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show_projects()),
+                        )];
+                        items.push((
+                            "New project\u{2026}\t\u{2318}\u{21e7}O".into(),
+                            None,
+                            std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show_maps(None)),
+                        ));
+                        if let Some(p) = this.project_path.clone().filter(|p| p.exists()) {
+                            let (p1, p2, p3) = (p.clone(), p.clone(), p);
+                            items.push((
+                                "-".into(),
+                                None,
+                                std::rc::Rc::new(|_: &mut Editor, _: &mut Context<Editor>| {}),
+                            ));
+                            items.push((
+                                "Rename\u{2026}".into(),
+                                None,
+                                std::rc::Rc::new(move |e: &mut Editor, _: &mut Context<Editor>| {
+                                    e.show_projects();
+                                    e.pm_begin_rename(&p1);
+                                }),
+                            ));
+                            items.push((
+                                "Duplicate".into(),
+                                None,
+                                std::rc::Rc::new(move |e: &mut Editor, _: &mut Context<Editor>| {
+                                    e.duplicate_project(&p2);
+                                    e.show_projects();
+                                }),
+                            ));
+                            items.push((
+                                "Show in Finder".into(),
+                                None,
+                                std::rc::Rc::new(move |_: &mut Editor, _: &mut Context<Editor>| {
+                                    projects::reveal(&p3)
+                                }),
+                            ));
+                        }
+                        let recent: Vec<crate::project::Entry> = crate::project::list(&this.home)
+                            .into_iter()
+                            .filter(|x| this.project_path.as_ref() != Some(&x.path))
+                            .take(5)
+                            .collect();
+                        if !recent.is_empty() {
+                            items.push((
+                                "-".into(),
+                                None,
+                                std::rc::Rc::new(|_: &mut Editor, _: &mut Context<Editor>| {}),
+                            ));
+                            items.push((
+                                "#Open recent".into(),
+                                None,
+                                std::rc::Rc::new(|_: &mut Editor, _: &mut Context<Editor>| {}),
+                            ));
+                            for x in recent {
+                                let label = this.entry_name(&x);
+                                items.push((
+                                    label,
+                                    None,
+                                    std::rc::Rc::new(move |e: &mut Editor, cx: &mut Context<Editor>| {
+                                        e.open_listed(&x.path, cx)
+                                    }),
+                                ));
+                            }
+                        }
+                        this.popup = Some(Popup { at: e.position(), items });
+                        cx.stop_propagation();
+                        cx.notify();
+                    })),
             )
             .child(drag_area())
             .when(in_editor, |d| d.child(palette))
             .child(drag_area())
-            .child(icon_btn("help".into(), "icons/help.svg", self.cheatsheet).tooltip(tip("Shortcuts  ?", None)).on_click(cx.listener(|this, _, _, cx| {
-                this.cheatsheet = !this.cheatsheet;
-                cx.notify();
-            })))
+            .child(
+                icon_btn("help".into(), "icons/help.svg", self.cheatsheet)
+                    .tooltip(tip("Shortcuts  ?", None))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.cheatsheet = !this.cheatsheet;
+                        cx.notify();
+                    })),
+            )
             .when(in_editor, |d| d.children(job))
     }
 
     fn status_bar(&mut self, _cx: &mut Context<Self>) -> impl IntoElement {
-        let sim = if self.sim.done() { String::new() } else { format!("simulating {}/{}", self.sim.frames.len().saturating_sub(1), self.doc.len) };
+        let sim = if self.sim.done() {
+            String::new()
+        } else {
+            format!("simulating {}/{}", self.sim.frames.len().saturating_sub(1), self.doc.len)
+        };
         let search = {
             let l = self.search.live.lock().unwrap();
             if l.running { format!("searching \u{00b7} {} tries", l.attempts) } else { String::new() }
@@ -716,7 +860,9 @@ impl Editor {
             if i > 0.0 { format!("{:.0} fps", 1000.0 / i) } else { String::new() }
         };
         let status = self.status.as_ref().map(|(t, l, _)| (t.clone(), *l));
-        let cell = |s: String| div().font_family(theme::MONO).text_size(px(theme::FS_SMALL)).text_color(c(theme::MUTED)).child(s);
+        let cell = |s: String| {
+            div().font_family(theme::MONO).text_size(px(theme::FS_SMALL)).text_color(c(theme::MUTED)).child(s)
+        };
         div()
             .h(px(22.0))
             .flex_none()
@@ -729,13 +875,22 @@ impl Editor {
             .border_color(c(theme::HAIRLINE))
             .when(!sim.is_empty(), |d| d.child(cell(sim)))
             .when(!search.is_empty(), |d| d.child(cell(search).text_color(c(theme::PIN))))
-            .when(self.record_mode, |d| d.child(cell(if self.playing { "\u{25cf} REC".into() } else { "record mode".into() }).text_color(c(theme::ERROR))))
+            .when(self.record_mode, |d| {
+                d.child(
+                    cell(if self.playing { "\u{25cf} REC".into() } else { "record mode".into() })
+                        .text_color(c(theme::ERROR)),
+                )
+            })
             .child(div().flex_1().min_w_0().truncate().children(status.map(|(t, l)| {
-                div().text_size(px(theme::FS_BODY)).truncate().text_color(c(match l {
-                    LogLevel::Error => theme::ERROR,
-                    LogLevel::Warn => theme::WARN,
-                    LogLevel::Info => theme::MUTED,
-                })).child(t)
+                div()
+                    .text_size(px(theme::FS_BODY))
+                    .truncate()
+                    .text_color(c(match l {
+                        LogLevel::Error => theme::ERROR,
+                        LogLevel::Warn => theme::WARN,
+                        LogLevel::Info => theme::MUTED,
+                    }))
+                    .child(t)
             })))
             .child(cell(fps))
     }
@@ -748,12 +903,27 @@ impl Editor {
             .enumerate()
             .map(|(i, (label, mark, f))| {
                 if label == "-" {
-                    return div().h(px(1.0)).mx(px(theme::SP1)).my(px(theme::SP1)).bg(c(theme::HAIRLINE)).into_any_element();
+                    return div()
+                        .h(px(1.0))
+                        .mx(px(theme::SP1))
+                        .my(px(theme::SP1))
+                        .bg(c(theme::HAIRLINE))
+                        .into_any_element();
                 }
                 if let Some(t) = label.strip_prefix('#') {
-                    return div().h(px(24.0)).px(px(theme::SP3)).flex().items_center().text_size(px(theme::FS_SMALL)).text_color(c(theme::FAINT)).child(t.to_string()).into_any_element();
+                    return div()
+                        .h(px(24.0))
+                        .px(px(theme::SP3))
+                        .flex()
+                        .items_center()
+                        .text_size(px(theme::FS_SMALL))
+                        .text_color(c(theme::FAINT))
+                        .child(t.to_string())
+                        .into_any_element();
                 }
-                let (text, key) = label.split_once('\t').map_or((label.clone(), String::new()), |(a, b)| (a.to_string(), b.to_string()));
+                let (text, key) = label
+                    .split_once('\t')
+                    .map_or((label.clone(), String::new()), |(a, b)| (a.to_string(), b.to_string()));
                 let f = f.clone();
                 div()
                     .id(("menu-item", i))
@@ -768,16 +938,28 @@ impl Editor {
                     .text_size(px(theme::FS_BODY))
                     .cursor_pointer()
                     .hover(|s| s.bg(c(theme::SELECT)))
-                    .when(mark.is_some(), |d| d.child(div().w(px(10.0)).text_color(c(theme::TEXT)).child(mark.clone().unwrap_or_default())))
+                    .when(mark.is_some(), |d| {
+                        d.child(
+                            div()
+                                .w(px(10.0))
+                                .text_color(c(theme::TEXT))
+                                .child(mark.clone().unwrap_or_default()),
+                        )
+                    })
                     .child(widgets::labelled(&text, theme::MUTED).flex_1())
-                    .when(!key.is_empty(), |d| d.child(div().text_size(px(theme::FS_SMALL)).text_color(c(theme::FAINT)).child(key)))
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        this.popup = None;
-                        f(this, cx);
-                        this.dirty = true;
-                        cx.stop_propagation();
-                        cx.notify();
-                    }))
+                    .when(!key.is_empty(), |d| {
+                        d.child(div().text_size(px(theme::FS_SMALL)).text_color(c(theme::FAINT)).child(key))
+                    })
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, _, cx| {
+                            this.popup = None;
+                            f(this, cx);
+                            this.dirty = true;
+                            cx.stop_propagation();
+                            cx.notify();
+                        }),
+                    )
                     .into_any_element()
             })
             .collect();
@@ -820,8 +1002,28 @@ impl Editor {
                     .flex()
                     .flex_col()
                     .gap(px(theme::SP1))
-                    .child(div().text_size(px(theme::FS_EMPH)).font_weight(FontWeight::SEMIBOLD).text_color(c(theme::TEXT)).child(g.to_string()))
-                    .children(items.into_iter().map(|(k, w)| div().flex().gap(px(theme::SP2)).child(div().w(px(130.0)).flex_none().font_family(theme::MONO).text_size(px(theme::FS_SMALL)).text_color(c(theme::PIN)).child(k.to_string())).child(div().text_size(px(theme::FS_BODY)).child(w.to_string()))))
+                    .child(
+                        div()
+                            .text_size(px(theme::FS_EMPH))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(c(theme::TEXT))
+                            .child(g.to_string()),
+                    )
+                    .children(items.into_iter().map(|(k, w)| {
+                        div()
+                            .flex()
+                            .gap(px(theme::SP2))
+                            .child(
+                                div()
+                                    .w(px(130.0))
+                                    .flex_none()
+                                    .font_family(theme::MONO)
+                                    .text_size(px(theme::FS_SMALL))
+                                    .text_color(c(theme::PIN))
+                                    .child(k.to_string()),
+                            )
+                            .child(div().text_size(px(theme::FS_BODY)).child(w.to_string()))
+                    }))
                     .into_any_element()
             })
             .collect();
@@ -848,7 +1050,19 @@ impl Editor {
                     .flex()
                     .flex_col()
                     .gap(px(theme::SP3))
-                    .child(div().flex().items_center().child(div().flex_1().text_size(px(theme::FS_TITLE)).font_weight(FontWeight::SEMIBOLD).child("Shortcuts")).child(muted("Esc or click to close")))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_size(px(theme::FS_TITLE))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Shortcuts"),
+                            )
+                            .child(muted("Esc or click to close")),
+                    )
                     .child(div().flex().flex_wrap().gap(px(18.0)).max_w(px(980.0)).children(cols)),
             )
             .into_any_element()
@@ -856,33 +1070,45 @@ impl Editor {
 
     pub fn prompt_replay(&mut self, ghost: bool, cx: &mut Context<Self>) {
         let mine = self.map.as_ref().map(|m| crate::replay::replays_for_map(m)).unwrap_or_default();
-        let mut items: Vec<(String, Option<String>, std::rc::Rc<dyn Fn(&mut Editor, &mut Context<Editor>)>)> = mine
-            .into_iter()
-            .map(|p| {
-                let label = p.file_name().unwrap_or_default().to_string_lossy().to_string();
-                let f: std::rc::Rc<dyn Fn(&mut Editor, &mut Context<Editor>)> = std::rc::Rc::new(move |e: &mut Editor, cx: &mut Context<Editor>| {
-                    if ghost {
-                        e.add_ghost(&p);
-                    } else {
-                        e.import_replay(&p, cx);
-                    }
+        let mut items: Vec<(String, Option<String>, std::rc::Rc<dyn Fn(&mut Editor, &mut Context<Editor>)>)> =
+            mine.into_iter()
+                .map(|p| {
+                    let label = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    let f: std::rc::Rc<dyn Fn(&mut Editor, &mut Context<Editor>)> =
+                        std::rc::Rc::new(move |e: &mut Editor, cx: &mut Context<Editor>| {
+                            if ghost {
+                                e.add_ghost(&p);
+                            } else {
+                                e.import_replay(&p, cx);
+                            }
+                        });
+                    (label, None, f)
+                })
+                .collect();
+        let browse: std::rc::Rc<dyn Fn(&mut Editor, &mut Context<Editor>)> =
+            std::rc::Rc::new(move |_: &mut Editor, cx: &mut Context<Editor>| {
+                let rx = cx.prompt_for_paths(gpui::PathPromptOptions {
+                    files: true,
+                    directories: false,
+                    multiple: false,
+                    prompt: Some("Choose a .Replay.Gbx or .Ghost.Gbx".into()),
                 });
-                (label, None, f)
-            })
-            .collect();
-        let browse: std::rc::Rc<dyn Fn(&mut Editor, &mut Context<Editor>)> = std::rc::Rc::new(move |_: &mut Editor, cx: &mut Context<Editor>| {
-            let rx = cx.prompt_for_paths(gpui::PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some("Choose a .Replay.Gbx or .Ghost.Gbx".into()) });
-            cx.spawn(async move |this, cx| {
-                if let Ok(Ok(Some(paths))) = rx.await
-                    && let Some(p) = paths.into_iter().next()
-                {
-                    let _ = this.update(cx, |app, cx| if ghost { app.add_ghost(&p) } else { app.import_replay(&p, cx) });
-                }
-            })
-            .detach();
-        });
+                cx.spawn(async move |this, cx| {
+                    if let Ok(Ok(Some(paths))) = rx.await
+                        && let Some(p) = paths.into_iter().next()
+                    {
+                        let _ = this.update(cx, |app, cx| {
+                            if ghost { app.add_ghost(&p) } else { app.import_replay(&p, cx) }
+                        });
+                    }
+                })
+                .detach();
+            });
         items.push(("Browse\u{2026}".into(), None, browse));
-        let at = gpui::point(px(self.mouse.x + f32::from(self.viewport.origin.x)), px(self.mouse.y + f32::from(self.viewport.origin.y)));
+        let at = gpui::point(
+            px(self.mouse.x + f32::from(self.viewport.origin.x)),
+            px(self.mouse.y + f32::from(self.viewport.origin.y)),
+        );
         let at = if self.mouse == glam::Vec2::ZERO { gpui::point(px(400.0), px(120.0)) } else { at };
         self.popup = Some(Popup { at, items });
         cx.notify();

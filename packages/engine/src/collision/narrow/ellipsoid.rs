@@ -1,8 +1,8 @@
+use super::super::{ContactSink, EllipsoidShape, Surface};
 use crate::collision::ContactFlags;
-use crate::{Aabb, EntryId, Iso, Vec3};
 use crate::shape::Mesh;
 use crate::tree::AabbQuery;
-use super::super::{ContactSink, EllipsoidShape, Surface};
+use crate::{Aabb, EntryId, Iso, Vec3};
 
 const TINY: f32 = 1.0e-10;
 const EPS: f32 = 0.00001;
@@ -14,10 +14,18 @@ fn sqrt(x: f32) -> f32 {
     x.sqrt()
 }
 
-struct Tri { normal: [f32; 3], vertices: [[f32; 3]; 3] }
+struct Tri {
+    normal: [f32; 3],
+    vertices: [[f32; 3]; 3],
+}
 
 pub fn mesh(
-    ellipsoid: &EllipsoidShape, a_ref: EntryId, a: &Surface, mesh: Mesh<'_>, b_ref: EntryId, b: &Surface,
+    ellipsoid: &EllipsoidShape,
+    a_ref: EntryId,
+    a: &Surface,
+    mesh: Mesh<'_>,
+    b_ref: EntryId,
+    b: &Surface,
     out: &mut impl ContactSink,
 ) {
     let rel = b.iso.inv_mul(&a.iso);
@@ -37,12 +45,18 @@ pub fn mesh(
         let vertices = tri.verts.map(|i| local.transform_point(mesh.vertices[i as usize]));
         let size = vertices.iter().flat_map(|v| v.to_array()).fold(1.0f32, |a, v| a.max(v.abs()));
         let edge = 1.0 + 0.01 + size * 1e-4;
-        if (0..3).any(|axis| vertices.iter().all(|v| v[axis] > edge)
-            || vertices.iter().all(|v| v[axis] < -edge)) { continue; }
-        let Some(normal) = crate::math::triangle_normal(vertices[0], vertices[1], vertices[2])
-            else { continue; };
+        if (0..3)
+            .any(|axis| vertices.iter().all(|v| v[axis] > edge) || vertices.iter().all(|v| v[axis] < -edge))
+        {
+            continue;
+        }
+        let Some(normal) = crate::math::triangle_normal(vertices[0], vertices[1], vertices[2]) else {
+            continue;
+        };
         let triangle = Tri { normal: normal.to_array(), vertices: vertices.map(Vec3::to_array) };
-        let Some(hit) = touch(&triangle) else { continue; };
+        let Some(hit) = touch(&triangle) else {
+            continue;
+        };
         let contact = out.take_contact();
         let direction = Vec3::from(hit.direction);
         contact.point = world.transform_point(-direction);
@@ -50,17 +64,22 @@ pub fn mesh(
         contact.flags.set(ContactFlags::OTHER_POINT, true);
         contact.normal = normals.rot * direction;
         let l2 = contact.normal.dot(contact.normal);
-        if l2 > TINY && f32::MAX > l2 { contact.normal *= 1.0 / sqrt(l2); }
+        if l2 > TINY && f32::MAX > l2 {
+            contact.normal *= 1.0 / sqrt(l2);
+        }
         contact.penetration = world.rot * Vec3::from(hit.penetration);
         contact.material_b = tri.ids;
         contact.flags.set(ContactFlags::FACE, hit.face);
         let rotation = b.iso.rot;
         contact.face_normal = Vec3::new(
-            rotation.rows[0].y * tri.normal.y + rotation.rows[0].x * tri.normal.x
+            rotation.rows[0].y * tri.normal.y
+                + rotation.rows[0].x * tri.normal.x
                 + rotation.rows[0].z * tri.normal.z,
-            rotation.rows[1].y * tri.normal.y + rotation.rows[1].x * tri.normal.x
+            rotation.rows[1].y * tri.normal.y
+                + rotation.rows[1].x * tri.normal.x
                 + rotation.rows[1].z * tri.normal.z,
-            rotation.rows[2].y * tri.normal.y + rotation.rows[2].x * tri.normal.x
+            rotation.rows[2].y * tri.normal.y
+                + rotation.rows[2].x * tri.normal.x
                 + rotation.rows[2].z * tri.normal.z,
         );
         contact.material_a = ellipsoid.material;
@@ -134,19 +153,27 @@ fn boundary_hit(point: [f32; 3], delta: [f32; 3], normal: [f32; 3]) -> Hit {
     let direction = [inv * delta[0], inv * delta[1], inv * delta[2]];
     let depth = -((k * delta[1]) * normal[1] + (k * delta[0]) * normal[0] + (k * delta[2]) * normal[2]);
     Hit {
-        point, direction, penetration: [normal[0] * depth, normal[1] * depth, normal[2] * depth],
+        point,
+        direction,
+        penetration: [normal[0] * depth, normal[1] * depth, normal[2] * depth],
         face: false,
     }
 }
 
 fn boundary_point(
-    projected: [f32; 3], edge: [f32; 3], inward: [f32; 3], start: [f32; 3], end: [f32; 3],
-    distance: f32, parameter: f32,
+    projected: [f32; 3],
+    edge: [f32; 3],
+    inward: [f32; 3],
+    start: [f32; 3],
+    end: [f32; 3],
+    distance: f32,
+    parameter: f32,
 ) -> Option<([f32; 3], [f32; 3])> {
     let point = if 0.0 > parameter {
         Some(start)
     } else {
-        let past_end = (projected[1] - end[1]) * edge[1] + (projected[0] - end[0]) * edge[0]
+        let past_end = (projected[1] - end[1]) * edge[1]
+            + (projected[0] - end[0]) * edge[0]
             + (projected[2] - end[2]) * edge[2];
         if past_end > 0.0 { Some(end) } else { None }
     };
@@ -154,7 +181,9 @@ fn boundary_point(
         Some(point) => {
             let delta = [0.0 - point[0], 0.0 - point[1], 0.0 - point[2]];
             let squared = delta[1] * delta[1] + delta[0] * delta[0] + delta[2] * delta[2];
-            if !(1.0 >= squared) || !(squared > TINY) { return None; }
+            if !(1.0 >= squared) || !(squared > TINY) {
+                return None;
+            }
             (point, delta)
         }
         None => {
@@ -166,7 +195,9 @@ fn boundary_point(
             ];
             let delta = [0.0 - point[0], 0.0 - point[1], 0.0 - point[2]];
             let squared = delta[1] * delta[1] + delta[0] * delta[0] + delta[2] * delta[2];
-            if !(squared > EPS) { return None; }
+            if !(squared > EPS) {
+                return None;
+            }
             (point, delta)
         }
     };

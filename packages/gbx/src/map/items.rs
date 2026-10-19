@@ -17,48 +17,27 @@ pub(super) fn read(r: &mut Reader, block_count: usize) -> Result<Vec<Item>> {
     if version >= 1 && version != 5 && version < 8 {
         for _ in 0..e.len()? {
             let parent = index(e.i32()?, items.len())?;
-            let child =
-                index(e.i32()?, items.len())?.ok_or_else(|| anyhow::anyhow!("null placed item"))?;
+            let child = index(e.i32()?, items.len())?.ok_or_else(|| anyhow::anyhow!("null placed item"))?;
             items[child].placed_on_item = parent;
         }
     }
     if version >= 5 {
         let blocks = indices(&mut e, block_count)?;
-        let early_groups = if version < 7 {
-            Some(ints(&mut e)?)
-        } else {
-            None
-        };
-        let parents = if version >= 6 {
-            Some(indices(&mut e, items.len())?)
-        } else {
-            None
-        };
+        let early_groups = if version < 7 { Some(ints(&mut e)?) } else { None };
+        let parents = if version >= 6 { Some(indices(&mut e, items.len())?) } else { None };
         let groups = match early_groups {
             Some(g) => g,
             None => ints(&mut e)?,
         };
         if version != 6 {
             let reserved = ints(&mut e)?;
-            ensure!(
-                reserved.iter().all(|&x| x == -1),
-                "unsupported item snap metadata"
-            );
+            ensure!(reserved.iter().all(|&x| x == -1), "unsupported item snap metadata");
         }
         let snapped = indices(&mut e, blocks.len())?;
-        ensure!(
-            snapped.len() == items.len(),
-            "item snapping count differs from item count"
-        );
-        ensure!(
-            groups.len() == blocks.len(),
-            "item snap group count differs from block count"
-        );
+        ensure!(snapped.len() == items.len(), "item snapping count differs from item count");
+        ensure!(groups.len() == blocks.len(), "item snap group count differs from block count");
         if let Some(p) = &parents {
-            ensure!(
-                p.len() == blocks.len(),
-                "item snap parent count differs from block count"
-            );
+            ensure!(p.len() == blocks.len(), "item snap parent count differs from block count");
         }
         for (item, snap) in items.iter_mut().zip(snapped) {
             if let Some(snap) = snap {
@@ -68,11 +47,7 @@ pub(super) fn read(r: &mut Reader, block_count: usize) -> Result<Vec<Item>> {
             }
         }
     }
-    ensure!(
-        e.remaining() == 0,
-        "unread items data: {} bytes",
-        e.remaining()
-    );
+    ensure!(e.remaining() == 0, "unread items data: {} bytes", e.remaining());
     Ok(items)
 }
 

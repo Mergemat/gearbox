@@ -32,7 +32,8 @@ pub(crate) fn id(r: &mut Reader) -> Result<(u32, Option<String>)> {
     if v == 3 {
         v = r.u32()?;
     }
-    let name = if v != u32::MAX && v & 0xc0000000 != 0 && v & 0x3fffffff == 0 { Some(r.string()?) } else { None };
+    let name =
+        if v != u32::MAX && v & 0xc0000000 != 0 && v & 0x3fffffff == 0 { Some(r.string()?) } else { None };
     Ok((v, name))
 }
 
@@ -117,14 +118,20 @@ fn geometry(r: &mut Reader, materials: usize) -> Result<Geometry> {
         let uv = (0..r.len()?).map(|_| Ok([r.f32()?, r.f32()?])).collect::<Result<Vec<_>>>()?;
         let n = r.len()?;
         (uv, optimized_array(r, n, n)?)
-    } else { (Vec::new(), Vec::new()) };
+    } else {
+        (Vec::new(), Vec::new())
+    };
     let mut uv_index = 0;
     let mut faces = Vec::with_capacity(count);
     let mut face_uvs = Vec::with_capacity(count);
     let mut face_groups = Vec::with_capacity(count);
     for _ in 0..count {
         let n = if v >= 35 { r.u8()? as usize + 3 } else { r.len()? };
-        let indices = if v >= 34 { optimized_array(r, n, positions.len())? } else { (0..n).map(|_| r.u32()).collect::<Result<_>>()? };
+        let indices = if v >= 34 {
+            optimized_array(r, n, positions.len())?
+        } else {
+            (0..n).map(|_| r.u32()).collect::<Result<_>>()?
+        };
         let uvs = if v < 27 {
             let uv = r.len()?.min(n);
             let mut values = (0..uv).map(|_| Ok([r.f32()?, r.f32()?])).collect::<Result<Vec<_>>>()?;
@@ -183,12 +190,17 @@ impl LayerIds {
         let container = gearbox_gbx::Container::parse(ctx.buf)?;
         let mut ids = Self {
             names: Vec::new(),
-            complete: !ctx.layout.nodes.iter().any(|n| n.class_id == 0x2e025000
-                || (n.class_id == 0x09003000 && n.start < start)),
+            complete: !ctx
+                .layout
+                .nodes
+                .iter()
+                .any(|n| n.class_id == 0x2e025000 || (n.class_id == 0x09003000 && n.start < start)),
         };
         if let Some(header) = container.header_chunk(0x2e001003) {
             let mut r = Reader::new(header);
-            for _ in 0..3 { ids.read(&mut r)?; }
+            for _ in 0..3 {
+                ids.read(&mut r)?;
+            }
         }
         Ok(ids)
     }
@@ -198,15 +210,24 @@ impl LayerIds {
             self.names.push(name.clone());
             return Ok(Some(name));
         }
-        if token == u32::MAX { return Ok(None); }
-        if token & 0xc0000000 == 0 { return Ok(Some(token.to_string())); }
+        if token == u32::MAX {
+            return Ok(None);
+        }
+        if token & 0xc0000000 == 0 {
+            return Ok(Some(token.to_string()));
+        }
         let name = self.names.get((token & 0x3fffffff) as usize - 1).cloned();
         self.complete &= name.is_some();
         Ok(name)
     }
 }
 
-fn material(ctx: &Ctx<'_>, r: &mut Reader, ids: &mut LayerIds, resolve: &mut impl FnMut(&str) -> Result<[u8; 2]>) -> Result<[u8; 2]> {
+fn material(
+    ctx: &Ctx<'_>,
+    r: &mut Reader,
+    ids: &mut LayerIds,
+    resolve: &mut impl FnMut(&str) -> Result<[u8; 2]>,
+) -> Result<[u8; 2]> {
     let name = r.string()?;
     if !name.is_empty() {
         return resolve(&name);
@@ -221,7 +242,11 @@ fn material(ctx: &Ctx<'_>, r: &mut Reader, ids: &mut LayerIds, resolve: &mut imp
         ids.read(r)?;
         r.string()?;
         let physics = [r.u8()?, r.u8()?];
-        if link_name { r.string()?; } else { ids.read(r)?; }
+        if link_name {
+            r.string()?;
+        } else {
+            ids.read(r)?;
+        }
         ids.complete &= r.len()? == 0;
         let start = c
             .layout
@@ -250,7 +275,11 @@ fn material(ctx: &Ctx<'_>, r: &mut Reader, ids: &mut LayerIds, resolve: &mut imp
     }
 }
 
-pub fn read(ctx: &Ctx<'_>, start: usize, mut resolve: impl FnMut(&str) -> Result<[u8; 2]>) -> Result<Crystal> {
+pub fn read(
+    ctx: &Ctx<'_>,
+    start: usize,
+    mut resolve: impl FnMut(&str) -> Result<[u8; 2]>,
+) -> Result<Crystal> {
     let mut ids = LayerIds::collector(ctx, start)?;
     let mut layers = Vec::<(Option<String>, Vec<u32>, bool, usize)>::new();
     let mut visual_layers = Vec::new();
@@ -285,11 +314,15 @@ pub fn read(ctx: &Ctx<'_>, start: usize, mut resolve: impl FnMut(&str) -> Result
                             let gv = r.u32()?;
                             let g = geometry(&mut r, out.materials.len())?;
                             let group_ids = (0..r.len()?).map(|_| r.u32()).collect::<Result<Vec<_>>>()?;
-                            let (visible, collidable) = if gv >= 1 {
-                                (r.bool32()?, r.bool32()?)
-                            } else { (true, true) };
+                            let (visible, collidable) =
+                                if gv >= 1 { (r.bool32()?, r.bool32()?) } else { (true, true) };
                             if enabled && visible {
-                                visual_layers.push((layer_id.clone(), group_ids.clone(), false, out.visual_geometry.len()));
+                                visual_layers.push((
+                                    layer_id.clone(),
+                                    group_ids.clone(),
+                                    false,
+                                    out.visual_geometry.len(),
+                                ));
                                 out.visual_geometry.push(g.clone());
                             }
                             if enabled && collidable {
@@ -300,7 +333,11 @@ pub fn read(ctx: &Ctx<'_>, start: usize, mut resolve: impl FnMut(&str) -> Result
                         14 => {
                             let tv = r.u32()?;
                             let g = geometry(&mut r, out.materials.len())?;
-                            let group_ids = if tv >= 1 { (0..r.len()?).map(|_| r.u32()).collect::<Result<Vec<_>>>()? } else { Vec::new() };
+                            let group_ids = if tv >= 1 {
+                                (0..r.len()?).map(|_| r.u32()).collect::<Result<Vec<_>>>()?
+                            } else {
+                                Vec::new()
+                            };
                             if enabled {
                                 layers.push((layer_id, group_ids, true, out.triggers.len()));
                                 out.triggers.push(g);
@@ -337,9 +374,27 @@ pub fn read(ctx: &Ctx<'_>, start: usize, mut resolve: impl FnMut(&str) -> Result
                                 if !ids.complete {
                                     todo!("crystal deformation with an enclosing/parameter id table");
                                 }
-                                crate::crystal_deformation::apply_layers(&mut out.geometry, &layers, &refs, &modifier, false);
-                                crate::crystal_deformation::apply_layers(&mut out.triggers, &layers, &refs, &modifier, true);
-                                crate::crystal_deformation::apply_layers(&mut out.visual_geometry, &visual_layers, &refs, &modifier, false);
+                                crate::crystal_deformation::apply_layers(
+                                    &mut out.geometry,
+                                    &layers,
+                                    &refs,
+                                    &modifier,
+                                    false,
+                                );
+                                crate::crystal_deformation::apply_layers(
+                                    &mut out.triggers,
+                                    &layers,
+                                    &refs,
+                                    &modifier,
+                                    true,
+                                );
+                                crate::crystal_deformation::apply_layers(
+                                    &mut out.visual_geometry,
+                                    &visual_layers,
+                                    &refs,
+                                    &modifier,
+                                    false,
+                                );
                             }
                         }
                         15 | 18 => {
@@ -400,7 +455,12 @@ pub fn read(ctx: &Ctx<'_>, start: usize, mut resolve: impl FnMut(&str) -> Result
 }
 
 pub fn trigger(c: &Crystal) -> Result<Surface> {
-    collision(&Crystal { materials: c.materials.clone(), geometry: c.triggers.clone(), triggers: Vec::new(), visual_geometry: Vec::new() })
+    collision(&Crystal {
+        materials: c.materials.clone(),
+        geometry: c.triggers.clone(),
+        triggers: Vec::new(),
+        visual_geometry: Vec::new(),
+    })
 }
 
 pub fn collision(c: &Crystal) -> Result<Surface> {
@@ -409,7 +469,11 @@ pub fn collision(c: &Crystal) -> Result<Surface> {
     let mut material_slots = Vec::new();
     for g in c.geometry.iter().rev() {
         for (face, material) in g.faces.iter().rev() {
-            let ids = if *material < 0 { [0, 0] } else { *c.materials.get(*material as usize).context("crystal face material")? };
+            let ids = if *material < 0 {
+                [0, 0]
+            } else {
+                *c.materials.get(*material as usize).context("crystal face material")?
+            };
             let slot = material_slots.iter().position(|m| m == material).unwrap_or_else(|| {
                 material_slots.push(*material);
                 material_slots.len() - 1
@@ -437,7 +501,13 @@ pub fn collision(c: &Crystal) -> Result<Surface> {
     for t in &mut triangles {
         t.v = t.v.map(|i| remap[i as usize] as i32);
     }
-    triangles.retain(|t| crate::crystal_mesh::keep_triangle(welded[t.v[0] as usize], welded[t.v[1] as usize], welded[t.v[2] as usize]));
+    triangles.retain(|t| {
+        crate::crystal_mesh::keep_triangle(
+            welded[t.v[0] as usize],
+            welded[t.v[1] as usize],
+            welded[t.v[2] as usize],
+        )
+    });
     let mut used = vec![None; welded.len()];
     vertices.clear();
     for t in &mut triangles {

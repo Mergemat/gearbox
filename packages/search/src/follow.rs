@@ -1,6 +1,5 @@
 use gearbox_engine::Controls;
 
-
 const STEER_GAIN: f32 = 2.0;
 
 const PASSED_M: f32 = 6.0;

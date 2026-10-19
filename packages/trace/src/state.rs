@@ -67,7 +67,13 @@ impl Body {
 
     pub fn floats(&self) -> [f32; 22] {
         let mut f = [0f32; 22];
-        let all = self.rotation.iter().chain(&self.position).chain(&self.quaternion).chain(&self.linear_velocity).chain(&self.angular_velocity);
+        let all = self
+            .rotation
+            .iter()
+            .chain(&self.position)
+            .chain(&self.quaternion)
+            .chain(&self.linear_velocity)
+            .chain(&self.angular_velocity);
         for (o, v) in f.iter_mut().zip(all) {
             *o = v.get();
         }
@@ -165,7 +171,10 @@ impl TickState {
         for (i, v) in b.quaternion.iter_mut().enumerate() {
             f(name("body.quaternion", None, Q[i]), ValueType::F32, &mut v.0);
         }
-        for (path, a) in [("body.linear_velocity", &mut b.linear_velocity), ("body.angular_velocity", &mut b.angular_velocity)] {
+        for (path, a) in [
+            ("body.linear_velocity", &mut b.linear_velocity),
+            ("body.angular_velocity", &mut b.angular_velocity),
+        ] {
             for (i, v) in a.iter_mut().enumerate() {
                 f(name(path, None, XYZ[i]), ValueType::F32, &mut v.0);
             }
@@ -252,11 +261,16 @@ pub fn first_diff(expected: &TickState, actual: &TickState) -> Option<FieldDiff>
             return Some(FieldDiff { field: n.to_string(), expected: show(k, *x), actual: show(k, *y) });
         }
     }
-    let diff = |field: &str, x: String, y: String| Some(FieldDiff { field: field.into(), expected: x, actual: y });
+    let diff =
+        |field: &str, x: String, y: String| Some(FieldDiff { field: field.into(), expected: x, actual: y });
     match (&expected.race, &actual.race) {
         (Some(x), Some(y)) => {
             if x.checkpoints != y.checkpoints {
-                return diff("race.checkpoints", format!("{:?}", x.checkpoints), format!("{:?}", y.checkpoints));
+                return diff(
+                    "race.checkpoints",
+                    format!("{:?}", x.checkpoints),
+                    format!("{:?}", y.checkpoints),
+                );
             }
             if x.laps != y.laps {
                 return diff("race.laps", x.laps.to_string(), y.laps.to_string());

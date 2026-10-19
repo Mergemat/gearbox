@@ -35,7 +35,9 @@ pub struct CarModel {
 }
 
 impl CarModel {
-    pub fn auxiliary(&self) -> &crate::car_aux::Aux { &self.aux }
+    pub fn auxiliary(&self) -> &crate::car_aux::Aux {
+        &self.aux
+    }
 }
 
 fn head(buf: &[u8]) -> Result<GbxHead> {
@@ -84,13 +86,7 @@ fn collision(buf: &[u8], pos: usize) -> Result<(Collision, usize)> {
         skel = Some(skeleton(r)?);
         Ok(())
     })?;
-    Ok((
-        Collision {
-            surface,
-            skeleton: skel,
-        },
-        end,
-    ))
+    Ok((Collision { surface, skeleton: skel }, end))
 }
 
 struct Archive<'a> {
@@ -112,10 +108,8 @@ impl Archive<'_> {
         ensure!(self.r.u32()? == 0x0900c000, "inline collision class");
         let (c, end) = collision(self.r.buf(), self.r.pos())?;
         let l = crate::nodes::layout(self.r.buf())?;
-        if let Some(s) = l
-            .nodes
-            .iter()
-            .find(|s| s.class_id == 0x090ba000 && s.start >= self.r.pos() && s.start < end)
+        if let Some(s) =
+            l.nodes.iter().find(|s| s.class_id == 0x090ba000 && s.start >= self.r.pos() && s.start < end)
         {
             self.r.skip(s.start - self.r.pos())?;
             let _ = skeleton(&mut self.r)?;
@@ -175,12 +169,7 @@ pub fn load(packs: &PackSet, car: &str) -> Result<CarModel> {
     let bytes = packs.read_path(path)?;
     let h = head(&bytes)?;
     ensure!(h.class_id == 0x090ea000, "not vehicle model");
-    let mut a = Archive {
-        r: Reader::new(&bytes),
-        h,
-        path,
-        packs,
-    };
+    let mut a = Archive { r: Reader::new(&bytes), h, path, packs };
     a.r.skip(a.h.body_start)?;
     ensure!(a.r.u32()? == 0x090ea003, "vehicle tuning chunk");
     let ti = a.r.u32()?;
@@ -191,15 +180,9 @@ pub fn load(packs: &PackSet, car: &str) -> Result<CarModel> {
     let (shape, wheels, collision) = a.shape()?;
     ensure!(a.r.u32()? == 0, "unsupported extra physics model objects");
     let n = a.r.u32()? as usize;
-    ensure!(
-        n == 0,
-        "unsupported additional contact definitions"
-    );
+    ensure!(n == 0, "unsupported additional contact definitions");
     a.r.u32()?;
-    ensure!(
-        a.r.u32()? == 0x090ea009 && a.r.u32()? == 1,
-        "material reference chunk"
-    );
+    ensure!(a.r.u32()? == 0x090ea009 && a.r.u32()? == 1, "material reference chunk");
     let mut material_paths = [None, None];
     for p in &mut material_paths {
         let idx = a.r.u32()?;
@@ -207,26 +190,13 @@ pub fn load(packs: &PackSet, car: &str) -> Result<CarModel> {
             *p = Some(a.h.ref_path(path, idx).context("material reference")?);
         }
     }
-    ensure!(
-        a.r.u32()? == FACADE && a.r.remaining() == 0,
-        "model trailing data at {:x}",
-        a.r.pos()
-    );
+    ensure!(a.r.u32()? == FACADE && a.r.remaining() == 0, "model trailing data at {:x}", a.r.pos());
     let mut aux = crate::car_aux::load(packs, &visual_path, &material_paths)?;
     let tunings = crate::tuning::decode(&packs.read_path(&tuning_path)?)?;
     if let Some(materials) = tunings.active_materials() {
         aux.materials.extend(materials.iter().cloned());
     }
-    Ok(CarModel {
-        aux,
-        car: car.into(),
-        path: path.into(),
-        shape,
-        wheels,
-        collision,
-        tuning_path,
-    })
+    Ok(CarModel { aux, car: car.into(), path: path.into(), shape, wheels, collision, tuning_path })
 }
 
 pub use crate::car_aux::Aux;
-

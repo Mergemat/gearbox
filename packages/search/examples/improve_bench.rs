@@ -28,8 +28,11 @@ fn main() -> Result<()> {
     let packs = gearbox_packs::install::Game::locate(args.game.as_deref())?.packs;
     let (dir, secs, seed) = (args.dir.as_path(), args.secs, args.seed);
     let inputs = Timeline::read(&dir.join("wr.txt"))?;
-    let s = gearbox_world::open_file(&dir.join("map.Map.Gbx"), &packs,
-        gearbox_world::OpenOptions { t0: inputs.t0, seed: inputs.seed, car: None })?;
+    let s = gearbox_world::open_file(
+        &dir.join("map.Map.Gbx"),
+        &packs,
+        gearbox_world::OpenOptions { t0: inputs.t0, seed: inputs.seed, car: None },
+    )?;
     let start = s.save();
     let origin = start.clone();
     let mut n = start.native()?;
@@ -46,7 +49,11 @@ fn main() -> Result<()> {
         n.step(wr.controls[k]);
         k += 1;
         if let Some(t) = n.race().and_then(|r| r.checkpoints.first().copied()) {
-            cp = Some((t, k, gearbox_search::gate::crossing_waypoint(&mut n, 1).context("crossing without a waypoint")?));
+            cp = Some((
+                t,
+                k,
+                gearbox_search::gate::crossing_waypoint(&mut n, 1).context("crossing without a waypoint")?,
+            ));
             break;
         }
     }
@@ -81,7 +88,10 @@ fn main() -> Result<()> {
     let reaches = |line: &Timeline| -> Result<Option<i32>> {
         let mut n = start.native()?;
         n.seed = line.seed;
-        Ok(time(&gearbox_search::objective::evaluate(&mut n, line, &objective, line.t0 + 10 * until as i32)?.score))
+        Ok(time(
+            &gearbox_search::objective::evaluate(&mut n, line, &objective, line.t0 + 10 * until as i32)?
+                .score,
+        ))
     };
     let jitter = args.jitter;
     let mut shake = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
@@ -92,7 +102,15 @@ fn main() -> Result<()> {
         (shake >> 11) as f32 / (1u64 << 53) as f32 * 2.0 - 1.0
     };
     let mut drawn = None;
-    for (spacing, jitter) in [(30.0, jitter), (15.0, jitter), (30.0, jitter / 2.0), (15.0, jitter / 2.0), (30.0, 0.0), (15.0, 0.0), (8.0, 0.0)] {
+    for (spacing, jitter) in [
+        (30.0, jitter),
+        (15.0, jitter),
+        (30.0, jitter / 2.0),
+        (15.0, jitter / 2.0),
+        (30.0, 0.0),
+        (15.0, 0.0),
+        (8.0, 0.0),
+    ] {
         let mut pts = vec![path[0]];
         let mut run = 0.0;
         for w in path.windows(2) {
@@ -113,27 +131,50 @@ fn main() -> Result<()> {
         pts.push([last[0] + 30.0 * dx / l, last[1], last[2] + 30.0 * dz / l]);
         let d = gearbox_search::tries::drive_on(&origin, &blank, k0, k0, until, &pts)?;
         if let Some(t) = reaches(&d.line)? {
-            eprintln!("drawn line: a point every {spacing} m, up to {jitter} m off the record, reaches in {t} ms");
+            eprintln!(
+                "drawn line: a point every {spacing} m, up to {jitter} m off the record, reaches in {t} ms"
+            );
             drawn = Some(d);
             break;
         }
     }
     let Some(drawn) = drawn else {
-        println!("{}\tdrawn -\tbest -\tWR {wr_ms}\tno drawn line gets there", dir.file_name().unwrap().to_string_lossy());
+        println!(
+            "{}\tdrawn -\tbest -\tWR {wr_ms}\tno drawn line gets there",
+            dir.file_name().unwrap().to_string_lossy()
+        );
         return Ok(());
     };
     let threads = std::thread::available_parallelism().map_or(8, |n| n.get());
-    let settings = Settings { threads, seed, constraints: Default::default(), eval: Default::default(), placement: None };
+    let settings = Settings {
+        threads,
+        seed,
+        constraints: Default::default(),
+        eval: Default::default(),
+        placement: None,
+    };
     let t = Instant::now();
     let (mut last_print, mut first) = (0.0, None);
     let lines = improve(&origin, &objective, drawn.line.clone(), k0..until, until, &settings, |p| {
         let el = t.elapsed().as_secs_f32();
-        let start_ms = first.get_or_insert_with(|| p.lines.iter().find(|l| l.change.is_none()).and_then(|l| time(&l.score)));
+        let start_ms = first
+            .get_or_insert_with(|| p.lines.iter().find(|l| l.change.is_none()).and_then(|l| time(&l.score)));
         if el - last_print >= 10.0 || el >= secs {
             last_print = el;
-            let times: Vec<String> = p.lines.iter().map(|l| time(&l.score).map_or("-".into(), |t| format!("{:.2}", t as f32 / 1000.0))).collect();
-            let kept: Vec<String> = p.changes.iter().map(|(c, n, k)| format!("{} {k}/{n}", c.label())).collect();
-            eprintln!("{el:5.0}s {} tries  lines {}  drawn {:?}  kept {}", p.tries, times.join(" "), start_ms, kept.join(", "));
+            let times: Vec<String> = p
+                .lines
+                .iter()
+                .map(|l| time(&l.score).map_or("-".into(), |t| format!("{:.2}", t as f32 / 1000.0)))
+                .collect();
+            let kept: Vec<String> =
+                p.changes.iter().map(|(c, n, k)| format!("{} {k}/{n}", c.label())).collect();
+            eprintln!(
+                "{el:5.0}s {} tries  lines {}  drawn {:?}  kept {}",
+                p.tries,
+                times.join(" "),
+                start_ms,
+                kept.join(", ")
+            );
         }
         el < secs
     })?;

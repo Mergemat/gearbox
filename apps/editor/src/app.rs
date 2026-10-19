@@ -6,14 +6,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::engine::display::World;
 use crate::engine::frame::Frame;
 use crate::engine::input::InputFile;
 use crate::engine::record::{Keys, Recorder};
-use crate::replay::GhostTrack;
-use gearbox_engine::Savestate;
 use crate::engine::session::{InputSel, Source};
-use crate::engine::display::World;
+use crate::replay::GhostTrack;
 use gearbox_engine::Controls;
+use gearbox_engine::Savestate;
 use glam::{Vec2, Vec3};
 use gpui::{App, Bounds, Context, FocusHandle, Pixels, Window, actions};
 
@@ -32,12 +32,94 @@ use crate::ui::widgets::FieldEdit;
 actions!(
     editor,
     [
-        TogglePlay, StepBack, StepForward, StepBack10, StepForward10, PrevMarker, NextMarker, WindowStart, WindowEnd, UndoAction, RedoAction, DeleteSelection, Duplicate,
-        CopyInputs, PasteInputs, LockSelection, UnlockSelection, ClearInputs, ShiftLeft, ShiftRight, ShiftLeft10, ShiftRight10, SelectAllTicks, Escape, ToolSelect, ToolMove, ToolRotate, ToolScale, MergeGoals,
-        ToolCar, ToolGate, ToolPoint, ToolBox, ToolPose, ToolLine, Focus, FrameAll, ToggleFollow, ViewTop, ViewFront, ViewRight, Recall1, Recall2, Recall3, Recall4, Recall5, SaveView1, SaveView2,
-        SaveView3, SaveView4, SaveView5, TogglePhysics, ToggleStadium, ToggleContacts, ToggleRecord, RunSearch, StopSearch, OpenMap, OpenProject, SaveProject, SaveProjectAs,
-        ImportReplay, AddGhost, Cheatsheet, PaintTool, FitTimeline, ZoomIn, ZoomOut, SetValue, Quit, SimulateFromHere, UseSelectionAsWindow, NextField, CommitField, CommandPalette,
-        PmUp, PmDown, PmLeft, PmRight, PmOpen, PmRename, PmDuplicate, PmTrash, PmUndo, PmFind, PmBack, PmBrowse, PmShow
+        TogglePlay,
+        StepBack,
+        StepForward,
+        StepBack10,
+        StepForward10,
+        PrevMarker,
+        NextMarker,
+        WindowStart,
+        WindowEnd,
+        UndoAction,
+        RedoAction,
+        DeleteSelection,
+        Duplicate,
+        CopyInputs,
+        PasteInputs,
+        LockSelection,
+        UnlockSelection,
+        ClearInputs,
+        ShiftLeft,
+        ShiftRight,
+        ShiftLeft10,
+        ShiftRight10,
+        SelectAllTicks,
+        Escape,
+        ToolSelect,
+        ToolMove,
+        ToolRotate,
+        ToolScale,
+        MergeGoals,
+        ToolCar,
+        ToolGate,
+        ToolPoint,
+        ToolBox,
+        ToolPose,
+        ToolLine,
+        Focus,
+        FrameAll,
+        ToggleFollow,
+        ViewTop,
+        ViewFront,
+        ViewRight,
+        Recall1,
+        Recall2,
+        Recall3,
+        Recall4,
+        Recall5,
+        SaveView1,
+        SaveView2,
+        SaveView3,
+        SaveView4,
+        SaveView5,
+        TogglePhysics,
+        ToggleStadium,
+        ToggleContacts,
+        ToggleRecord,
+        RunSearch,
+        StopSearch,
+        OpenMap,
+        OpenProject,
+        SaveProject,
+        SaveProjectAs,
+        ImportReplay,
+        AddGhost,
+        Cheatsheet,
+        PaintTool,
+        FitTimeline,
+        ZoomIn,
+        ZoomOut,
+        SetValue,
+        Quit,
+        SimulateFromHere,
+        UseSelectionAsWindow,
+        NextField,
+        CommitField,
+        CommandPalette,
+        PmUp,
+        PmDown,
+        PmLeft,
+        PmRight,
+        PmOpen,
+        PmRename,
+        PmDuplicate,
+        PmTrash,
+        PmUndo,
+        PmFind,
+        PmBack,
+        PmBrowse,
+        PmShow
     ]
 );
 
@@ -251,13 +333,21 @@ impl Tool {
             Self::Select => "Click objects to select them; drag a point goal's handle to lift it.",
             Self::Move => "Drag an axis to move along it, the centre to slide over the surface.",
             Self::Rotate => "Drag a ring: yaw (green), pitch (red), roll (blue).",
-            Self::Scale => "Drag an axis's cube to size along it, the centre to size evenly; \u{21e7} snaps to 0.5 m. Boxes, points (radius) and car poses (how close counts).",
+            Self::Scale => {
+                "Drag an axis's cube to size along it, the centre to size evenly; \u{21e7} snaps to 0.5 m. Boxes, points (radius) and car poses (how close counts)."
+            }
             Self::PlaceCar => "The car follows the surface under the cursor; click to place the start state.",
             Self::GateGoal => "Click a checkpoint or finish trigger to make it a goal.",
-            Self::PointGoal => "Click a surface to place a point goal (engine raycast); lift it with its handle.",
-            Self::BoxGoal => "Click a surface to stand a box trigger on it, across the run; size it in the Inspector.",
+            Self::PointGoal => {
+                "Click a surface to place a point goal (engine raycast); lift it with its handle."
+            }
+            Self::BoxGoal => {
+                "Click a surface to stand a box trigger on it, across the run; size it in the Inspector."
+            }
             Self::PoseGoal => "Click a surface to place a car pose goal facing along the run.",
-            Self::Line => "Click along the way you want to go to draw a guide line; the search can measure misses along it. Esc or a double-click ends the line.",
+            Self::Line => {
+                "Click along the way you want to go to draw a guide line; the search can measure misses along it. Esc or a double-click ends the line."
+            }
         }
     }
 }
@@ -314,15 +404,50 @@ pub struct GhostEntry {
 
 #[derive(Clone, Debug)]
 pub enum Drag {
-    Press { at: Vec2, double: bool },
-    Orbit { last: Vec2, center: Option<Vec3> },
-    Pan { last: Vec2 },
-    Zoom { last: Vec2, at: Option<Vec3> },
-    Fly { last: Vec2, at: Vec2, t0: std::time::Instant, moved: bool },
-    Gizmo { handle: crate::gizmo::Handle, target: GizmoTarget, start: f32, pos0: Vec3, rot0: glam::Quat, size0: Vec3 },
-    Velocity { vy: f32 },
-    Field { id: String, x0: f32, v0: f64, step: f64, moved: bool },
-    Split { which: Split, start: f32, size0: f32 },
+    Press {
+        at: Vec2,
+        double: bool,
+    },
+    Orbit {
+        last: Vec2,
+        center: Option<Vec3>,
+    },
+    Pan {
+        last: Vec2,
+    },
+    Zoom {
+        last: Vec2,
+        at: Option<Vec3>,
+    },
+    Fly {
+        last: Vec2,
+        at: Vec2,
+        t0: std::time::Instant,
+        moved: bool,
+    },
+    Gizmo {
+        handle: crate::gizmo::Handle,
+        target: GizmoTarget,
+        start: f32,
+        pos0: Vec3,
+        rot0: glam::Quat,
+        size0: Vec3,
+    },
+    Velocity {
+        vy: f32,
+    },
+    Field {
+        id: String,
+        x0: f32,
+        v0: f64,
+        step: f64,
+        moved: bool,
+    },
+    Split {
+        which: Split,
+        start: f32,
+        size0: f32,
+    },
     Timeline(crate::ui::dopesheet::TlDrag),
 }
 
@@ -569,7 +694,14 @@ pub fn v2(p: gpui::Point<Pixels>) -> Vec2 {
 const SEARCH_SETTLE: std::time::Duration = std::time::Duration::from_millis(300);
 
 impl Editor {
-    pub fn new(opts: Options, game: gearbox_packs::install::Game, home: PathBuf, scene: Scene, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        opts: Options,
+        game: gearbox_packs::install::Game,
+        home: PathBuf,
+        scene: Scene,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let (waker, mut rx) = Waker::new();
         let w = waker.clone();
         let sim = Sim::spawn(game.packs.clone(), Arc::new(move || w.wake()));
@@ -698,7 +830,19 @@ impl Editor {
             dirty: true,
             framed: false,
             scale: window.scale_factor(),
-            show: Show { physics: opts.physics, stadium: opts.stadium, contacts: false, gates: true, trail: true, ghosts: true, tries: true, branches: false, tricks: true, setups: true, hidden_families: Vec::new() },
+            show: Show {
+                physics: opts.physics,
+                stadium: opts.stadium,
+                contacts: false,
+                gates: true,
+                trail: true,
+                ghosts: true,
+                tries: true,
+                branches: false,
+                tricks: true,
+                setups: true,
+                hidden_families: Vec::new(),
+            },
             contacts: None,
             contacts_requested: None,
             pick_us: None,
@@ -729,7 +873,13 @@ impl Editor {
             catalog,
             window_id: None,
             ui_frame_start: None,
-            script: opts.script.clone().or_else(|| opts.record.as_ref().map(|p| p.parent().map_or(PathBuf::from("."), Path::to_path_buf))).map(crate::script::Script::new),
+            script: opts
+                .script
+                .clone()
+                .or_else(|| {
+                    opts.record.as_ref().map(|p| p.parent().map_or(PathBuf::from("."), Path::to_path_buf))
+                })
+                .map(crate::script::Script::new),
             script_ran: Instant::now(),
             script_in_frame: false,
             last_undo_merge: None,
@@ -793,7 +943,10 @@ impl Editor {
     pub fn open_map(&mut self, map: &Path, inputs: InputSel, doc: Option<Doc>, cx: &mut Context<Self>) {
         let same_map = self.map.as_deref() == Some(map);
         self.map = Some(map.to_path_buf());
-        self.loading = Some(format!("Building {} from the map and packs \u{2026}", crate::catalog::map_stem(map).unwrap_or_default()));
+        self.loading = Some(format!(
+            "Building {} from the map and packs \u{2026}",
+            crate::catalog::map_stem(map).unwrap_or_default()
+        ));
         self.open_error = None;
         let len = doc.as_ref().map(|d| d.len);
         self.pending_doc = doc;
@@ -857,7 +1010,13 @@ impl Editor {
                 };
                 self.save_after_open = self.project_name != l.name;
                 self.projects_open = false;
-                self.loaded_finishes = l.doc.runs.iter().zip(&l.finishes.runs).filter_map(|(r, f)| Some((r.id, (*f)?))).collect();
+                self.loaded_finishes = l
+                    .doc
+                    .runs
+                    .iter()
+                    .zip(&l.finishes.runs)
+                    .filter_map(|(r, f)| Some((r.id, (*f)?)))
+                    .collect();
                 self.saved_finishes = Some(l.finishes.clone());
                 if let Some(s) = l.search {
                     self.spec = s;
@@ -882,10 +1041,22 @@ impl Editor {
 
     pub fn save_project(&mut self, path: Option<PathBuf>) {
         let Some(map) = self.map.clone() else { return };
-        let path = path.or_else(|| self.project_path.clone()).unwrap_or_else(|| project::new_path(&self.home, &self.project_name));
+        let path = path
+            .or_else(|| self.project_path.clone())
+            .unwrap_or_else(|| project::new_path(&self.home, &self.project_name));
         let ghosts: Vec<PathBuf> = self.ghosts.iter().map(|g| g.track.path.clone()).collect();
         let finishes = self.finishes();
-        match project::save(&path, &self.home, &self.project_name, &finishes, &map, &self.doc, &self.spec, &self.route, &ghosts) {
+        match project::save(
+            &path,
+            &self.home,
+            &self.project_name,
+            &finishes,
+            &map,
+            &self.doc,
+            &self.spec,
+            &self.route,
+            &ghosts,
+        ) {
             Ok(_) => {
                 self.project_path = Some(path.clone());
                 self.saved_finishes = Some(finishes);
@@ -900,17 +1071,39 @@ impl Editor {
 
     pub fn finishes(&self) -> project::Finishes {
         let saved = self.saved_finishes.as_ref();
-        let run = if self.sim.done() { self.sim.frames.iter().find_map(|f| f.finish).map(|t| t as i32) } else { saved.and_then(|f| f.run) };
-        let runs = self.doc.runs.iter().map(|r| self.runs_frames.get(&Key::Run(r.id)).map_or_else(|| self.loaded_finishes.get(&r.id).copied(), |f| f.iter().find_map(|f| f.finish).map(|t| t as i32))).collect();
+        let run = if self.sim.done() {
+            self.sim.frames.iter().find_map(|f| f.finish).map(|t| t as i32)
+        } else {
+            saved.and_then(|f| f.run)
+        };
+        let runs = self
+            .doc
+            .runs
+            .iter()
+            .map(|r| {
+                self.runs_frames.get(&Key::Run(r.id)).map_or_else(
+                    || self.loaded_finishes.get(&r.id).copied(),
+                    |f| f.iter().find_map(|f| f.finish).map(|t| t as i32),
+                )
+            })
+            .collect();
         project::Finishes { run, runs }
     }
 
     pub fn dirty_doc(&self) -> bool {
-        self.saved.as_ref() != Some(&self.doc) || self.saved_spec.as_ref().is_some_and(|s| *s != self.spec) || self.saved_route.as_ref().is_some_and(|r| *r != self.route)
+        self.saved.as_ref() != Some(&self.doc)
+            || self.saved_spec.as_ref().is_some_and(|s| *s != self.spec)
+            || self.saved_route.as_ref().is_some_and(|r| *r != self.route)
     }
 
     fn autosave(&mut self) {
-        if self.map.is_none() || self.sim.info.is_none() || self.pending_doc.is_some() || self.opts.shot.is_some() || self.opts.script.is_some() || self.opts.record.is_some() {
+        if self.map.is_none()
+            || self.sim.info.is_none()
+            || self.pending_doc.is_some()
+            || self.opts.shot.is_some()
+            || self.opts.script.is_some()
+            || self.opts.record.is_some()
+        {
             return;
         }
         let new_times = self.project_path.is_some() && self.saved_finishes.as_ref() != Some(&self.finishes());
@@ -934,7 +1127,11 @@ impl Editor {
         self.pm.picking_map = self.pm.entries.is_empty();
         self.pm.filter.clear();
         self.pm.renaming = None;
-        self.pm.selected = self.project_path.clone().filter(|p| self.pm.entries.iter().any(|e| e.path == *p)).or_else(|| self.pm.entries.first().map(|e| e.path.clone()));
+        self.pm.selected = self
+            .project_path
+            .clone()
+            .filter(|p| self.pm.entries.iter().any(|e| e.path == *p))
+            .or_else(|| self.pm.entries.first().map(|e| e.path.clone()));
         self.projects_open = true;
         self.load_map_cards();
     }
@@ -963,7 +1160,9 @@ impl Editor {
             .iter()
             .map(|m| {
                 let test = crate::catalog::test_maps().is_some_and(|t| m.starts_with(t));
-                let t = std::fs::metadata(m).and_then(|x| x.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                let t = std::fs::metadata(m)
+                    .and_then(|x| x.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
                 (test, t, m.clone())
             })
             .collect();
@@ -984,7 +1183,10 @@ impl Editor {
             self.save_project(None);
         }
         let named = name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
-        self.project_name = named.or_else(|| self.pm.cards.get(map).map(|c| c.name.clone())).or_else(|| crate::catalog::map_stem(map)).unwrap_or_else(|| "Project".into());
+        self.project_name = named
+            .or_else(|| self.pm.cards.get(map).map(|c| c.name.clone()))
+            .or_else(|| crate::catalog::map_stem(map))
+            .unwrap_or_else(|| "Project".into());
         self.saved_finishes = None;
         self.loaded_finishes.clear();
         self.project_path = Some(project::new_path(&self.home, &self.project_name));
@@ -1026,7 +1228,12 @@ impl Editor {
     }
 
     pub fn trash_project(&mut self, path: &Path) {
-        let name = self.pm.entries.iter().find(|e| e.path == path).map_or_else(|| path.display().to_string(), |e| e.name.clone());
+        let name = self
+            .pm
+            .entries
+            .iter()
+            .find(|e| e.path == path)
+            .map_or_else(|| path.display().to_string(), |e| e.name.clone());
         let at = self.pm.entries.iter().position(|e| e.path == path);
         match project::trash(path) {
             Ok(moved) => {
@@ -1041,7 +1248,9 @@ impl Editor {
                 self.pm.trashed = Some((name, moved, Instant::now()));
                 self.pm.entries = project::list(&self.home);
                 if self.pm.selected.as_deref() == Some(path) {
-                    self.pm.selected = at.and_then(|i| self.pm.entries.get(i.min(self.pm.entries.len().saturating_sub(1)))).map(|e| e.path.clone());
+                    self.pm.selected = at
+                        .and_then(|i| self.pm.entries.get(i.min(self.pm.entries.len().saturating_sub(1))))
+                        .map(|e| e.path.clone());
                 }
             }
             Err(e) => self.error("io", format!("move to Trash: {e:#}")),
@@ -1053,7 +1262,10 @@ impl Editor {
         match project::restore(&moved) {
             Ok(()) => {
                 self.pm.entries = project::list(&self.home);
-                self.pm.selected = moved.iter().map(|(_, to)| if to.is_dir() { to.join("project.tmproj.json") } else { to.clone() }).find(|p| self.pm.entries.iter().any(|e| e.path == *p));
+                self.pm.selected = moved
+                    .iter()
+                    .map(|(_, to)| if to.is_dir() { to.join("project.tmproj.json") } else { to.clone() })
+                    .find(|p| self.pm.entries.iter().any(|e| e.path == *p));
                 self.info("io", format!("put {name} back"));
             }
             Err(e) => self.error("io", format!("put back: {e:#}")),
@@ -1093,7 +1305,15 @@ impl Editor {
         for d in done {
             match d {
                 background::Done::Gates(Ok(g)) => {
-                    self.info("world", format!("{} gates ({} checkpoints, {} finishes)", g.len(), g.iter().filter(|g| g.gate.kind != 1).count(), g.iter().filter(|g| g.gate.kind == 1).count()));
+                    self.info(
+                        "world",
+                        format!(
+                            "{} gates ({} checkpoints, {} finishes)",
+                            g.len(),
+                            g.iter().filter(|g| g.gate.kind != 1).count(),
+                            g.iter().filter(|g| g.gate.kind == 1).count()
+                        ),
+                    );
                     self.gates = g;
                     self.merge_finish_goals();
                 }
@@ -1122,10 +1342,18 @@ impl Editor {
         self.tries_gen = tries_gen;
         let (running, best) = {
             let l = self.search.live.lock().unwrap();
-            let better = l.best.as_ref().zip(l.base.as_ref()).is_some_and(|(b, base)| b.quality_cmp(base).is_gt());
-            (l.running, (better && l.message.starts_with("done")).then(|| l.candidates.last().map(|c| c.id)).flatten())
+            let better =
+                l.best.as_ref().zip(l.base.as_ref()).is_some_and(|(b, base)| b.quality_cmp(base).is_gt());
+            (
+                l.running,
+                (better && l.message.starts_with("done"))
+                    .then(|| l.candidates.last().map(|c| c.id))
+                    .flatten(),
+            )
         };
-        if self.search_running && !running && self.spec.go_on
+        if self.search_running
+            && !running
+            && self.spec.go_on
             && let Some(id) = best
         {
             self.go_on(id);
@@ -1204,7 +1432,15 @@ impl Editor {
         self.world_tris = o.world.tris.len();
         self.world = Some(o.world.clone());
         self.rebuild_world_mesh(cx);
-        self.info("sim", format!("opened {} \u{00b7} race time at tick 0: {} ms \u{00b7} {} ticks", self.sim.info.as_ref().map_or("", |i| i.stem.as_str()), self.race_ms0, o.len));
+        self.info(
+            "sim",
+            format!(
+                "opened {} \u{00b7} race time at tick 0: {} ms \u{00b7} {} ticks",
+                self.sim.info.as_ref().map_or("", |i| i.stem.as_str()),
+                self.race_ms0,
+                o.len
+            ),
+        );
         if std::mem::take(&mut self.save_after_open) {
             self.save_project(None);
         }
@@ -1287,7 +1523,8 @@ impl Editor {
             self.sim.set_start(d.start.as_ref().map(|s| (s.tick, s.placement())));
         }
         if !Arc::ptr_eq(&d.inputs, &before.inputs) || d.len != before.len {
-            let from = doc::first_difference(&before.inputs, &d.inputs, self.race_ms0).unwrap_or(d.len.min(before.len));
+            let from = doc::first_difference(&before.inputs, &d.inputs, self.race_ms0)
+                .unwrap_or(d.len.min(before.len));
             self.sim.simulate(d.inputs.clone(), from, d.len, self.recorder.as_ref().map(|_| self.cursor + 1));
         }
         if d.goals != before.goals || d.guides != before.guides {
@@ -1324,7 +1561,12 @@ impl Editor {
         });
     }
 
-    pub fn set_ticks(&mut self, label: &str, merge: Option<&str>, ticks: impl Iterator<Item = (usize, Controls)>) {
+    pub fn set_ticks(
+        &mut self,
+        label: &str,
+        merge: Option<&str>,
+        ticks: impl Iterator<Item = (usize, Controls)>,
+    ) {
         let ms0 = self.race_ms0;
         let changes: Vec<(usize, Controls)> = ticks.collect();
         self.edit(label, merge, |d| {
@@ -1367,7 +1609,15 @@ impl Editor {
                 (Key::Run(id), run.inputs.clone(), run.len, run.start.clone())
             }
             RunRef::Candidate(id) => {
-                let (c, start) = self.search.live.lock().unwrap().candidates.iter().find(|c| c.id == id).map(|c| (c.inputs.clone(), c.start.clone()))?;
+                let (c, start) = self
+                    .search
+                    .live
+                    .lock()
+                    .unwrap()
+                    .candidates
+                    .iter()
+                    .find(|c| c.id == id)
+                    .map(|c| (c.inputs.clone(), c.start.clone()))?;
                 (Key::Candidate(id), c, self.doc.len, start.or_else(|| self.doc.start.clone()))
             }
         };
@@ -1377,7 +1627,12 @@ impl Editor {
         if self.runs_pending.insert(key)
             && let Some(a) = &self.aux
         {
-            a.send(background::Job::Simulate { key, inputs, len, start: start.map(|s| (s.tick, s.placement())) });
+            a.send(background::Job::Simulate {
+                key,
+                inputs,
+                len,
+                start: start.map(|s| (s.tick, s.placement())),
+            });
         }
         None
     }
@@ -1385,7 +1640,11 @@ impl Editor {
     pub fn ref_label(&self, r: RunRef) -> String {
         match r {
             RunRef::Current => format!("{} (current)", self.doc.run_name),
-            RunRef::Previous => self.doc.history.last().map_or("previous version (none yet)".into(), |h| format!("previous version ({})", h.at)),
+            RunRef::Previous => self
+                .doc
+                .history
+                .last()
+                .map_or("previous version (none yet)".into(), |h| format!("previous version ({})", h.at)),
             RunRef::Run(id) => self.doc.run(id).map_or("?".into(), |r| r.name.clone()),
             RunRef::Ghost(i) => self.ghosts.get(i).map_or("?".into(), |g| format!("ghost {}", g.track.name)),
             RunRef::Candidate(id) => format!("candidate #{id}"),
@@ -1438,14 +1697,28 @@ impl Editor {
     }
 
     pub fn finish_groups(&self) -> Vec<Vec<u32>> {
-        let fins: Vec<&gearbox_search::gate::Gate> = self.gates.iter().map(|g| &g.gate).filter(|g| g.kind == 1).collect();
+        let fins: Vec<&gearbox_search::gate::Gate> =
+            self.gates.iter().map(|g| &g.gate).filter(|g| g.kind == 1).collect();
         doc::touching(&fins)
     }
 
     pub fn gate_goal(&self, w: u32) -> Option<doc::GateGoal> {
         let g = self.gates.iter().find(|g| g.gate.waypoint == w)?;
-        let also: Vec<u32> = if g.gate.kind == 1 { self.finish_groups().into_iter().find(|f| f.contains(&w)).unwrap_or_default().into_iter().filter(|x| *x != w).collect() } else { Vec::new() };
-        let boxes = std::iter::once(&g.gate).chain(self.gates.iter().map(|g| &g.gate).filter(|g| also.contains(&g.waypoint))).flat_map(|g| g.boxes.iter().cloned()).collect();
+        let also: Vec<u32> = if g.gate.kind == 1 {
+            self.finish_groups()
+                .into_iter()
+                .find(|f| f.contains(&w))
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|x| *x != w)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let boxes = std::iter::once(&g.gate)
+            .chain(self.gates.iter().map(|g| &g.gate).filter(|g| also.contains(&g.waypoint)))
+            .flat_map(|g| g.boxes.iter().cloned())
+            .collect();
         Some(doc::GateGoal { waypoint: w, kind: g.gate.kind, boxes, ordinal: None, also, parts: Vec::new() })
     }
 
@@ -1453,7 +1726,12 @@ impl Editor {
         let mut renamed: Vec<(Id, Id)> = Vec::new();
         let mut doc = self.doc.clone();
         for group in self.finish_groups() {
-            let ids: Vec<Id> = doc.goals.iter().filter(|g| matches!(&g.kind, GoalKind::Gate(x) if group.iter().any(|w| x.has(*w)))).map(|g| g.id).collect();
+            let ids: Vec<Id> = doc
+                .goals
+                .iter()
+                .filter(|g| matches!(&g.kind, GoalKind::Gate(x) if group.iter().any(|w| x.has(*w))))
+                .map(|g| g.id)
+                .collect();
             let Some(&keep) = ids.first() else { continue };
             let GoalKind::Gate(x) = &doc.goal(keep).expect("listed goal").kind else { continue };
             let Some(full) = self.gate_goal(x.waypoint) else { continue };
@@ -1475,9 +1753,11 @@ impl Editor {
                     *id = to;
                 }
                 let mut seen = Vec::new();
-                list.retain(|id| !seen.contains(id) && {
-                    seen.push(*id);
-                    true
+                list.retain(|id| {
+                    !seen.contains(id) && {
+                        seen.push(*id);
+                        true
+                    }
                 });
             }
         }
@@ -1487,7 +1767,9 @@ impl Editor {
         if let Some(n) = self.gate_names.get(&waypoint) {
             return n.clone();
         }
-        let Some(g) = self.gates.iter().find(|g| g.gate.waypoint == waypoint) else { return format!("Gate {waypoint}") };
+        let Some(g) = self.gates.iter().find(|g| g.gate.waypoint == waypoint) else {
+            return format!("Gate {waypoint}");
+        };
         if g.gate.kind == 1 {
             let fins = self.finish_groups();
             if fins.len() > 1 {
@@ -1496,7 +1778,12 @@ impl Editor {
             }
             return "Finish".into();
         }
-        let mut cps: Vec<(u32, u32)> = self.gates.iter().filter(|g| g.gate.kind != 1).map(|g| (g.order.unwrap_or(u32::MAX), g.gate.waypoint)).collect();
+        let mut cps: Vec<(u32, u32)> = self
+            .gates
+            .iter()
+            .filter(|g| g.gate.kind != 1)
+            .map(|g| (g.order.unwrap_or(u32::MAX), g.gate.waypoint))
+            .collect();
         cps.sort();
         let ordered = cps.iter().all(|c| c.0 != u32::MAX);
         match cps.iter().position(|c| c.1 == waypoint) {
@@ -1506,7 +1793,11 @@ impl Editor {
     }
 
     fn name_gates(&mut self) {
-        if self.gate_names_final || self.gates.is_empty() || !self.sim.done() || self.gate_names_gen == Some(self.frames_gen) {
+        if self.gate_names_final
+            || self.gates.is_empty()
+            || !self.sim.done()
+            || self.gate_names_gen == Some(self.frames_gen)
+        {
             return;
         }
         self.gate_names_gen = Some(self.frames_gen);
@@ -1517,7 +1808,19 @@ impl Editor {
             }
         }
         let mut names = HashMap::new();
-        let mut cps: Vec<(bool, u32, u32, u32)> = self.gates.iter().filter(|g| g.gate.kind != 1).map(|g| (!first.contains_key(&g.gate.waypoint), first.get(&g.gate.waypoint).copied().unwrap_or(0), g.order.unwrap_or(u32::MAX), g.gate.waypoint)).collect();
+        let mut cps: Vec<(bool, u32, u32, u32)> = self
+            .gates
+            .iter()
+            .filter(|g| g.gate.kind != 1)
+            .map(|g| {
+                (
+                    !first.contains_key(&g.gate.waypoint),
+                    first.get(&g.gate.waypoint).copied().unwrap_or(0),
+                    g.order.unwrap_or(u32::MAX),
+                    g.gate.waypoint,
+                )
+            })
+            .collect();
         cps.sort();
         for (i, g) in cps.into_iter().enumerate() {
             names.insert(g.3, format!("CP{}", i + 1));
@@ -1525,7 +1828,15 @@ impl Editor {
         let mut fins: Vec<((bool, u32, u32), Vec<u32>)> = self
             .finish_groups()
             .into_iter()
-            .map(|f| (f.iter().map(|w| (!first.contains_key(w), first.get(w).copied().unwrap_or(0), *w)).min().unwrap_or((true, 0, 0)), f))
+            .map(|f| {
+                (
+                    f.iter()
+                        .map(|w| (!first.contains_key(w), first.get(w).copied().unwrap_or(0), *w))
+                        .min()
+                        .unwrap_or((true, 0, 0)),
+                    f,
+                )
+            })
             .collect();
         fins.sort();
         let n = fins.len();
@@ -1538,7 +1849,9 @@ impl Editor {
         for g in &mut self.doc.goals {
             if let GoalKind::Gate(x) = &g.kind {
                 let was = old.get(&x.waypoint).cloned();
-                if was.as_deref() == Some(g.name.as_str()) || (was.is_none() && (g.name.starts_with("CP") || g.name.starts_with("Finish"))) {
+                if was.as_deref() == Some(g.name.as_str())
+                    || (was.is_none() && (g.name.starts_with("CP") || g.name.starts_with("Finish")))
+                {
                     g.name = self.gate_names.get(&x.waypoint).cloned().unwrap_or_else(|| g.name.clone());
                 }
             }
@@ -1603,7 +1916,12 @@ impl Editor {
         for s in self.selected() {
             let goal = match s {
                 Sel::Goal(id) => Some(id),
-                Sel::Gate(w) => self.doc.goals.iter().find(|g| matches!(&g.kind, GoalKind::Gate(x) if x.has(w))).map(|g| g.id),
+                Sel::Gate(w) => self
+                    .doc
+                    .goals
+                    .iter()
+                    .find(|g| matches!(&g.kind, GoalKind::Gate(x) if x.has(w)))
+                    .map(|g| g.id),
                 _ => None,
             };
             if goal.is_some() && picks.iter().any(|p| p.0 == goal) {
@@ -1623,11 +1941,17 @@ impl Editor {
             picks.push((goal, parts));
         }
         if picks.len() < 2 {
-            return self.error("goals", "select two or more gates or gate goals to merge (\u{2318}/\u{21e7}-click in the outliner)");
+            return self.error(
+                "goals",
+                "select two or more gates or gate goals to merge (\u{2318}/\u{21e7}-click in the outliner)",
+            );
         }
         let parts: Vec<doc::GatePart> = picks.iter().flat_map(|p| p.1.iter().cloned()).collect();
         if parts.iter().any(|p| p.gate.kind != parts[0].gate.kind) {
-            return self.error("goals", "only gates of one kind merge: finishes with finishes, checkpoints with checkpoints");
+            return self.error(
+                "goals",
+                "only gates of one kind merge: finishes with finishes, checkpoints with checkpoints",
+            );
         }
         let name = doc::parts_name(&parts);
         let merged = doc::GateGoal::of_parts(parts);
@@ -1677,7 +2001,12 @@ impl Editor {
             let Some(i) = d.goals.iter().position(|x| x.id == id) else { return };
             let base = d.goals[i].clone();
             for (j, p) in g.parts.iter().enumerate() {
-                let goal = doc::Goal { id: if j == 0 { id } else { d.id() }, name: p.name.clone(), kind: GoalKind::Gate(p.gate.clone()), ..base.clone() };
+                let goal = doc::Goal {
+                    id: if j == 0 { id } else { d.id() },
+                    name: p.name.clone(),
+                    kind: GoalKind::Gate(p.gate.clone()),
+                    ..base.clone()
+                };
                 ids.push(goal.id);
                 if j == 0 {
                     d.goals[i] = goal;
@@ -1703,8 +2032,14 @@ impl Editor {
         self.edit("take out of merged goal", None, |d| {
             let Some(i) = d.goals.iter().position(|x| x.id == id) else { return };
             let base = d.goals[i].clone();
-            let new = doc::Goal { id: d.id(), name: out.name.clone(), kind: GoalKind::Gate(out.gate.clone()), ..base.clone() };
-            (d.goals[i].kind, d.goals[i].name) = (GoalKind::Gate(doc::GateGoal::of_parts(rest.clone())), name.clone());
+            let new = doc::Goal {
+                id: d.id(),
+                name: out.name.clone(),
+                kind: GoalKind::Gate(out.gate.clone()),
+                ..base.clone()
+            };
+            (d.goals[i].kind, d.goals[i].name) =
+                (GoalKind::Gate(doc::GateGoal::of_parts(rest.clone())), name.clone());
             d.goals.insert(i + 1, new);
         });
         self.info("goals", format!("took {} out", out.name));
@@ -1713,7 +2048,11 @@ impl Editor {
     pub fn delete_selected(&mut self) {
         match self.sel {
             Sel::Goal(_) => {
-                let gone: Vec<Id> = self.selected().into_iter().filter_map(|s| if let Sel::Goal(id) = s { Some(id) } else { None }).collect();
+                let gone: Vec<Id> = self
+                    .selected()
+                    .into_iter()
+                    .filter_map(|s| if let Sel::Goal(id) = s { Some(id) } else { None })
+                    .collect();
                 self.edit("delete goals", None, |d| d.goals.retain(|g| !gone.contains(&g.id)));
                 self.select(Sel::None);
             }
@@ -1905,7 +2244,10 @@ impl Editor {
             Sel::Goal(id) => self.doc.goal(id).map(|g| match &g.kind {
                 GoalKind::Gate(gate) => {
                     let b = &gate.boxes[0];
-                    ((Vec3::from(b.min) + Vec3::from(b.max)) * 0.5, (Vec3::from(b.max) - Vec3::from(b.min)).length() * 0.6)
+                    (
+                        (Vec3::from(b.min) + Vec3::from(b.max)) * 0.5,
+                        (Vec3::from(b.max) - Vec3::from(b.min)).length() * 0.6,
+                    )
                 }
                 GoalKind::Point { radius, .. } => (g.pos(), radius.max(3.0) * 2.0),
                 GoalKind::Pose(_) => (g.pos(), 6.0),
@@ -1937,23 +2279,41 @@ impl Editor {
         if pts.is_empty() {
             return;
         }
-        let (min, max) = pts.iter().map(|f| Vec3::from(f.position())).fold((Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)), |(lo, hi), p| (lo.min(p), hi.max(p)));
+        let (min, max) = pts
+            .iter()
+            .map(|f| Vec3::from(f.position()))
+            .fold((Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)), |(lo, hi), p| (lo.min(p), hi.max(p)));
         self.camera.frame(min - Vec3::splat(8.0), max + Vec3::splat(8.0));
         self.dirty = true;
     }
 
     pub fn recall(&mut self, i: usize) {
         if let Some(b) = self.doc.bookmarks.get(i).cloned() {
-            self.camera.go(View { pivot: Vec3::from(b.pivot), yaw: b.yaw, pitch: b.pitch, distance: b.distance });
+            self.camera.go(View {
+                pivot: Vec3::from(b.pivot),
+                yaw: b.yaw,
+                pitch: b.pitch,
+                distance: b.distance,
+            });
             self.info("view", format!("camera bookmark {}: {}", i + 1, b.name));
         } else {
-            self.log(LogLevel::Warn, "view", format!("no camera bookmark {} (save one with Ctrl+Shift+{})", i + 1, i + 1));
+            self.log(
+                LogLevel::Warn,
+                "view",
+                format!("no camera bookmark {} (save one with Ctrl+Shift+{})", i + 1, i + 1),
+            );
         }
     }
 
     pub fn save_view(&mut self, i: usize) {
         let v = self.camera.goal;
-        let b = doc::Bookmark { name: format!("View {}", i + 1), pivot: v.pivot.into(), yaw: v.yaw, pitch: v.pitch, distance: v.distance };
+        let b = doc::Bookmark {
+            name: format!("View {}", i + 1),
+            pivot: v.pivot.into(),
+            yaw: v.yaw,
+            pitch: v.pitch,
+            distance: v.distance,
+        };
         self.edit("save camera bookmark", None, |d| {
             while d.bookmarks.len() <= i {
                 d.bookmarks.push(b.clone());
@@ -1966,7 +2326,15 @@ impl Editor {
     pub fn add_ghost(&mut self, path: &Path) {
         match GhostTrack::read(path) {
             Ok(g) => {
-                self.info("io", format!("ghost {}: {} samples, {}", g.name, g.samples.len(), g.race_time_ms.map_or("unfinished".into(), crate::fmt::fmt_ms)));
+                self.info(
+                    "io",
+                    format!(
+                        "ghost {}: {} samples, {}",
+                        g.name,
+                        g.samples.len(),
+                        g.race_time_ms.map_or("unfinished".into(), crate::fmt::fmt_ms)
+                    ),
+                );
                 self.ghosts.push(GhostEntry { track: g, visible: true });
                 self.compare.1 = RunRef::Ghost(self.ghosts.len() - 1);
                 self.dirty = true;
@@ -1995,7 +2363,10 @@ impl Editor {
         };
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
         let start_ms = gearbox_engine::session::Clock::new(f.t0).ok().map(|c| c.race_ms);
-        self.info("io", format!("imported {name}: {} ticks from {} ms, seed {:?}", f.controls.len(), f.t0, f.seed));
+        self.info(
+            "io",
+            format!("imported {name}: {} ticks from {} ms, seed {:?}", f.controls.len(), f.t0, f.seed),
+        );
         if start_ms != Some(self.race_ms0) {
             let mut d = self.doc.clone();
             self.undo.push("import replay", d.clone());
@@ -2018,7 +2389,10 @@ impl Editor {
     }
 
     pub fn search_ctx_parts(&self) -> (Vec<Option<usize>>, Vec<u16>) {
-        (self.aimed_reach(&self.sim.frames).iter().map(|r| r.tick).collect(), self.sim.frames.iter().map(|f| f.waypoints).collect())
+        (
+            self.aimed_reach(&self.sim.frames).iter().map(|r| r.tick).collect(),
+            self.sim.frames.iter().map(|f| f.waypoints).collect(),
+        )
     }
 
     pub fn aimed_goals(&self) -> Vec<Goal> {
@@ -2032,22 +2406,42 @@ impl Editor {
     pub fn aimed_reach(&self, frames: &[Frame]) -> Vec<Reach> {
         let aimed = self.aimed_goals();
         let r = doc::evaluate(&aimed, frames);
-        self.doc.goals.iter().map(|g| aimed.iter().position(|a| a.id == g.id).map(|i| r[i]).unwrap_or_default()).collect()
+        self.doc
+            .goals
+            .iter()
+            .map(|g| aimed.iter().position(|a| a.id == g.id).map(|i| r[i]).unwrap_or_default())
+            .collect()
     }
 
     pub fn speed_worth(&self, id: Id, next: Option<Id>) -> f32 {
-        let at = |id: Id| self.doc.goals.iter().position(|g| g.id == id).and_then(|i| self.reach.get(i)).and_then(|r| r.tick);
+        let at = |id: Id| {
+            self.doc
+                .goals
+                .iter()
+                .position(|g| g.id == id)
+                .and_then(|i| self.reach.get(i))
+                .and_then(|r| r.tick)
+        };
         let Some(k) = at(id) else { return 0.0 };
         let Some(f) = self.sim.frames.get(k) else { return 0.0 };
         let v = f.speed().max(10.0);
-        let end = next.and_then(at).or_else(|| self.sim.frames.iter().position(|f| f.finish.is_some())).filter(|e| *e > k);
-        let d = end.map_or(100.0, |e| self.sim.frames[k..=e.min(self.sim.frames.len() - 1)].windows(2).map(|w| Vec3::from(w[0].position()).distance(Vec3::from(w[1].position()))).sum::<f32>());
+        let end = next
+            .and_then(at)
+            .or_else(|| self.sim.frames.iter().position(|f| f.finish.is_some()))
+            .filter(|e| *e > k);
+        let d = end.map_or(100.0, |e| {
+            self.sim.frames[k..=e.min(self.sim.frames.len() - 1)]
+                .windows(2)
+                .map(|w| Vec3::from(w[0].position()).distance(Vec3::from(w[1].position())))
+                .sum::<f32>()
+        });
         (1000.0 * d / (3.6 * v * v)).clamp(0.1, 100.0)
     }
 
     pub fn start_search(&mut self) {
         let k0 = self.race_start_tick();
-        let blank = (k0..self.spec.window.start).all(|k| self.control(k) == gearbox_engine::Controls::default());
+        let blank =
+            (k0..self.spec.window.start).all(|k| self.control(k) == gearbox_engine::Controls::default());
         if self.spec.window.start < k0 || (self.doc.start.is_none() && blank) {
             self.spec.window = k0..self.spec.window.end.max(k0 + 1);
         }
@@ -2083,13 +2477,18 @@ impl Editor {
                 None => return self.error("search", "the line to start from is gone: pick another"),
             },
             optimize::StartFrom::Ghost => match self.ghosts.first() {
-                Some(g) => Some(g.track.samples.iter().map(|s| s.position).fold(Vec::new(), |mut v: Vec<[f32; 3]>, p| {
-                    if v.last().is_none_or(|q| Vec3::from(*q).distance(Vec3::from(p)) >= 10.0) {
-                        v.push(p);
-                    }
-                    v
-                })),
-                None => return self.error("search", "no ghost to start from: add one (+ Replay under Ghosts)"),
+                Some(g) => Some(g.track.samples.iter().map(|s| s.position).fold(
+                    Vec::new(),
+                    |mut v: Vec<[f32; 3]>, p| {
+                        if v.last().is_none_or(|q| Vec3::from(*q).distance(Vec3::from(p)) >= 10.0) {
+                            v.push(p);
+                        }
+                        v
+                    },
+                )),
+                None => {
+                    return self.error("search", "no ghost to start from: add one (+ Replay under Ghosts)");
+                }
             },
         };
         let mut origin_tick = self.spec.window.start;
@@ -2115,7 +2514,12 @@ impl Editor {
             origin_tick,
             start_line,
             world: self.world.clone().map(|w| {
-                let pts = self.sim.frames.iter().map(|f| f.position()).chain(self.doc.goals.iter().map(|g| g.pos().into()));
+                let pts = self
+                    .sim
+                    .frames
+                    .iter()
+                    .map(|f| f.position())
+                    .chain(self.doc.goals.iter().map(|g| g.pos().into()));
                 let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
                 for p in pts {
                     for a in 0..3 {
@@ -2185,16 +2589,32 @@ impl Editor {
         let cand = self.search.live.lock().unwrap().candidates.iter().find(|c| c.id == id).cloned();
         let Some(c) = cand else { return };
         let goals = self.aimed_reach(frames);
-        let mut msg = format!("editor re-simulation: {} ticks in {:.0} ms", frames.len(), micros as f32 / 1000.0);
+        let mut msg =
+            format!("editor re-simulation: {} ticks in {:.0} ms", frames.len(), micros as f32 / 1000.0);
         if let Some(times) = optimize::goal_times(&c.score)
             && self.spec.kind.goals()
         {
             let ids = self.spec.ordered_goals(&self.doc.goals).iter().map(|g| g.id).collect::<Vec<_>>();
-            let ours: Vec<Option<i32>> = ids.iter().filter_map(|id| self.doc.goals.iter().position(|g| g.id == *id)).map(|i| goals.get(i).and_then(|r| r.ms)).collect();
-            let agree = times.iter().enumerate().all(|(i, t)| ours.get(i).copied().flatten().is_some_and(|o| (o - t).abs() <= 10));
-            msg += if agree { " \u{00b7} goal times agree" } else { " \u{00b7} goal times DIFFER (see console)" };
+            let ours: Vec<Option<i32>> = ids
+                .iter()
+                .filter_map(|id| self.doc.goals.iter().position(|g| g.id == *id))
+                .map(|i| goals.get(i).and_then(|r| r.ms))
+                .collect();
+            let agree = times
+                .iter()
+                .enumerate()
+                .all(|(i, t)| ours.get(i).copied().flatten().is_some_and(|o| (o - t).abs() <= 10));
+            msg += if agree {
+                " \u{00b7} goal times agree"
+            } else {
+                " \u{00b7} goal times DIFFER (see console)"
+            };
             if !agree {
-                self.log(LogLevel::Warn, "search", format!("candidate #{id}: search times {times:?}, editor {ours:?}"));
+                self.log(
+                    LogLevel::Warn,
+                    "search",
+                    format!("candidate #{id}: search times {times:?}, editor {ours:?}"),
+                );
             }
         }
         self.checks.insert(id, msg);
@@ -2205,16 +2625,29 @@ impl Editor {
         let Some(c) = c else { return };
         let label = format!("accept candidate #{id}");
         let (inputs, splice) = self.spliced(id).map_or(((*c.inputs).clone(), None), |(i, s)| (i, Some(s)));
-        self.replace_run(&label, inputs, Origin::Search(format!("#{id} {}", self.search.live.lock().unwrap().metric(&c.score).text)));
+        self.replace_run(
+            &label,
+            inputs,
+            Origin::Search(format!("#{id} {}", self.search.live.lock().unwrap().metric(&c.score).text)),
+        );
         if let Some(st) = c.start.clone() {
             self.edit("the car it found", Some("start"), |d| d.start = Some(st));
         }
         if let Some(s) = &splice {
             let shift = 10 * (s.new_tick as i32 - s.old_tick as i32);
-            self.info("search", format!("kept your route after {}: your inputs from there run {} s {}", s.goal, crate::fmt::fmt_ms(shift.abs()), if shift <= 0 { "earlier" } else { "later" }));
+            self.info(
+                "search",
+                format!(
+                    "kept your route after {}: your inputs from there run {} s {}",
+                    s.goal,
+                    crate::fmt::fmt_ms(shift.abs()),
+                    if shift <= 0 { "earlier" } else { "later" }
+                ),
+            );
         }
         if let Some(fr) = self.runs_frames.get(&Key::Candidate(id)) {
-            self.accept_check = Some((id, fr.clone(), splice.as_ref().map_or(usize::MAX, |s| s.new_tick + 1)));
+            self.accept_check =
+                Some((id, fr.clone(), splice.as_ref().map_or(usize::MAX, |s| s.new_tick + 1)));
         }
         self.preview = None;
         self.sel = Sel::Current;
@@ -2244,7 +2677,15 @@ impl Editor {
         let mut rid = 0;
         self.edit("keep candidate", None, |d| {
             rid = d.id();
-            d.runs.push(Run { id: rid, name: format!("Candidate #{id}"), inputs, len, start, origin: Origin::Search(text), at: doc::clock() });
+            d.runs.push(Run {
+                id: rid,
+                name: format!("Candidate #{id}"),
+                inputs,
+                len,
+                start,
+                origin: Origin::Search(text),
+                at: doc::clock(),
+            });
         });
         if let Some(f) = self.runs_frames.get(&Key::Candidate(id)).cloned() {
             self.runs_frames.insert(Key::Run(rid), f);
@@ -2254,12 +2695,21 @@ impl Editor {
 
     pub fn new_line_from_here(&mut self) {
         let k = self.cursor.max(self.start_tick().unwrap_or(0));
-        let (len, start, inputs, name) = (self.doc.len, self.doc.start.clone(), self.doc.inputs.clone(), self.doc.run_name.clone());
+        let (len, start, inputs, name) =
+            (self.doc.len, self.doc.start.clone(), self.doc.inputs.clone(), self.doc.run_name.clone());
         let at = crate::fmt::fmt_ms(self.race_ms0 + 10 * k as i32);
         let label = format!("{name} before {at} s");
         self.edit("keep the old line", None, |d| {
             let rid = d.id();
-            d.runs.push(Run { id: rid, name: label, inputs, len, start, origin: Origin::Edit, at: doc::clock() });
+            d.runs.push(Run {
+                id: rid,
+                name: label,
+                inputs,
+                len,
+                start,
+                origin: Origin::Edit,
+                at: doc::clock(),
+            });
         });
         self.set_ticks("new line from here", None, (k..self.doc.len).map(|t| (t, Controls::default())));
         self.spec.window = k..(k + 300).min(self.doc.len.max(k + 1));
@@ -2271,11 +2721,13 @@ impl Editor {
         let p: [f32; 3] = (p + Vec3::Y * 0.5).into();
         let mut id = self.drawing.unwrap_or(0);
         let n = self.doc.guides.len() + 1;
-        self.edit("draw line", Some(&format!("line-{}", self.drawing.map_or(0, |d| d))), |d| match d.guide_mut(id) {
-            Some(g) => g.points.push(p),
-            None => {
-                id = d.id();
-                d.guides.push(crate::doc::Guide { id, name: format!("Line {n}"), points: vec![p] });
+        self.edit("draw line", Some(&format!("line-{}", self.drawing.map_or(0, |d| d))), |d| {
+            match d.guide_mut(id) {
+                Some(g) => g.points.push(p),
+                None => {
+                    id = d.id();
+                    d.guides.push(crate::doc::Guide { id, name: format!("Line {n}"), points: vec![p] });
+                }
             }
         });
         self.drawing = Some(id);
@@ -2299,11 +2751,14 @@ impl Editor {
             return;
         }
         let n = cand.len().min(self.sim.frames.len()).min(*upto);
-        let differs = (0..n).find(|&k| cand[k].body.map(f32::to_bits) != self.sim.frames[k].body.map(f32::to_bits));
+        let differs =
+            (0..n).find(|&k| cand[k].body.map(f32::to_bits) != self.sim.frames[k].body.map(f32::to_bits));
         let same = differs.is_none();
         let msg = match differs {
             None => format!("session re-simulation identical to the preview: {n} ticks, every body bit"),
-            Some(k) => format!("session re-simulation DIFFERS from the preview from tick {k} (of {n} compared)"),
+            Some(k) => {
+                format!("session re-simulation DIFFERS from the preview from tick {k} (of {n} compared)")
+            }
         };
         let id = *id;
         if same {

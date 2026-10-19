@@ -3,8 +3,12 @@ mod pressure;
 pub use clip::{BOX_TOPOLOGY, BoxFace, submerged_triangles};
 pub use pressure::integrate;
 
-use crate::{Aabb, Vec3, dyna::{BodyHandle, Dyna, ForceAcc, SolverFlags}, math::fast_log2};
 use super::{WaterManager, drag::FluidTuning, surface::SurfaceGrid};
+use crate::{
+    Aabb, Vec3,
+    dyna::{BodyHandle, Dyna, ForceAcc, SolverFlags},
+    math::fast_log2,
+};
 
 const LOG10_2: f32 = 0.30103;
 const FRICTION_NUMERATOR: f32 = 0.075;
@@ -28,13 +32,17 @@ pub fn water_grid(water: WaterManager<'_>, bounds: Aabb) -> Option<SurfaceGrid> 
     if !water.query(point, half_height + half_height, Some(&mut level), None) {
         return None;
     }
-    Some(SurfaceGrid::flat([bounds.center.x, bounds.center.z],
-        [bounds.half.x, bounds.half.z], [2, 2], level))
+    Some(SurfaceGrid::flat([bounds.center.x, bounds.center.z], [bounds.half.x, bounds.half.z], [2, 2], level))
 }
 
-pub fn body_forces(state: &crate::dyna::BodyState, center: Vec3, bounds: Aabb,
-    tuning: &FluidTuning, grid: &SurfaceGrid, geometry: &mut impl Geometry) -> ForceAcc
-{
+pub fn body_forces(
+    state: &crate::dyna::BodyState,
+    center: Vec3,
+    bounds: Aabb,
+    tuning: &FluidTuning,
+    grid: &SurfaceGrid,
+    geometry: &mut impl Geometry,
+) -> ForceAcc {
     let span = bounds.half.z * 2.0;
     let speed = state.vel.dot(state.vel).sqrt();
     let reynolds = speed * span / tuning.reference_length;
@@ -45,9 +53,11 @@ pub fn body_forces(state: &crate::dyna::BodyState, center: Vec3, bounds: Aabb,
         let [a, b, c] = triangles[index].vertices;
         let first = b - a;
         let second = c - a;
-        let cross = Vec3::new(first.y * second.z - second.y * first.z,
+        let cross = Vec3::new(
+            first.y * second.z - second.y * first.z,
             second.x * first.z - first.x * second.z,
-            first.x * second.y - first.y * second.x);
+            first.x * second.y - first.y * second.x,
+        );
         if MIN_TRIANGLE_CROSS_SQUARED > cross.dot(cross) {
             triangles.swap_remove(index);
         }
@@ -55,10 +65,15 @@ pub fn body_forces(state: &crate::dyna::BodyState, center: Vec3, bounds: Aabb,
     integrate(state, center, tuning, friction, grid, &triangles, geometry).total()
 }
 
-pub fn apply(water: Option<WaterManager<'_>>, dyna: &mut Dyna, handle: BodyHandle,
-    bounds: Aabb, world_bounds: Aabb, tuning: &FluidTuning, geometry: &mut impl Geometry)
-    -> Option<ForceAcc>
-{
+pub fn apply(
+    water: Option<WaterManager<'_>>,
+    dyna: &mut Dyna,
+    handle: BodyHandle,
+    bounds: Aabb,
+    world_bounds: Aabb,
+    tuning: &FluidTuning,
+    geometry: &mut impl Geometry,
+) -> Option<ForceAcc> {
     let water = water?;
     let grid = water_grid(water, world_bounds);
     dyna.bodies[0].record.flags.set(SolverFlags::IN_WATER, grid.is_some());
@@ -69,8 +84,11 @@ pub fn apply(water: Option<WaterManager<'_>>, dyna: &mut Dyna, handle: BodyHandl
     let inverse_mass = 1.0 / body.model.mass;
     Some(ForceAcc {
         force: inverse_mass * force.force,
-        torque: Vec3::new(body.inertia.diagonal.x * force.torque.x,
-            body.inertia.diagonal.y * force.torque.y, body.inertia.diagonal.z * force.torque.z),
+        torque: Vec3::new(
+            body.inertia.diagonal.x * force.torque.x,
+            body.inertia.diagonal.y * force.torque.y,
+            body.inertia.diagonal.z * force.torque.z,
+        ),
     })
 }
 
@@ -78,13 +96,16 @@ pub struct CollisionGeometry;
 
 impl Geometry for CollisionGeometry {
     fn height(&mut self, grid: &SurfaceGrid, point: Vec3) -> f32 {
-        let planes: Vec<_> = grid.planes.iter().map(|p| {
-            [p.normal.x, p.normal.y, p.normal.z, p.offset]
-        }).collect();
+        let planes: Vec<_> =
+            grid.planes.iter().map(|p| [p.normal.x, p.normal.y, p.normal.z, p.offset]).collect();
         crate::collision::profile::HeightField {
-            planes: &planes, origin: grid.origin, cells: grid.size,
-            inverse_cell: grid.inverse_cell, cell_size: grid.cell,
-        }.height(point)
+            planes: &planes,
+            origin: grid.origin,
+            cells: grid.size,
+            inverse_cell: grid.inverse_cell,
+            cell_size: grid.cell,
+        }
+        .height(point)
     }
     fn split_horizontal(&mut self, triangle: Triangle, remaining: usize) -> Vec<Triangle> {
         let mut out = Vec::new();

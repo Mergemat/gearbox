@@ -1,7 +1,7 @@
-use gearbox_packs::assets::Role;
-use gearbox_engine::static_world::Entity;
+use super::packs::{LAYER_STATIC, LAYER_TRIGGER};
 use gearbox_engine::collision::ItemEvents;
-use super::packs::{LAYER_TRIGGER, LAYER_STATIC};
+use gearbox_engine::static_world::Entity;
+use gearbox_packs::assets::Role;
 
 use crate::statics::items::ItemSpec;
 use crate::statics::packs::PackSource;
@@ -34,9 +34,7 @@ pub fn items(map: &gearbox_gbx::Map, src: &mut PackSource<'_>) -> Vec<Result<Vec
                 .into_iter()
                 .map(|(role, shape, transform)| {
                     let (entity, layer, flags) = match role {
-                        Role::SpecialTrigger => {
-                            (Entity::Gate(0), LAYER_GATE, 0)
-                        }
+                        Role::SpecialTrigger => (Entity::Gate(0), LAYER_GATE, 0),
                         Role::Waypoint(_) => {
                             (Entity::Waypoint(None), LAYER_TRIGGER, ItemEvents::CONTACT_TIME.bits())
                         }

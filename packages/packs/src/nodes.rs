@@ -36,7 +36,9 @@ pub fn layout(buf: &[u8]) -> Result<Layout> {
     };
     advance(&mut next);
     let main_chunked = buf.len() >= head.body_start + 4
-        && is_class(u32::from_le_bytes(buf[head.body_start..head.body_start + 4].try_into().unwrap()) & !0xfff);
+        && is_class(
+            u32::from_le_bytes(buf[head.body_start..head.body_start + 4].try_into().unwrap()) & !0xfff,
+        );
     let mut stack: Vec<usize> = Vec::new();
     nodes.push(NodeSpan { index: 0, class_id: head.class_id, start: head.body_start, end: None });
     if main_chunked {

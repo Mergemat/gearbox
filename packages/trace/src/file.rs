@@ -136,7 +136,8 @@ fn get_case(r: &mut R) -> io::Result<Case> {
     let seed = r.opt()?;
     let start_ms = r.u32()? as i32;
     let n = r.u32()? as usize;
-    let steps = (0..n).map(|_| Ok(Controls::from_bits([r.u32()?, r.u32()?, r.u32()?]))).collect::<io::Result<_>>()?;
+    let steps =
+        (0..n).map(|_| Ok(Controls::from_bits([r.u32()?, r.u32()?, r.u32()?]))).collect::<io::Result<_>>()?;
     Ok(Case { id, map, source, t0, seed, start_ms, steps })
 }
 
@@ -197,7 +198,12 @@ impl Trace {
             let race = match r.u8()? {
                 0 => states.last().ok_or_else(|| bad("first state repeats a race"))?.race.clone(),
                 1 => None,
-                2 => Some(Race { checkpoints: r.list()?, laps: r.u32()?, finish: r.opt()?, waypoints: r.list()? }),
+                2 => Some(Race {
+                    checkpoints: r.list()?,
+                    laps: r.u32()?,
+                    finish: r.opt()?,
+                    waypoints: r.list()?,
+                }),
                 _ => return Err(bad("race tag")),
             };
             states.push(TickState::from_words(&prev, race));
@@ -241,14 +247,25 @@ mod tests {
             s.race = match k {
                 0 => None,
                 1 | 2 => Some(Race::default()),
-                _ => Some(Race { checkpoints: vec![30], laps: 0, finish: (k == 4).then_some(30), waypoints: vec![7] }),
+                _ => Some(Race {
+                    checkpoints: vec![30],
+                    laps: 0,
+                    finish: (k == 4).then_some(30),
+                    waypoints: vec![7],
+                }),
             };
             states.push(s);
         }
         let t = Trace {
             case: Case {
                 id: "m/rand-1".into(),
-                map: MapRef { file: "m.Map.Gbx".into(), path: "/x/m.Map.Gbx".into(), hash: 9, len: 3, tmx: Some(42) },
+                map: MapRef {
+                    file: "m.Map.Gbx".into(),
+                    path: "/x/m.Map.Gbx".into(),
+                    hash: 9,
+                    len: 3,
+                    tmx: Some(42),
+                },
                 source: "random:1".into(),
                 t0: -1500,
                 seed: None,

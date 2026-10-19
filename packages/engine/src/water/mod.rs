@@ -1,6 +1,6 @@
-mod query;
 pub mod buoyancy;
 pub mod drag;
+mod query;
 pub mod surface;
 
 use crate::world_water::Water;

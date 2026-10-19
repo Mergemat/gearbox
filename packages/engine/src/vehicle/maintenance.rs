@@ -14,17 +14,23 @@ impl Vehicle {
         self.surface_contact_item = None;
         self.controls.actions &= !super::flags::ActionFlags::TRANSIENT.0;
         self.controls.auxiliary_bytes[0] &= !(super::flags::ToggleFlags::ENABLED.0 as u8);
-
     }
 }
 
 pub fn process_contact_points(points: usize, events: usize, impacts: usize) {
-    if points != 0 { todo!("queued contact points"); }
-    if events != 0 { todo!("contact events"); }
-    if impacts != 0 { todo!("impacts"); }
+    if points != 0 {
+        todo!("queued contact points");
+    }
+    if events != 0 {
+        todo!("contact events");
+    }
+    if impacts != 0 {
+        todo!("impacts");
+    }
 }
 
 pub fn parts_update(count: usize) {
-    if count != 0 { todo!("breakable parts"); }
+    if count != 0 {
+        todo!("breakable parts");
+    }
 }
-

@@ -1,6 +1,6 @@
-use crate::{Vec3, arena::VehicleEventKind};
-use super::{ForceCtx, common, control, model1, model5};
 use super::super::tuning::CarModelKind;
+use super::{ForceCtx, common, control, model1, model5};
+use crate::{Vec3, arena::VehicleEventKind};
 
 const FROZEN_STATE: u32 = 1;
 const JUMP_ACTION: u32 = 8;
@@ -30,8 +30,13 @@ pub fn compute_forces(ctx: &mut ForceCtx<'_>) {
     post_bookkeeping(ctx);
     let control = ctx.vehicle.signed_speed_control;
     if control != 0.0 {
-        let force = common::speed_drag(ctx.body.state().vel, common::asym_scale(control), 0.0,
-            ctx.tuning.control_speed_scale, ctx.geometry.mass);
+        let force = common::speed_drag(
+            ctx.body.state().vel,
+            common::asym_scale(control),
+            0.0,
+            ctx.tuning.control_speed_scale,
+            ctx.geometry.mass,
+        );
         ctx.body.add_force(force);
     }
     control::post_forces(ctx);
@@ -56,8 +61,8 @@ fn spin_up(ctx: &mut ForceCtx<'_>) {
         let start = ctx.vehicle.spin_up_begin;
         let duration = ctx.vehicle.spin_up_duration;
         if ctx.tick >= start && ctx.tick <= start.wrapping_add(duration) {
-            let torque = (ctx.tick - start) as f32 / duration as f32
-                * ctx.vehicle.spin_up_torque * ctx.geometry.mass;
+            let torque =
+                (ctx.tick - start) as f32 / duration as f32 * ctx.vehicle.spin_up_torque * ctx.geometry.mass;
             ctx.body.add_local_torque(Vec3::new(torque, 0.0, 0.0));
         }
     }
@@ -85,7 +90,9 @@ pub fn pre_forces_jumps(ctx: &mut ForceCtx<'_>) {
     let mut impulse = None;
     match vehicle.jump_kind {
         1 => {
-            if contact && actions & JUMP_ACTION != 0 && previous & JUMP_ACTION == 0
+            if contact
+                && actions & JUMP_ACTION != 0
+                && previous & JUMP_ACTION == 0
                 && elapsed > tuning.jump_rearm_ms
             {
                 impulse = Some((mass * tuning.jump_forward, mass * tuning.jump_up, true));
@@ -97,11 +104,7 @@ pub fn pre_forces_jumps(ctx: &mut ForceCtx<'_>) {
             if !flagged {
                 if elapsed > tuning.jump_rearm_ms && (contact || vehicle.external_jump != 0) {
                     let forward = mass * tuning.held_jump_forward;
-                    let scale = if vehicle.external_jump != 0 {
-                        EXTERNAL_JUMP_SCALE
-                    } else {
-                        1.0
-                    };
+                    let scale = if vehicle.external_jump != 0 { EXTERNAL_JUMP_SCALE } else { 1.0 };
                     let up = mass * tuning.held_jump_up * scale;
                     impulse = Some((forward, up, true));
                 }
@@ -150,22 +153,21 @@ fn find_surface_contact(ctx: &ForceCtx<'_>, effect: u8, materials: &[u8]) -> Opt
 pub fn bumper_impulse(ctx: &mut ForceCtx<'_>) {
     let contact = find_surface_contact(ctx, 10, &[crate::surface::BUMPER])
         .map(|normal| (normal, false))
-        .or_else(|| find_surface_contact(ctx, 11, &[crate::surface::BUMPER_2])
-            .map(|normal| (normal, true)));
+        .or_else(|| find_surface_contact(ctx, 11, &[crate::surface::BUMPER_2]).map(|normal| (normal, true)));
     let Some((normal, alternate)) = contact else { return };
     let state = ctx.body.state();
     let rotation = state.rot.to_array();
     let offset = ctx.tuning.bumper_offset;
     let center = ctx.geometry.center_of_mass;
-    let local_point = Vec3::new(normal.x * offset + center.x,
-        normal.y * offset + center.y, normal.z * offset + center.z);
+    let local_point =
+        Vec3::new(normal.x * offset + center.x, normal.y * offset + center.y, normal.z * offset + center.z);
     let point = Vec3::new(
-        ((rotation[0] * local_point.x + rotation[1] * local_point.y)
-            + rotation[2] * local_point.z) + state.pos.x,
-        ((rotation[3] * local_point.x + rotation[4] * local_point.y)
-            + rotation[5] * local_point.z) + state.pos.y,
-        ((rotation[6] * local_point.x + rotation[7] * local_point.y)
-            + rotation[8] * local_point.z) + state.pos.z,
+        ((rotation[0] * local_point.x + rotation[1] * local_point.y) + rotation[2] * local_point.z)
+            + state.pos.x,
+        ((rotation[3] * local_point.x + rotation[4] * local_point.y) + rotation[5] * local_point.z)
+            + state.pos.y,
+        ((rotation[6] * local_point.x + rotation[7] * local_point.y) + rotation[8] * local_point.z)
+            + state.pos.z,
     );
     let (normal_scale, forward_scale) = if alternate {
         (ctx.tuning.bumper_alt_normal, ctx.tuning.bumper_alt_forward)

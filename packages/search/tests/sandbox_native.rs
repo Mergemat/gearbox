@@ -1,6 +1,5 @@
 use gearbox_engine::{Controls, Session};
 use gearbox_search::Body;
-use std::cmp::Ordering;
 use gearbox_search::{
     fan,
     goals::{Goal, Goals},
@@ -10,6 +9,7 @@ use gearbox_search::{
     pose::{Placement, Pose, PoseGoal, place},
     search::{Config, Method, Origin, search_from},
 };
+use std::cmp::Ordering;
 
 fn fixtures() -> std::path::PathBuf {
     std::env::var_os("GBX_TEST_DATA").expect("GBX_TEST_DATA: a folder with tmx/ and inputs/").into()
@@ -73,15 +73,7 @@ fn physical_pick_and_placed_car_falls_and_settles_on_road() {
     let mut pose = Pose::from_body(body);
     pose.position[1] = ground.point[1] + 6.0;
     pose.velocity = [0.0; 3];
-    place(
-        &mut s,
-        &Placement {
-            pose,
-            angular_velocity: [0.0; 3],
-            reset_contacts: true,
-        },
-    )
-    .unwrap();
+    place(&mut s, &Placement { pose, angular_velocity: [0.0; 3], reset_contacts: true }).unwrap();
     let start = s.save();
     let placed = s.save();
     for _ in 0..20 {
@@ -95,30 +87,18 @@ fn physical_pick_and_placed_car_falls_and_settles_on_road() {
         assert!(Body::from(s.body()).0.iter().all(|v| v.is_finite()));
     }
     let settled = Body::from(s.body());
-    eprintln!(
-        "settled {:?}, velocity {:?}",
-        settled.position(),
-        settled.local_velocity()
-    );
+    eprintln!("settled {:?}, velocity {:?}", settled.position(), settled.local_velocity());
     assert!(settled.position()[1] > ground.point[1]);
     assert!(settled.position()[1] < ground.point[1] + 1.0);
     assert!(settled.local_velocity()[1].abs() < 0.2);
-    assert!(
-        gearbox_search::tricks::Observation::read(&mut s, settled)
-            .wheels
-            .iter()
-            .any(|v| *v)
-    );
+    assert!(gearbox_search::tricks::Observation::read(&mut s, settled).wheels.iter().any(|v| *v));
     let mut fork = start.native().unwrap();
     fork.restore(&placed);
     s.restore(&placed);
     for _ in 0..200 {
         s.step(Controls::default());
         fork.step(Controls::default());
-        assert_eq!(
-            Body::from(s.body()).0.map(f32::to_bits),
-            Body::from(fork.body()).0.map(f32::to_bits)
-        );
+        assert_eq!(Body::from(s.body()).0.map(f32::to_bits), Body::from(fork.body()).0.map(f32::to_bits));
     }
 }
 
@@ -129,13 +109,7 @@ fn fan_is_deterministic_and_snap_inputs_reach_the_returned_pose() {
     advance(&mut s, 0);
     let start = s.save();
     let origin = start.clone();
-    let mut config = fan::Config {
-        rollouts: 24,
-        horizon_ticks: 80,
-        sample_every: 7,
-        threads: 1,
-        seed: 42,
-    };
+    let mut config = fan::Config { rollouts: 24, horizon_ticks: 80, sample_every: 7, threads: 1, seed: 42 };
     let one = fan::generate(&origin, &config).unwrap();
     config.threads = 4;
     let four = fan::generate(&origin, &config).unwrap();
@@ -164,28 +138,16 @@ fn ordered_mixed_goals_and_receding_prefix_progress_use_real_trajectories() {
     let initial = Pose::from_body(Body::from(s.body()));
     let start = s.save();
     let origin = start.clone();
-    let gas = Controls {
-        gas: 1.0,
-        ..Default::default()
-    };
+    let gas = Controls { gas: 1.0, ..Default::default() };
     for _ in 0..50 {
         s.step(gas);
     }
     let target = Pose::from_body(Body::from(s.body()));
-    let base = Timeline {
-        t0: 0,
-        seed: None,
-        controls: vec![gas; 80],
-    };
+    let base = Timeline { t0: 0, seed: None, controls: vec![gas; 80] };
     let objective = Objective::Goals(Goals {
         ordered: vec![
-            Goal::Point {
-                point: initial.position,
-                radius: 0.5,
-            },
-            Goal::Pose {
-                target: pose_goal(target),
-            },
+            Goal::Point { point: initial.position, radius: 0.5 },
+            Goal::Pose { target: pose_goal(target) },
         ],
         fastest: false,
         speed_worth_ms: 0.0,
@@ -194,19 +156,12 @@ fn ordered_mixed_goals_and_receding_prefix_progress_use_real_trajectories() {
         stay_within: None,
         track: None,
     });
-    let score = evaluate(&mut origin.native().unwrap(), &base, &objective, 800)
-        .unwrap()
-        .score;
+    let score = evaluate(&mut origin.native().unwrap(), &base, &objective, 800).unwrap().score;
     assert!(score.reached(), "{score}");
     let reversed = Objective::Goals(Goals {
         ordered: vec![
-            Goal::Pose {
-                target: pose_goal(target),
-            },
-            Goal::Point {
-                point: initial.position,
-                radius: 0.5,
-            },
+            Goal::Pose { target: pose_goal(target) },
+            Goal::Point { point: initial.position, radius: 0.5 },
         ],
         fastest: false,
         speed_worth_ms: 0.0,
@@ -215,24 +170,11 @@ fn ordered_mixed_goals_and_receding_prefix_progress_use_real_trajectories() {
         stay_within: None,
         track: None,
     });
-    assert!(
-        !evaluate(&mut origin.native().unwrap(), &base, &reversed, 800)
-            .unwrap()
-            .score
-            .reached()
-    );
+    assert!(!evaluate(&mut origin.native().unwrap(), &base, &reversed, 800).unwrap().score.reached());
     for method in [
         Method::HillClimb,
-        Method::Population {
-            width: 4,
-            curve_ticks: 10,
-        },
-        Method::Receding {
-            horizon_ticks: 40,
-            commit_ticks: 20,
-            width: 4,
-            curve_ticks: 10,
-        },
+        Method::Population { width: 4, curve_ticks: 10 },
+        Method::Receding { horizon_ticks: 40, commit_ticks: 20, width: 4, curve_ticks: 10 },
     ] {
         let mut config = Config {
             window_start_ms: 0,
@@ -264,20 +206,11 @@ fn ordered_mixed_goals_and_receding_prefix_progress_use_real_trajectories() {
         s.step(gas);
     }
     let far = Pose::from_body(Body::from(s.body()));
-    let neutral = Timeline {
-        t0: 0,
-        seed: None,
-        controls: vec![Controls::default(); 90],
-    };
+    let neutral = Timeline { t0: 0, seed: None, controls: vec![Controls::default(); 90] };
     let tight = Objective::Goals(Goals {
         ordered: vec![
-            Goal::Point {
-                point: initial.position,
-                radius: 0.05,
-            },
-            Goal::Pose {
-                target: pose_goal(far),
-            },
+            Goal::Point { point: initial.position, radius: 0.05 },
+            Goal::Pose { target: pose_goal(far) },
         ],
         fastest: false,
         speed_worth_ms: 0.0,
@@ -296,12 +229,7 @@ fn ordered_mixed_goals_and_receding_prefix_progress_use_real_trajectories() {
         batch_size: 16,
         seed: 42,
         mutation: Mutation::default(),
-        method: Method::Receding {
-            horizon_ticks: 30,
-            commit_ticks: 10,
-            width: 4,
-            curve_ticks: 10,
-        },
+        method: Method::Receding { horizon_ticks: 30, commit_ticks: 10, width: 4, curve_ticks: 10 },
         evaluation: EvalOptions::default(),
     };
     let receding = search_from(&origin, neutral, &config, |_| {}).unwrap();
@@ -315,10 +243,7 @@ fn ordered_mixed_goals_and_receding_prefix_progress_use_real_trajectories() {
     gate.waypoint = u32::MAX;
     let mixed = Objective::Goals(Goals {
         ordered: vec![
-            Goal::Point {
-                point: initial.position,
-                radius: 0.5,
-            },
+            Goal::Point { point: initial.position, radius: 0.5 },
             Goal::Gate { ordinal: 1, gate, also: Vec::new() },
         ],
         fastest: false,
@@ -338,20 +263,17 @@ fn mixed_goals_credit_real_recorded_gate_crossings_in_order() {
     let data = fixtures();
     let file = data.join("inputs/k54999.txt.in");
     let inputs = Timeline::read(&file).unwrap();
-    let mut s = gearbox_search::session::open(&packs(), &data.join("tmx/kacky/54999_uberbug.Map.Gbx"), Some(&inputs)).unwrap();
+    let mut s =
+        gearbox_search::session::open(&packs(), &data.join("tmx/kacky/54999_uberbug.Map.Gbx"), Some(&inputs))
+            .unwrap();
     let initial = Pose::from_body(Body::from(s.body()));
     let gate = gearbox_search::gate::reference_gate(&mut s, 1, &inputs, inputs.end_ms().unwrap())
         .unwrap()
         .expect("recorded finish");
     let objective = Objective::Goals(Goals {
         ordered: vec![
-            Goal::Point {
-                point: initial.position,
-                radius: 0.5,
-            },
-            Goal::Pose {
-                target: pose_goal(initial),
-            },
+            Goal::Point { point: initial.position, radius: 0.5 },
+            Goal::Pose { target: pose_goal(initial) },
             Goal::Gate { ordinal: 1, gate, also: Vec::new() },
             Goal::Waypoint { ordinal: 1 },
             Goal::Finish,
@@ -366,9 +288,7 @@ fn mixed_goals_credit_real_recorded_gate_crossings_in_order() {
     let result = evaluate(&mut s, &inputs, &objective, inputs.end_ms().unwrap()).unwrap();
     eprintln!("recorded mixed goals: {}", result.score);
     assert!(result.score.reached());
-    assert!(
-        matches!(result.score, Score::Goals { times, .. } if times == [-1530, -1530, 5509, 5509, 5509])
-    );
+    assert!(matches!(result.score, Score::Goals { times, .. } if times == [-1530, -1530, 5509, 5509, 5509]));
 }
 
 #[test]
@@ -377,7 +297,9 @@ fn a_crossing_in_the_tick_that_reaches_a_point_counts_after_it() {
     let data = fixtures();
     let file = data.join("inputs/k54999.txt.in");
     let inputs = Timeline::read(&file).unwrap();
-    let mut s = gearbox_search::session::open(&packs(), &data.join("tmx/kacky/54999_uberbug.Map.Gbx"), Some(&inputs)).unwrap();
+    let mut s =
+        gearbox_search::session::open(&packs(), &data.join("tmx/kacky/54999_uberbug.Map.Gbx"), Some(&inputs))
+            .unwrap();
     let start = s.save();
     let (mut at_finish, mut after_finish) = (None, None);
     for c in &inputs.controls {
@@ -396,34 +318,20 @@ fn a_crossing_in_the_tick_that_reaches_a_point_counts_after_it() {
     let score = |point: [f32; 3], s: &mut Session| {
         s.restore(&start);
         let goals = Objective::Goals(Goals {
-            ordered: vec![
-                Goal::Point {
-                    point,
-                    radius: 0.01,
-                },
-                Goal::Finish,
-            ],
+            ordered: vec![Goal::Point { point, radius: 0.01 }, Goal::Finish],
             fastest: false,
-        speed_worth_ms: 0.0,
-        conditions: Vec::new(),
-        along: None,
-        stay_within: None,
-        track: None,
+            speed_worth_ms: 0.0,
+            conditions: Vec::new(),
+            along: None,
+            stay_within: None,
+            track: None,
         });
-        evaluate(s, &inputs, &goals, inputs.end_ms().unwrap())
-            .unwrap()
-            .score
+        evaluate(s, &inputs, &goals, inputs.end_ms().unwrap()).unwrap().score
     };
     let same = score(point, &mut s);
-    assert!(
-        matches!(&same, Score::Goals { times, .. } if *times == [ms, finish]),
-        "{same}"
-    );
+    assert!(matches!(&same, Score::Goals { times, .. } if *times == [ms, finish]), "{same}");
     let next = score(later, &mut s);
-    assert!(
-        matches!(&next, Score::Goals { times, .. } if *times == [later_ms]),
-        "{next}"
-    );
+    assert!(matches!(&next, Score::Goals { times, .. } if *times == [later_ms]), "{next}");
 }
 
 #[test]
@@ -432,49 +340,21 @@ fn placement_velocities_are_world_space_and_rotation_evolves_physically() {
     let mut s = open();
     advance(&mut s, 0);
     let q = std::f32::consts::FRAC_1_SQRT_2;
-    let pose = Pose {
-        position: [780.0, 30.0, 760.0],
-        rotation: [q, 0.0, q, 0.0],
-        velocity: [7.0, -2.0, 1.0],
-    };
+    let pose =
+        Pose { position: [780.0, 30.0, 760.0], rotation: [q, 0.0, q, 0.0], velocity: [7.0, -2.0, 1.0] };
     let clock = s.race_ms();
-    place(
-        &mut s,
-        &Placement {
-            pose,
-            angular_velocity: [0.0, 0.5, 0.0],
-            reset_contacts: true,
-        },
-    )
-    .unwrap();
+    place(&mut s, &Placement { pose, angular_velocity: [0.0, 0.5, 0.0], reset_contacts: true }).unwrap();
     assert_eq!(s.race_ms(), clock);
     s.step(Controls::default());
     let after = Pose::from_body(Body::from(s.body()));
-    assert!(
-        (after.position[0] - pose.position[0] - 0.07).abs() < 0.01,
-        "{after:?}"
-    );
-    assert!(
-        (after.position[2] - pose.position[2] - 0.01).abs() < 0.01,
-        "{after:?}"
-    );
+    assert!((after.position[0] - pose.position[0] - 0.07).abs() < 0.01, "{after:?}");
+    assert!((after.position[2] - pose.position[2] - 0.01).abs() < 0.01, "{after:?}");
     assert!(after.position[1] < pose.position[1] - 0.015);
     let angle = gearbox_search::pose::rotation_distance(pose.rotation, after.rotation);
     assert!((0.001..0.02).contains(&angle), "angle {angle}");
-    let pose = Pose {
-        position: [800.0, 30.0, 760.0],
-        rotation: [q, 0.0, -q, 0.0],
-        velocity: [-5.0, -1.0, 2.0],
-    };
-    place(
-        &mut s,
-        &Placement {
-            pose,
-            angular_velocity: [0.0, 0.0, 0.5],
-            reset_contacts: false,
-        },
-    )
-    .unwrap();
+    let pose =
+        Pose { position: [800.0, 30.0, 760.0], rotation: [q, 0.0, -q, 0.0], velocity: [-5.0, -1.0, 2.0] };
+    place(&mut s, &Placement { pose, angular_velocity: [0.0, 0.0, 0.5], reset_contacts: false }).unwrap();
     s.step(Controls::default());
     let after = Body::from(s.body());
     assert!(after.0.iter().all(|v| v.is_finite()));
@@ -487,31 +367,20 @@ fn placement_velocities_are_world_space_and_rotation_evolves_physically() {
 fn snapped_variant_refinement_reaches_landing_pose_earlier() {
     let mut s = open();
     advance(&mut s, 0);
-    let placement: Placement =
-        serde_json::from_str(include_str!("fixtures/drop-start.json")).unwrap();
+    let placement: Placement = serde_json::from_str(include_str!("fixtures/drop-start.json")).unwrap();
     let target: PoseGoal = serde_json::from_str(include_str!("fixtures/drop-goal.json")).unwrap();
     place(&mut s, &placement).unwrap();
     let start = s.save();
     let origin = start.clone();
     let fan = fan::generate(
         &origin,
-        &fan::Config {
-            rollouts: 2000,
-            horizon_ticks: 100,
-            sample_every: 5,
-            threads: 4,
-            seed: 42,
-        },
+        &fan::Config { rollouts: 2000, horizon_ticks: 100, sample_every: 5, threads: 4, seed: 42 },
     )
     .unwrap();
     let snap = fan::snap(&target, &fan).unwrap().unwrap();
     let mut seed = snap.inputs;
     seed.controls.resize(100, Controls::default());
-    let blank = Timeline {
-        t0: 0,
-        seed: None,
-        controls: vec![Controls::default(); 100],
-    };
+    let blank = Timeline { t0: 0, seed: None, controls: vec![Controls::default(); 100] };
     let config = Config {
         window_start_ms: 0,
         window_end_ms: 1000,
@@ -519,25 +388,19 @@ fn snapped_variant_refinement_reaches_landing_pose_earlier() {
         objective: Objective::Goals(Goals {
             ordered: vec![Goal::Pose { target }],
             fastest: false,
-        speed_worth_ms: 0.0,
-        conditions: Vec::new(),
-        along: None,
-        stay_within: None,
-        track: None,
+            speed_worth_ms: 0.0,
+            conditions: Vec::new(),
+            along: None,
+            stay_within: None,
+            track: None,
         }),
         iterations: 256,
         threads: 4,
         batch_size: 64,
         seed: 42,
         mutation: Mutation::default(),
-        method: Method::Population {
-            width: 8,
-            curve_ticks: 10,
-        },
-        evaluation: EvalOptions {
-            full_rollout: true,
-            ..Default::default()
-        },
+        method: Method::Population { width: 8, curve_ticks: 10 },
+        evaluation: EvalOptions { full_rollout: true, ..Default::default() },
     };
     let scratch = search_from(&origin, blank, &config, |_| {}).unwrap();
     let refined = search_from(&origin, seed, &config, |_| {}).unwrap();
@@ -550,10 +413,7 @@ fn snapped_variant_refinement_reaches_landing_pose_earlier() {
     assert_eq!(scratch.evaluated_ticks, 25600);
     assert_eq!(refined.evaluated_ticks, 25600);
     assert!(scratch.after.score.reached() && refined.after.score.reached());
-    assert_eq!(
-        refined.after.score.quality_cmp(&scratch.after.score),
-        Ordering::Greater
-    );
+    assert_eq!(refined.after.score.quality_cmp(&scratch.after.score), Ordering::Greater);
 }
 
 #[test]
@@ -562,7 +422,9 @@ fn full_rollouts_stop_counting_signatures_at_the_crossing() {
     let data = fixtures();
     let file = data.join("inputs/k54999.txt.in");
     let inputs = Timeline::read(&file).unwrap();
-    let mut s = gearbox_search::session::open(&packs(), &data.join("tmx/kacky/54999_uberbug.Map.Gbx"), Some(&inputs)).unwrap();
+    let mut s =
+        gearbox_search::session::open(&packs(), &data.join("tmx/kacky/54999_uberbug.Map.Gbx"), Some(&inputs))
+            .unwrap();
     let gate = gearbox_search::gate::reference_gate(&mut s, 1, &inputs, inputs.end_ms().unwrap())
         .unwrap()
         .expect("recorded finish");
@@ -573,56 +435,25 @@ fn full_rollouts_stop_counting_signatures_at_the_crossing() {
     let mut pose = Pose::from_body(Body::from(s.body()));
     let (h, c) = (0.45f32.sin(), 0.45f32.cos());
     let q = pose.rotation;
-    pose.rotation = [
-        q[0] * c - q[1] * h,
-        q[1] * c + q[0] * h,
-        q[2] * c + q[3] * h,
-        q[3] * c - q[2] * h,
-    ];
+    pose.rotation = [q[0] * c - q[1] * h, q[1] * c + q[0] * h, q[2] * c + q[3] * h, q[3] * c - q[2] * h];
     pose.position[1] += 2.0;
-    place(
-        &mut s,
-        &Placement {
-            pose,
-            angular_velocity: [0.0; 3],
-            reset_contacts: true,
-        },
-    )
-    .unwrap();
+    place(&mut s, &Placement { pose, angular_velocity: [0.0; 3], reset_contacts: true }).unwrap();
     let gas = Timeline {
         t0: s.race_ms(),
         seed: inputs.seed,
-        controls: vec![
-            Controls {
-                gas: 1.0,
-                ..Default::default()
-            };
-            150
-        ],
+        controls: vec![Controls { gas: 1.0, ..Default::default() }; 150],
     };
     let start = s.save();
-    let objective = Objective::Gate {
-        ordinal: 1,
-        gate,
-        time_penalty: 1.0,
-    };
+    let objective = Objective::Gate { ordinal: 1, gate, time_penalty: 1.0 };
     let mut run = |full_rollout| {
         s.restore(&start);
-        let options = EvalOptions {
-            full_rollout,
-            trick_bonus: 1.0,
-            trace: true,
-            ..Default::default()
-        };
+        let options = EvalOptions { full_rollout, trick_bonus: 1.0, trace: true, ..Default::default() };
         gearbox_search::objective::evaluate_with(&mut s, &gas, &objective, gas.end_ms().unwrap(), options)
             .unwrap()
     };
     let first = run(false);
     let full = run(true);
-    let Score::Guided {
-        time_ms: Some(hit), ..
-    } = first.score
-    else {
+    let Score::Guided { time_ms: Some(hit), .. } = first.score else {
         panic!("gate not reached: {}", first.score);
     };
     let after_hit = full
@@ -649,14 +480,11 @@ fn full_rollouts_stop_counting_signatures_at_the_crossing() {
 fn a_placed_origin_searches_like_a_saved_placed_start() {
     let mut s = open();
     advance(&mut s, 0);
-    let placement: Placement =
-        serde_json::from_str(include_str!("fixtures/drop-start.json")).unwrap();
+    let placement: Placement = serde_json::from_str(include_str!("fixtures/drop-start.json")).unwrap();
     let start = s.save();
     let unplaced = start.clone();
-    let placed_origin = gearbox_search::pose::PlacedOrigin {
-        origin: &unplaced,
-        placement: placement.clone(),
-    };
+    let placed_origin =
+        gearbox_search::pose::PlacedOrigin { origin: &unplaced, placement: placement.clone() };
     place(&mut s, &placement).unwrap();
     let placed_start = s.save();
     let saved = placed_start.clone();
@@ -675,28 +503,21 @@ fn a_placed_origin_searches_like_a_saved_placed_start() {
         objective: Objective::Goals(Goals {
             ordered: vec![Goal::Pose { target }],
             fastest: false,
-        speed_worth_ms: 0.0,
-        conditions: Vec::new(),
-        along: None,
-        stay_within: None,
-        track: None,
+            speed_worth_ms: 0.0,
+            conditions: Vec::new(),
+            along: None,
+            stay_within: None,
+            track: None,
         }),
         iterations: 64,
         threads: 4,
         batch_size: 32,
         seed: 42,
         mutation: Mutation::default(),
-        method: Method::Population {
-            width: 8,
-            curve_ticks: 10,
-        },
+        method: Method::Population { width: 8, curve_ticks: 10 },
         evaluation: EvalOptions::default(),
     };
-    let blank = Timeline {
-        t0: 0,
-        seed: None,
-        controls: vec![Controls::default(); 100],
-    };
+    let blank = Timeline { t0: 0, seed: None, controls: vec![Controls::default(); 100] };
     let via_placement = search_from(&placed_origin, blank.clone(), &config, |_| {}).unwrap();
     let via_save = search_from(&saved, blank, &config, |_| {}).unwrap();
     assert_eq!(via_placement.after, via_save.after);
@@ -738,9 +559,17 @@ fn a_try_keeps_its_range_then_follows_the_trail_with_the_gas_held() {
     assert!(followed.line.controls[to..].iter().all(|c| c.gas == 1.0 && c.brake == 0.0));
     let off = |t: &[[f32; 3]]| {
         let p = t.last().unwrap();
-        trail.iter().map(|q| ((p[0] - q[0]).powi(2) + (p[2] - q[2]).powi(2)).sqrt()).fold(f32::INFINITY, f32::min)
+        trail
+            .iter()
+            .map(|q| ((p[0] - q[0]).powi(2) + (p[2] - q[2]).powi(2)).sqrt())
+            .fold(f32::INFINITY, f32::min)
     };
-    assert!(off(&followed.trail) < 0.5 * off(&left_alone.trail), "followed {:.1} m off, left alone {:.1} m", off(&followed.trail), off(&left_alone.trail));
+    assert!(
+        off(&followed.trail) < 0.5 * off(&left_alone.trail),
+        "followed {:.1} m off, left alone {:.1} m",
+        off(&followed.trail),
+        off(&left_alone.trail)
+    );
     assert!(followed.speed_at_end > 0.0);
 }
 
@@ -751,17 +580,42 @@ fn the_general_aim_agrees_with_the_speed_objective_and_its_best_is_no_worse() {
     let start = s.save();
     let origin = start.clone();
     let k0 = (-s.race_ms() / 10) as usize;
-    let line = Timeline { t0: s.race_ms(), seed: None, controls: vec![Controls { gas: 1.0, brake: 0.0, steer: 0.3 }; k0 + 300] };
+    let line = Timeline {
+        t0: s.race_ms(),
+        seed: None,
+        controls: vec![Controls { gas: 1.0, brake: 0.0, steer: 0.3 }; k0 + 300],
+    };
     let at_ms = 2000;
     let score = |objective: Objective| {
         let mut n = origin.native().unwrap();
         evaluate(&mut n, &line, &objective, at_ms).unwrap().score
     };
     let Score::Speed { speed_squared } = score(Objective::Speed { at_ms }) else { panic!() };
-    let Score::Aim { held, value, .. } = score(Objective::Aim { at_ms, aim: gearbox_search::aim::Aim::fastest() }) else { panic!() };
+    let Score::Aim { held, value, .. } =
+        score(Objective::Aim { at_ms, aim: gearbox_search::aim::Aim::fastest() })
+    else {
+        panic!()
+    };
     assert!(held);
-    assert!((value - speed_squared.sqrt() * 3.6).abs() < 1e-6, "{value} km/h against {} km/h", speed_squared.sqrt() * 3.6);
-    let low = |judged| gearbox_search::aim::Aim { judged, measure: gearbox_search::aim::Measure { quantity: gearbox_search::aim::Quantity::Height, higher: false }, conditions: Vec::new(), then: None };
-    let (Score::Aim { value: end, .. }, Score::Aim { value: best, .. }) = (score(Objective::Aim { at_ms, aim: low(gearbox_search::aim::Judged::End) }), score(Objective::Aim { at_ms, aim: low(gearbox_search::aim::Judged::Best) })) else { panic!() };
+    assert!(
+        (value - speed_squared.sqrt() * 3.6).abs() < 1e-6,
+        "{value} km/h against {} km/h",
+        speed_squared.sqrt() * 3.6
+    );
+    let low = |judged| gearbox_search::aim::Aim {
+        judged,
+        measure: gearbox_search::aim::Measure {
+            quantity: gearbox_search::aim::Quantity::Height,
+            higher: false,
+        },
+        conditions: Vec::new(),
+        then: None,
+    };
+    let (Score::Aim { value: end, .. }, Score::Aim { value: best, .. }) = (
+        score(Objective::Aim { at_ms, aim: low(gearbox_search::aim::Judged::End) }),
+        score(Objective::Aim { at_ms, aim: low(gearbox_search::aim::Judged::Best) }),
+    ) else {
+        panic!()
+    };
     assert!(best >= end, "best {best} below the end's {end}");
 }

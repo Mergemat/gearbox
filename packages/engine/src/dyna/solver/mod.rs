@@ -1,13 +1,13 @@
 mod contacts;
-pub mod pruning;
 pub mod islands;
+pub mod pruning;
 
-pub use contacts::{
-    ContactRow, ImpulseContact, closest_time_ms, clip_sum, contact_inverse_mass, solve_contacts,
-};
-use super::{Body, BodyOptions, Collision, Dyna, SolverFlags};
 use super::constants::{NULL_INDEX, SOLVER_EPSILON};
-use crate::{ItemId, Iso, Vec3};
+use super::{Body, BodyOptions, Collision, Dyna, SolverFlags};
+use crate::{Iso, ItemId, Vec3};
+pub use contacts::{
+    ContactRow, ImpulseContact, clip_sum, closest_time_ms, contact_inverse_mass, solve_contacts,
+};
 
 pub const MAX_SUBSTEPS: usize = 1000;
 const MAX_WORKERS: usize = 64;
@@ -184,11 +184,7 @@ fn save_fixed_poses(dyna: &mut Dyna, collision: &impl Collision) {
 fn place_objects(dyna: &Dyna, collision: &mut impl Collision) {
     for owners in [false, true] {
         for body in &dyna.bodies {
-            let item = if owners {
-                body.owner_item
-            } else {
-                body.item
-            };
+            let item = if owners { body.owner_item } else { body.item };
             if let Some(item) = item {
                 collision.set_placement(item, body.state.pose());
             }
@@ -210,9 +206,8 @@ fn center_bodies(dyna: &mut Dyna) {
 
 fn broad_phase(dyna: &mut Dyna, cache: &[CollisionRecord]) {
     let count = dyna.bodies.len();
-    dyna.work.buckets.island_items = (0..count as u32)
-        .map(|i| islands::IslandItem { parent: i, link: 0 })
-        .collect();
+    dyna.work.buckets.island_items =
+        (0..count as u32).map(|i| islands::IslandItem { parent: i, link: 0 }).collect();
     dyna.work.reset_collision(1);
     for body in &dyna.bodies {
         if !body.record.flags.contains(SolverFlags::SKIP_STATIC_COLLISION) {
@@ -234,14 +229,17 @@ fn broad_phase(dyna: &mut Dyna, cache: &[CollisionRecord]) {
         indices.push(i as u32);
     }
     dyna.work.broad_pairs = pruning::box_pruning(&mut dyna.work.radix, &boxes);
-    dyna.work.narrow_pairs = dyna.work.broad_pairs.iter()
-        .map(|&(a, b)| (indices[a as usize], indices[b as usize]))
-        .collect();
+    dyna.work.narrow_pairs =
+        dyna.work.broad_pairs.iter().map(|&(a, b)| (indices[a as usize], indices[b as usize])).collect();
 }
 
 fn detect(dyna: &mut Dyna, cache: &[CollisionRecord], collision: &mut impl Collision) {
     collision.detect(cache, dyna.dynamic_registered, &mut dyna.work);
-    let has_contacts = dyna.work.collision_entries.iter().chain(&dyna.work.static_entries)
+    let has_contacts = dyna
+        .work
+        .collision_entries
+        .iter()
+        .chain(&dyna.work.static_entries)
         .any(|entry| !entry.contacts.is_empty() || !entry.pairs.is_empty());
     if has_contacts {
         todo!("per-thread contacts");

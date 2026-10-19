@@ -1,6 +1,9 @@
-use crate::{Quat, Vec3};
+use super::{
+    ForceCtx, ForceRayHit,
+    common::{KMH, PEDAL_THRESHOLD},
+};
 use crate::math::maxss;
-use super::{ForceCtx, ForceRayHit, common::{KMH, PEDAL_THRESHOLD}};
+use crate::{Quat, Vec3};
 
 const GROUND_FORCE_SHARE: f32 = 0.5;
 const ROLL_REACH: f32 = 3.0;
@@ -26,11 +29,7 @@ fn hover_spring(ctx: &mut ForceCtx<'_>, index: usize) {
     let origin = rotated + ctx.vehicle.pos;
     let direction = rotation.rotate(Vec3::new(0.0, -tuning.hover_down_reach, 0.0));
     let in_water = ctx.vehicle.in_water != 0;
-    let hit = if in_water {
-        None
-    } else {
-        ctx.collision.raycast(origin, direction)
-    };
+    let hit = if in_water { None } else { ctx.collision.raycast(origin, direction) };
     let wheel = &mut ctx.vehicle.wheels[index];
     if !in_water && hit.is_none() {
         wheel.hover_depth = 0.0;
@@ -38,17 +37,9 @@ fn hover_spring(ctx: &mut ForceCtx<'_>, index: usize) {
         wheel.suspension_rate = 0.0;
         return;
     }
-    let fraction = if in_water {
-        tuning.hover_water_fraction
-    } else {
-        hit.unwrap().fraction
-    };
+    let fraction = if in_water { tuning.hover_water_fraction } else { hit.unwrap().fraction };
     let depth = maxss(fraction * tuning.hover_down_reach - definition.radius, 0.0);
-    let rate = if wheel.boost_contact != 0 {
-        (depth - wheel.hover_depth) / ctx.dt
-    } else {
-        0.0
-    };
+    let rate = if wheel.boost_contact != 0 { (depth - wheel.hover_depth) / ctx.dt } else { 0.0 };
     wheel.hover_depth = depth;
     wheel.suspension_rate = rate;
     wheel.material = 0;
@@ -71,11 +62,7 @@ fn side_push(ctx: &mut ForceCtx<'_>, index: usize) {
     let side = velocity.x.abs() * tuning.hover_side_speed_reach;
     let rotation = ctx.vehicle.quat;
     let origin = rotation.rotate(definition.anchor) + ctx.vehicle.pos;
-    let (outward, inward) = if 0.0 > definition.anchor.x {
-        (-1.0, 1.0)
-    } else {
-        (1.0, -1.0)
-    };
+    let (outward, inward) = if 0.0 > definition.anchor.x { (-1.0, 1.0) } else { (1.0, -1.0) };
     let direction = rotation.rotate(Vec3::new(outward * side, 0.0, 0.0));
     if ctx.collision.raycast(origin, direction).is_some() {
         let speed = -((inward * velocity.x + velocity.y * 0.0) + velocity.z * 0.0);
@@ -99,11 +86,7 @@ pub fn ground_pull(ctx: &mut ForceCtx<'_>, scale: f32) {
     for index in 0..ctx.geometry.wheels.len() {
         let definition = &ctx.geometry.wheels[index];
         if push {
-            let mut force = if maximum_level == 2 {
-                1.0
-            } else {
-                scale
-            } * ctx.tuning.ground_pull_downforce;
+            let mut force = if maximum_level == 2 { 1.0 } else { scale } * ctx.tuning.ground_pull_downforce;
             if ctx.vehicle.in_water != 0 {
                 force = force * ctx.tuning.ground_pull_water_scale;
             }
@@ -144,8 +127,8 @@ fn ground_response(ctx: &mut ForceCtx<'_>, index: usize, hit: ForceRayHit, scale
     let normal_y = hit.normal.y.abs();
     let zero = normal_y * 0.0;
     let distance_response = tuning.ground_pull_by_distance.eval(distance / nearest);
-    let up = distance_response * (speed_response * tuning.ground_pull_strength)
-        * GROUND_FORCE_SHARE * normal_y;
+    let up =
+        distance_response * (speed_response * tuning.ground_pull_strength) * GROUND_FORCE_SHARE * normal_y;
     let force = Vec3::new(zero, up, zero);
     ctx.body.add_local_force(force);
     ctx.body.add_local_force_at(force, ctx.geometry.wheels[index].anchor);
@@ -170,19 +153,15 @@ fn ground_roll(ctx: &mut ForceCtx<'_>, hit: ForceRayHit) {
     let vehicle = &mut *ctx.vehicle;
     let steer = vehicle.steering;
     let previous = vehicle.previous_controls.steer;
-    let restart = 0.0 > steer * previous
-        || (PEDAL_THRESHOLD > previous.abs() && steer.abs() > PEDAL_THRESHOLD);
+    let restart =
+        0.0 > steer * previous || (PEDAL_THRESHOLD > previous.abs() && steer.abs() > PEDAL_THRESHOLD);
     let start = if restart || (vehicle.ground_roll_begin == u32::MAX && steer.abs() > PEDAL_THRESHOLD) {
         vehicle.ground_roll_begin = ctx.tick;
         ctx.tick
     } else {
         vehicle.ground_roll_begin
     };
-    let start = if start == u32::MAX {
-        ctx.tick
-    } else {
-        start
-    };
+    let start = if start == u32::MAX { ctx.tick } else { start };
     let velocity = vehicle.vel;
     let squared_speed = (velocity.x * velocity.x + velocity.y * velocity.y) + velocity.z * velocity.z;
     let speed_response = ctx.tuning.ground_roll_by_speed.eval(squared_speed.sqrt() * KMH);

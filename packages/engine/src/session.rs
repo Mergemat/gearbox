@@ -1,12 +1,12 @@
-use std::sync::Arc;
 use crate::{
-    World, State, Iso, arena,
+    Iso, State, World, arena,
     collision::ByteGrid,
-    dyna::{Dyna, BodyHandle, BodyState},
+    dyna::{BodyHandle, BodyState, Dyna},
     race::{self, Race, RaceState},
-    vehicle::{Vehicle, Tuning, model::ForceGeometry, impacts::ImpactModel, post, spawn, step},
+    vehicle::{Tuning, Vehicle, impacts::ImpactModel, model::ForceGeometry, post, spawn, step},
     water::drag::FluidTuning,
 };
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Controls {
@@ -29,11 +29,7 @@ impl Clock {
         let race_ms = t0.min(-20);
         let start = u32::try_from(i64::from(race::EPOCH_MS) - i64::from(race_ms))
             .map_err(|_| "input countdown exceeds clock range")?;
-        Ok(Self {
-            start,
-            now: race::EPOCH_MS,
-            race_ms,
-        })
+        Ok(Self { start, now: race::EPOCH_MS, race_ms })
     }
 }
 
@@ -119,13 +115,13 @@ impl Session {
 
     pub fn crossing_waypoints(&self) -> Vec<u32> {
         self.race.players.first().map_or_else(Vec::new, |player| {
-            self.race.store.entries(player.player.race_run)
-                .map(|entry| u32::from(entry.waypoint))
-                .collect()
+            self.race.store.entries(player.player.race_run).map(|entry| u32::from(entry.waypoint)).collect()
         })
     }
 }
 
 impl Savestate {
-    pub fn fork(&self) -> Session { self.0.clone() }
+    pub fn fork(&self) -> Session {
+        self.0.clone()
+    }
 }

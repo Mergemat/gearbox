@@ -1,7 +1,7 @@
-use crate::collision::ContactFlags;
-use crate::{EntryId, Iso, Mat3, Vec3, math::minss};
-use crate::shape::{Geometry, convex::Convex};
 use super::super::{ContactSink, EllipsoidShape, Surface};
+use crate::collision::ContactFlags;
+use crate::shape::{Geometry, convex::Convex};
+use crate::{EntryId, Iso, Mat3, Vec3, math::minss};
 
 const TINY: f32 = 1.0e-10;
 const MAX_EDGES: usize = 64;
@@ -12,15 +12,27 @@ fn unit(v: Vec3) -> Vec3 {
 }
 
 pub fn contacts(
-    geometry: Geometry<'_>, ellipsoid: &EllipsoidShape, a_ref: EntryId, a: &Surface,
-    shape: &crate::static_world::Convex, b_ref: EntryId, b: &Surface, out: &mut impl ContactSink,
+    geometry: Geometry<'_>,
+    ellipsoid: &EllipsoidShape,
+    a_ref: EntryId,
+    a: &Surface,
+    shape: &crate::static_world::Convex,
+    b_ref: EntryId,
+    b: &Surface,
+    out: &mut impl ContactSink,
 ) {
     hull(ellipsoid, a_ref, a, geometry.convex(shape), shape.material, b_ref, b, out);
 }
 
 pub fn hull(
-    ellipsoid: &EllipsoidShape, a_ref: EntryId, a: &Surface, hull: Convex<'_>, material: u16, b_ref: EntryId,
-    b: &Surface, out: &mut impl ContactSink,
+    ellipsoid: &EllipsoidShape,
+    a_ref: EntryId,
+    a: &Surface,
+    hull: Convex<'_>,
+    material: u16,
+    b_ref: EntryId,
+    b: &Surface,
+    out: &mut impl ContactSink,
 ) {
     let radii = ellipsoid.radii;
     let (normals, local) = unit_frame(ellipsoid, a, b);
@@ -36,14 +48,18 @@ pub fn hull(
         let mut previous_id = indices[0];
         let mut point = local.transform_point(hull.vertices[previous_id as usize]);
         let distance = -normal.dot(point);
-        if distance > 1.0 { continue; }
-        if 0.0 > distance {
-            behind += 1;
-            if distance >= nearest_inside.0 { nearest_inside = (distance, normal); }
+        if distance > 1.0 {
             continue;
         }
-        let projected = Vec3::new(0.0 + normal.x * -distance, 0.0 + normal.y * -distance, 0.0
-            + normal.z * -distance);
+        if 0.0 > distance {
+            behind += 1;
+            if distance >= nearest_inside.0 {
+                nearest_inside = (distance, normal);
+            }
+            continue;
+        }
+        let projected =
+            Vec3::new(0.0 + normal.x * -distance, 0.0 + normal.y * -distance, 0.0 + normal.z * -distance);
         let mut outside = None;
         for &id in indices.iter().rev() {
             let next = local.transform_point(hull.vertices[id as usize]);
@@ -51,14 +67,19 @@ pub fn hull(
             let side = (edge.z * normal.x - edge.x * normal.z) * (projected.y - next.y)
                 + (edge.y * normal.z - edge.z * normal.y) * (projected.x - next.x)
                 + (edge.x * normal.y - edge.y * normal.x) * (projected.z - next.z);
-            if side > 0.0 { outside = Some((id, previous_id, side)); break; }
+            if side > 0.0 {
+                outside = Some((id, previous_id, side));
+                break;
+            }
             previous_id = id;
             point = next;
         }
         if let Some((id, previous_id, side)) = outside {
             if 1.0 > side {
                 let edge = [id.min(previous_id), id.max(previous_id)];
-                if edges.len() < MAX_EDGES && !edges.contains(&edge) { edges.push(edge); }
+                if edges.len() < MAX_EDGES && !edges.contains(&edge) {
+                    edges.push(edge);
+                }
             }
             continue;
         }
@@ -67,13 +88,33 @@ pub fn hull(
     }
     if behind == hull.faces.len() {
         let (distance, normal) = nearest_inside;
-        emit(ellipsoid, a_ref, a, material, b_ref, out, -normal,
-            (1.0 - distance) * normal, -distance * normal, true);
+        emit(
+            ellipsoid,
+            a_ref,
+            a,
+            material,
+            b_ref,
+            out,
+            -normal,
+            (1.0 - distance) * normal,
+            -distance * normal,
+            true,
+        );
         return;
     }
     if let Some((best, point)) = closest_edge(&hull, local, edges) {
-        emit(ellipsoid, a_ref, a, material, b_ref, out, point,
-            (best.sqrt() - 1.0) * unit(point), point, false);
+        emit(
+            ellipsoid,
+            a_ref,
+            a,
+            material,
+            b_ref,
+            out,
+            point,
+            (best.sqrt() - 1.0) * unit(point),
+            point,
+            false,
+        );
     }
 }
 
@@ -113,15 +154,28 @@ fn closest_edge(hull: &Convex<'_>, local: Iso, edges: Vec<[u32; 2]>) -> Option<(
             todo!("degenerate convex edge");
         };
         let (distance, t) = segment_distance(center, dir, half);
-        if distance > 1.0 { continue; }
-        if !(distance >= best) { best = distance; closest = Some(dir * t + center); }
+        if distance > 1.0 {
+            continue;
+        }
+        if !(distance >= best) {
+            best = distance;
+            closest = Some(dir * t + center);
+        }
     }
     closest.map(|point| (best, point))
 }
 
 fn emit(
-    ellipsoid: &EllipsoidShape, a_ref: EntryId, a: &Surface, material: u16, b_ref: EntryId,
-    out: &mut impl ContactSink, normal: Vec3, penetration: Vec3, point: Vec3, face: bool,
+    ellipsoid: &EllipsoidShape,
+    a_ref: EntryId,
+    a: &Surface,
+    material: u16,
+    b_ref: EntryId,
+    out: &mut impl ContactSink,
+    normal: Vec3,
+    penetration: Vec3,
+    point: Vec3,
+    face: bool,
 ) {
     let radii = ellipsoid.radii;
     let world = a.iso * Iso::diagonal(radii, Vec3::ZERO);
@@ -132,7 +186,9 @@ fn emit(
         normal.y * normals.rows[2].y + normal.x * normals.rows[2].x + normal.z * normals.rows[2].z,
     );
     let l2 = world_normal.dot(world_normal);
-    if l2 > TINY && f32::MAX > l2 { world_normal *= 1.0 / l2.sqrt(); }
+    if l2 > TINY && f32::MAX > l2 {
+        world_normal *= 1.0 / l2.sqrt();
+    }
     let contact = out.take_contact();
     contact.a = Some(a_ref);
     contact.b = Some(b_ref);
@@ -142,11 +198,14 @@ fn emit(
     contact.face_normal = -world_normal;
     let displacement = penetration;
     contact.penetration = Vec3::new(
-        displacement.y * world.rot.rows[0].y + displacement.x * world.rot.rows[0].x
+        displacement.y * world.rot.rows[0].y
+            + displacement.x * world.rot.rows[0].x
             + displacement.z * world.rot.rows[0].z,
-        displacement.y * world.rot.rows[1].y + displacement.x * world.rot.rows[1].x
+        displacement.y * world.rot.rows[1].y
+            + displacement.x * world.rot.rows[1].x
             + displacement.z * world.rot.rows[1].z,
-        displacement.y * world.rot.rows[2].y + displacement.x * world.rot.rows[2].x
+        displacement.y * world.rot.rows[2].y
+            + displacement.x * world.rot.rows[2].x
             + displacement.z * world.rot.rows[2].z,
     );
     contact.point = world.transform_point(point);

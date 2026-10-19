@@ -1,5 +1,5 @@
-use crate::{Aabb, Vec3};
 pub use crate::arrays::TreeNode as Node;
+use crate::{Aabb, Vec3};
 mod build;
 pub use build::{Leaf, box_union};
 
@@ -67,12 +67,20 @@ impl Segment {
         for k in [0, 2, 1] {
             let d = bc[k] - c[k];
             let r = be[k] + a[k];
-            if d > r || -d > r { return false; }
+            if d > r || -d > r {
+                return false;
+            }
         }
         let d = c - bc;
-        if d.x.abs() > be.x + a.x || d.y.abs() > be.y + a.y || d.z.abs() > be.z + a.z { return false; }
-        if (h.y * d.z - h.z * d.y).abs() > be.y * a.z + be.z * a.y { return false; }
-        if (h.z * d.x - h.x * d.z).abs() > be.x * a.z + be.z * a.x { return false; }
+        if d.x.abs() > be.x + a.x || d.y.abs() > be.y + a.y || d.z.abs() > be.z + a.z {
+            return false;
+        }
+        if (h.y * d.z - h.z * d.y).abs() > be.y * a.z + be.z * a.y {
+            return false;
+        }
+        if (h.z * d.x - h.x * d.z).abs() > be.x * a.z + be.z * a.x {
+            return false;
+        }
         !((h.x * d.y - h.y * d.x).abs() > be.y * a.x + be.x * a.y)
     }
 }
@@ -97,7 +105,9 @@ impl Iterator for SegmentQuery<'_> {
             let hit = self.segment.crosses(n.bounds);
             let leaf = n.link & 1 != 0;
             self.cursor += if hit || leaf { 1 } else { (n.link >> 1) as usize };
-            if hit && leaf { return Some(n.link >> 1); }
+            if hit && leaf {
+                return Some(n.link >> 1);
+            }
         }
         None
     }
@@ -105,10 +115,14 @@ impl Iterator for SegmentQuery<'_> {
 
 pub fn inside(a: Aabb, b: Aabb) -> bool {
     for k in 0..3 {
-        if b.center[k] - b.half[k] > a.center[k] - a.half[k] { return false; }
+        if b.center[k] - b.half[k] > a.center[k] - a.half[k] {
+            return false;
+        }
     }
     for k in 0..3 {
-        if a.half[k] + a.center[k] > b.half[k] + b.center[k] { return false; }
+        if a.half[k] + a.center[k] > b.half[k] + b.center[k] {
+            return false;
+        }
     }
     true
 }
@@ -117,7 +131,9 @@ pub fn overlap(a: Aabb, b: Aabb) -> bool {
     for k in [0, 2, 1] {
         let d = a.center[k] - b.center[k];
         let s = b.half[k] + a.half[k];
-        if d > s || -d > s { return false; }
+        if d > s || -d > s {
+            return false;
+        }
     }
     true
 }

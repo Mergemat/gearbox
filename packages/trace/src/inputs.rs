@@ -10,7 +10,8 @@ pub struct Timeline {
 impl Timeline {
     pub fn parse(text: &str) -> Result<Self, String> {
         let mut lines = text.lines();
-        let header = lines.next().and_then(|l| l.strip_prefix("T0 ")).ok_or("expected a `T0 <ms> [seed]` header")?;
+        let header =
+            lines.next().and_then(|l| l.strip_prefix("T0 ")).ok_or("expected a `T0 <ms> [seed]` header")?;
         let mut h = header.split_whitespace();
         let t0: i32 = h.next().ok_or("missing T0")?.parse().map_err(|e| format!("T0: {e}"))?;
         if t0 % 10 != 0 {
@@ -23,10 +24,22 @@ impl Timeline {
         let controls = lines
             .enumerate()
             .map(|(i, line)| {
-                let v: Vec<f32> = line.split_whitespace().map(str::parse).collect::<Result<_, _>>().map_err(|e| format!("line {}: {e}", i + 2))?;
+                let v: Vec<f32> = line
+                    .split_whitespace()
+                    .map(str::parse)
+                    .collect::<Result<_, _>>()
+                    .map_err(|e| format!("line {}: {e}", i + 2))?;
                 match v[..] {
-                    [gas, brake, steer] if (0.0..=1.0).contains(&gas) && (0.0..=1.0).contains(&brake) && (-1.0..=1.0).contains(&steer) => Ok(Controls { gas, brake, steer }),
-                    _ => Err(format!("line {}: expected gas and brake in [0, 1] and steer in [-1, 1]", i + 2)),
+                    [gas, brake, steer]
+                        if (0.0..=1.0).contains(&gas)
+                            && (0.0..=1.0).contains(&brake)
+                            && (-1.0..=1.0).contains(&steer) =>
+                    {
+                        Ok(Controls { gas, brake, steer })
+                    }
+                    _ => {
+                        Err(format!("line {}: expected gas and brake in [0, 1] and steer in [-1, 1]", i + 2))
+                    }
                 }
             })
             .collect::<Result<_, String>>()?;

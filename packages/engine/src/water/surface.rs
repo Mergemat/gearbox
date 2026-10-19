@@ -1,5 +1,5 @@
-use crate::Vec3;
 use super::drag::NORMAL_MIN_LENGTH_SQUARED;
+use crate::Vec3;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Plane {
@@ -39,8 +39,11 @@ impl SurfaceGrid {
         let cell = [(half[0] * 2.0) / nx as f32, (half[1] * 2.0) / nz as f32];
         let columns = nx + 1;
         let point = |index: u32| {
-            Vec3::new((index % columns) as f32 * cell[0] + origin[0], level + 0.0,
-                (index / columns) as f32 * cell[1] + origin[1])
+            Vec3::new(
+                (index % columns) as f32 * cell[0] + origin[0],
+                level + 0.0,
+                (index / columns) as f32 * cell[1] + origin[1],
+            )
         };
         let mut planes = Vec::with_capacity((nx * nz * 2) as usize);
         for row in 0..nz {

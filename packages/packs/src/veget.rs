@@ -18,10 +18,7 @@ fn count(r: &mut Reader, max: u32) -> Result<u32> {
 }
 
 pub fn collision(ctx: &Ctx<'_>) -> Result<(Option<Surface>, Params)> {
-    ensure!(
-        ctx.layout.head.class_id == 0x2f086000,
-        "not a vegetation tree model"
-    );
+    ensure!(ctx.layout.head.class_id == 0x2f086000, "not a vegetation tree model");
     let mut r = Reader::new(ctx.buf);
     r.skip(ctx.layout.head.body_start)?;
     let version = r.u32()?;
@@ -47,10 +44,7 @@ pub fn collision(ctx: &Ctx<'_>) -> Result<(Option<Surface>, Params)> {
         let visuals = count(&mut r, 8)?;
         for _ in 0..visuals {
             let material = r.u16()? as usize;
-            ensure!(
-                material < visual_only.len(),
-                "vegetation material slot {material}"
-            );
+            ensure!(material < visual_only.len(), "vegetation material slot {material}");
             let visual = ctx.noderef(&mut r, |c, r, _| c.skip_node(r))?;
             collision_visual |= !matches!(visual, NodeLink::Null) && !visual_only[material];
             r.u8()?;
@@ -62,11 +56,7 @@ pub fn collision(ctx: &Ctx<'_>) -> Result<(Option<Surface>, Params)> {
     let tilt_degrees = r.f32()?;
     let scale_variation = r.f32()?;
     let random_y = r.u32()? != 0;
-    let params = Params {
-        scale_variation,
-        tilt_degrees,
-        random_y,
-    };
+    let params = Params { scale_variation, tilt_degrees, random_y };
     let surf_version = r.u32()?;
     let surf = crate::surface::read_surf(&mut r, surf_version)?;
     let no_collision = r.u32()? != 0;
@@ -80,13 +70,7 @@ pub fn collision(ctx: &Ctx<'_>) -> Result<(Option<Surface>, Params)> {
         todo!("tree collision from lowest visual LOD");
     }
     Ok((
-        Some(Surface {
-            version: 0,
-            surf_version,
-            surf,
-            materials: Vec::new(),
-            material_ids: Vec::new(),
-        }),
+        Some(Surface { version: 0, surf_version, surf, materials: Vec::new(), material_ids: Vec::new() }),
         params,
     ))
 }

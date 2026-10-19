@@ -1,5 +1,5 @@
-use crate::math::minss;
 use super::{ForceCtx, common::PedalMode};
+use crate::math::minss;
 
 pub fn brake_and_drag(ctx: &mut ForceCtx<'_>, blend: f32) {
     let vehicle = &mut *ctx.vehicle;
@@ -13,11 +13,7 @@ pub fn brake_and_drag(ctx: &mut ForceCtx<'_>, blend: f32) {
     let (normalization_threshold, maximum_length) = (super::common::TINY, f32::MAX);
     let zero_threshold = super::common::EPS;
     if !vehicle.effect_mode_is(PedalMode::Full) {
-        let pedal = if vehicle.reversing == 0 {
-            vehicle.controls.gas
-        } else {
-            vehicle.controls.brake
-        };
+        let pedal = if vehicle.reversing == 0 { vehicle.controls.gas } else { vehicle.controls.brake };
         if zero_threshold > pedal || vehicle.effect_mode_is(PedalMode::Cut) {
             let [x, y, z] = ctx.local_velocity.to_array();
             let l2 = (y * y + x * x) + z * z;
@@ -32,11 +28,7 @@ pub fn brake_and_drag(ctx: &mut ForceCtx<'_>, blend: f32) {
                 let b = vehicle.immersion;
                 let e = tuning.wet_brake.eval(b);
                 let mut g = ctx.geometry.grip_scale * vehicle.grip_scale;
-                g = if g >= 0.0 {
-                    minss(g, 1.0)
-                } else {
-                    0.0
-                };
+                g = if g >= 0.0 { minss(g, 1.0) } else { 0.0 };
                 let g = g * grip * e;
                 let rest = 1.0 - blend;
                 ctx.body.add_local_force(([f[0] * g * rest, f[1] * g * rest, f[2] * g * rest]).into());
@@ -56,11 +48,7 @@ pub fn brake_and_drag(ctx: &mut ForceCtx<'_>, blend: f32) {
             Some(tick)
         } else {
             let b = vehicle.last_body_contact;
-            if tick < b {
-                None
-            } else {
-                Some(b)
-            }
+            if tick < b { None } else { Some(b) }
         };
         if let Some(b) = base {
             if tick - b < tuning.body_contact_drag_ms {
@@ -68,11 +56,9 @@ pub fn brake_and_drag(ctx: &mut ForceCtx<'_>, blend: f32) {
                 if len > zero_threshold {
                     let inv = 1.0 / len;
                     let s = -tuning.body_contact_drag.eval(len * super::common::KMH);
-                    ctx.body.add_local_force(([
-                        x * inv * s * grip,
-                        y * inv * s * grip,
-                        z * inv * s * grip,
-                    ]).into());
+                    ctx.body.add_local_force(
+                        ([x * inv * s * grip, y * inv * s * grip, z * inv * s * grip]).into(),
+                    );
                 }
             }
         }

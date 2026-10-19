@@ -1,6 +1,6 @@
-use crate::math::minss;
 use super::super::{Tuning, Vehicle};
 use super::common::{PEDAL_THRESHOLD, PedalMode, PivotState};
+use crate::math::minss;
 
 const LEGACY_SHIFT_SECONDS: f32 = 0.04;
 const SHIFT_SECONDS: f32 = 0.025;
@@ -76,17 +76,15 @@ impl Vehicle {
         let pedal = gas.abs();
         let scale = tuning.forward_speed_limit * LEGACY_SPEED_SCALE;
         let gear = self.gear;
-        let ratio_index = if gear > 1 {
-            gear - 1
-        } else {
-            0
-        } as usize;
+        let ratio_index = if gear > 1 { gear - 1 } else { 0 } as usize;
         let lateral = self.force_velocity_lateral;
         let forward = self.force_velocity_forward;
         let vertical = self.force_velocity_vertical;
         let down = tuning.downshift_ratios.0[ratio_index];
         let speed = (lateral * lateral * LATERAL_RPM_WEIGHT
-            + forward * forward + vertical * vertical * PEDAL_THRESHOLD).sqrt();
+            + forward * forward
+            + vertical * vertical * PEDAL_THRESHOLD)
+            .sqrt();
         let ratio = speed / scale * tuning.gear_ratios.0[ratio_index];
         let (target, rate);
         if !held {
@@ -143,9 +141,17 @@ impl Vehicle {
         let reverse = self.reversing != 0;
         let loaded = GearboxState::from_code(self.gearbox_state) == Some(GearboxState::Loaded);
         let forward_launch = forward > tuning.forward_launch_lower_speed
-            && tuning.forward_launch_upper_speed > forward && throttle && loaded && !reverse && !low_grip;
+            && tuning.forward_launch_upper_speed > forward
+            && throttle
+            && loaded
+            && !reverse
+            && !low_grip;
         let (reverse_launch, forward_grip_launch) = if forward > tuning.reverse_launch_lower_speed
-            && tuning.reverse_launch_upper_speed > forward && throttle && loaded && reverse && !low_grip
+            && tuning.reverse_launch_upper_speed > forward
+            && throttle
+            && loaded
+            && reverse
+            && !low_grip
         {
             (true, false)
         } else {
@@ -168,9 +174,10 @@ impl Vehicle {
     }
 
     fn select_gear(&mut self, tuning: &Tuning, pivot: bool) {
-        if !matches!(GearboxState::from_code(self.gearbox_state),
-            Some(GearboxState::Shifting | GearboxState::Loaded))
-        {
+        if !matches!(
+            GearboxState::from_code(self.gearbox_state),
+            Some(GearboxState::Shifting | GearboxState::Loaded)
+        ) {
             return;
         }
         let mut gear = self.gear;
@@ -180,11 +187,7 @@ impl Vehicle {
                 self.shift_rpm_rate = DOWNSHIFT_RPM_RATE;
                 if DIRECTION_CHANGE_RPM > self.rpm {
                     self.gear = 0;
-                    self.shift_remaining = if pivot {
-                        PIVOT_SHIFT_SECONDS
-                    } else {
-                        SHIFT_SECONDS
-                    };
+                    self.shift_remaining = if pivot { PIVOT_SHIFT_SECONDS } else { SHIFT_SECONDS };
                 }
             }
             return;
@@ -276,7 +279,12 @@ impl Vehicle {
     }
 
     fn advance_launch_rpm(
-        &mut self, tuning: &Tuning, throttle: bool, low_grip: bool, reverse: bool, dt: f32,
+        &mut self,
+        tuning: &Tuning,
+        throttle: bool,
+        low_grip: bool,
+        reverse: bool,
+        dt: f32,
     ) {
         let forward = self.force_velocity_forward;
         let coasting = if reverse {
@@ -291,11 +299,7 @@ impl Vehicle {
             forward > tuning.forward_launch_upper_speed || tuning.forward_launch_lower_speed > forward
         };
         self.rpm_boost = 1.0;
-        let ratio_index = if reverse {
-            0
-        } else {
-            1
-        };
+        let ratio_index = if reverse { 0 } else { 1 };
         let target = forward.abs() * tuning.gear_ratios.0[ratio_index];
         self.target_rpm = target;
         if coasting || !throttle {
@@ -316,18 +320,16 @@ impl Vehicle {
     }
 
     fn finish_rpm(&mut self, tuning: &Tuning, rpm: f32) {
-        self.rpm = if rpm >= 0.0 {
-            minss(rpm, tuning.maximum_rpm)
-        } else {
-            0.0
-        };
+        self.rpm = if rpm >= 0.0 { minss(rpm, tuning.maximum_rpm) } else { 0.0 };
     }
 
     pub fn ground_speed(&self) -> f32 {
         if !self.wheels.iter().any(|wheel| wheel.has_boost_material()) {
             return self.force_velocity_forward;
         }
-        (self.force_velocity_lateral * self.force_velocity_lateral + 0.0
-            + self.force_velocity_forward * self.force_velocity_forward).sqrt()
+        (self.force_velocity_lateral * self.force_velocity_lateral
+            + 0.0
+            + self.force_velocity_forward * self.force_velocity_forward)
+            .sqrt()
     }
 }

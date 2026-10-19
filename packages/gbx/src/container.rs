@@ -13,10 +13,7 @@ impl<'a> Container<'a> {
         let mut r = Reader::new(buf);
         ensure!(r.bytes(3)? == b"GBX", "not a GBX file");
         let version = r.u16()?;
-        ensure!(
-            version >= 6,
-            "GBX version {version} not supported (TM2020 files are version 6)"
-        );
+        ensure!(version >= 6, "GBX version {version} not supported (TM2020 files are version 6)");
         let format = r.u8()?;
         ensure!(format == b'B', "text GBX format is not supported");
         let _ref_table_compression = r.u8()?;
@@ -43,11 +40,7 @@ impl<'a> Container<'a> {
             c => bail!("unknown body compression byte {c:#x}"),
         };
 
-        Ok(Self {
-            class_id,
-            header_chunks,
-            body,
-        })
+        Ok(Self { class_id, header_chunks, body })
     }
 
     pub fn header(buf: &'a [u8]) -> Result<(u32, Vec<(u32, &'a [u8])>)> {
@@ -66,10 +59,7 @@ impl<'a> Container<'a> {
     }
 
     pub fn header_chunk(&self, id: u32) -> Option<&'a [u8]> {
-        self.header_chunks
-            .iter()
-            .find(|(cid, _)| *cid == id)
-            .map(|(_, d)| *d)
+        self.header_chunks.iter().find(|(cid, _)| *cid == id).map(|(_, d)| *d)
     }
 }
 
@@ -85,10 +75,7 @@ fn parse_header_chunks(user_data: &[u8]) -> Result<Vec<(u32, &[u8])>> {
         let size = (r.u32()? & 0x7FFF_FFFF) as usize;
         descs.push((id, size));
     }
-    descs
-        .into_iter()
-        .map(|(id, size)| Ok((id, r.bytes(size)?)))
-        .collect()
+    descs.into_iter().map(|(id, size)| Ok((id, r.bytes(size)?))).collect()
 }
 
 fn skip_ref_table(r: &mut Reader) -> Result<()> {

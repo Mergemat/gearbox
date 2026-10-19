@@ -5,9 +5,8 @@ use anyhow::{Context, Result, bail, ensure};
 
 use crate::crypto::{Blowfish, Cipher};
 
-pub const HEADER_KEY: [u8; 16] = [
-    0x56, 0xee, 0xcb, 0xbb, 0xde, 0xb6, 0xbc, 0x90, 0xa1, 0x7d, 0xfc, 0xeb, 0x76, 0x1d, 0x59, 0xce,
-];
+pub const HEADER_KEY: [u8; 16] =
+    [0x56, 0xee, 0xcb, 0xbb, 0xde, 0xb6, 0xbc, 0x90, 0xa1, 0x7d, 0xfc, 0xeb, 0x76, 0x1d, 0x59, 0xce];
 
 pub fn key_from_base(base: &[u8; 16]) -> [u8; 16] {
     let mut s: Vec<u8> = base.iter().flat_map(|b| format!("{b:02X}").into_bytes()).collect();
@@ -352,7 +351,6 @@ impl Pak {
         let f = &self.files[i];
         self.folder_path(f.folder) + &f.name
     }
-
 }
 
 fn read_up_to(f: &File, buf: &mut [u8], at: u64) -> Result<usize> {
@@ -455,7 +453,10 @@ impl<'k> FileDecoder<'k> {
                 *x = self.byte()?;
             }
             let got = self.lz.block(&b)?;
-            ensure!(got == crate::lz4::BLOCK_OUT || self.lz.out_len() == self.size, "short lz4 block ({got} bytes)");
+            ensure!(
+                got == crate::lz4::BLOCK_OUT || self.lz.out_len() == self.size,
+                "short lz4 block ({got} bytes)"
+            );
             ensure!(self.lz.out_len() <= self.size, "lz4 output past file size");
         } else {
             let n = n.min(self.size - self.plain.len());

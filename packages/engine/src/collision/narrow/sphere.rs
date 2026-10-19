@@ -1,8 +1,8 @@
+use super::super::{ContactSink, SphereShape, Surface};
 use crate::collision::ContactFlags;
-use crate::{Aabb, EntryId, Vec3};
 use crate::shape::Mesh;
 use crate::tree::AabbQuery;
-use super::super::{ContactSink, SphereShape, Surface};
+use crate::{Aabb, EntryId, Vec3};
 
 const TINY: f32 = 1.0e-10;
 const EPS: f32 = 0.00001;
@@ -23,8 +23,8 @@ pub(super) struct Hit {
 
 fn touch(center: [f32; 3], radius: f32, normal: [f32; 3], vertices: &[[f32; 3]; 3]) -> Option<Hit> {
     let p0 = vertices[0];
-    let distance = (center[1] - p0[1]) * normal[1] + (center[0] - p0[0]) * normal[0]
-        + (center[2] - p0[2]) * normal[2];
+    let distance =
+        (center[1] - p0[1]) * normal[1] + (center[0] - p0[0]) * normal[0] + (center[2] - p0[2]) * normal[2];
     if distance > radius || 0.0 > distance {
         return None;
     }
@@ -66,17 +66,15 @@ fn touch(center: [f32; 3], radius: f32, normal: [f32; 3], vertices: &[[f32; 3]; 
         if 0.0 > t {
             return towards(pk, &vertex);
         }
-        let u = (projected[1] - pn[1]) * edge[1] + (projected[0] - pn[0]) * edge[0]
+        let u = (projected[1] - pn[1]) * edge[1]
+            + (projected[0] - pn[0]) * edge[0]
             + (projected[2] - pn[2]) * edge[2];
         if u > 0.0 {
             return towards(pn, &vertex);
         }
         let nd2 = -dist;
-        let point = [
-            nd2 * inward[0] + projected[0],
-            nd2 * inward[1] + projected[1],
-            nd2 * inward[2] + projected[2],
-        ];
+        let point =
+            [nd2 * inward[0] + projected[0], nd2 * inward[1] + projected[1], nd2 * inward[2] + projected[2]];
         return towards(point, &|l2| l2 > EPS);
     }
     let depth = radius - distance;
@@ -89,7 +87,12 @@ fn touch(center: [f32; 3], radius: f32, normal: [f32; 3], vertices: &[[f32; 3]; 
 }
 
 pub fn mesh(
-    sphere: &SphereShape, a_ref: EntryId, a: &Surface, mesh: Mesh<'_>, b_ref: EntryId, b: &Surface,
+    sphere: &SphereShape,
+    a_ref: EntryId,
+    a: &Surface,
+    mesh: Mesh<'_>,
+    b_ref: EntryId,
+    b: &Surface,
     out: &mut impl ContactSink,
 ) {
     let offset = a.iso.pos - b.iso.pos;
@@ -103,7 +106,9 @@ pub fn mesh(
     for id in AabbQuery::new(mesh.nodes, Aabb::new(local, Vec3::new(radius, radius, radius))) {
         let tri = &mesh.cooked[id as usize];
         let p = tri.verts.map(|i| mesh.vertices[i as usize].to_array());
-        let Some(hit) = touch(local.to_array(), radius, tri.normal.to_array(), &p) else { continue; };
+        let Some(hit) = touch(local.to_array(), radius, tri.normal.to_array(), &p) else {
+            continue;
+        };
         let contact = out.take_contact();
         contact.other_point = rotate(b, hit.point.into()) + b.iso.pos;
         contact.flags.set(ContactFlags::OTHER_POINT, true);
@@ -129,7 +134,11 @@ fn rotate(b: &Surface, v: Vec3) -> Vec3 {
 }
 
 fn boundary_hit(
-    center: [f32; 3], radius: f32, normal: [f32; 3], point: [f32; 3], ok: &dyn Fn(f32) -> bool,
+    center: [f32; 3],
+    radius: f32,
+    normal: [f32; 3],
+    point: [f32; 3],
+    ok: &dyn Fn(f32) -> bool,
 ) -> Option<Hit> {
     let delta = [center[0] - point[0], center[1] - point[1], center[2] - point[2]];
     let l2 = delta[1] * delta[1] + delta[0] * delta[0] + delta[2] * delta[2];
@@ -140,10 +149,11 @@ fn boundary_hit(
     let inv = 1.0 / len;
     let scale = (len - radius) * inv;
     let direction = [delta[0] * inv, delta[1] * inv, delta[2] * inv];
-    let depth = -((delta[1] * scale) * normal[1] + (delta[0] * scale) * normal[0]
-        + (delta[2] * scale) * normal[2]);
+    let depth =
+        -((delta[1] * scale) * normal[1] + (delta[0] * scale) * normal[0] + (delta[2] * scale) * normal[2]);
     Some(Hit {
-        point, direction,
+        point,
+        direction,
         penetration: [normal[0] * depth, normal[1] * depth, normal[2] * depth],
         face: false,
     })

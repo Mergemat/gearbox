@@ -1,5 +1,5 @@
-use crate::{Iso, Quat, Vec3, math};
 use super::BodyHandle;
+use crate::{Iso, Quat, Vec3, math};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Easing {
@@ -77,11 +77,7 @@ impl MotionCurve {
                         continue;
                     }
                 };
-                return if segment.reversed != 0 {
-                    1.0 - y
-                } else {
-                    y
-                };
+                return if segment.reversed != 0 { 1.0 - y } else { y };
             }
             start = end;
         }

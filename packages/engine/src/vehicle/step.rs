@@ -1,8 +1,17 @@
+use super::{
+    Tuning, Vehicle, contacts, effects,
+    forces::{self, ForceCtx, ForceRays, VehicleBody},
+    impacts::ImpactModel,
+    integrate,
+    model::ForceGeometry,
+};
 use crate::race::countdown::{ControlFlags, ControlPhase};
-use crate::{CompoundInstanceId, ShapeId, Vec3, World, State, dyna::{BodyHandle, Collision, Dyna},
-    collision::{ContactList, DynaCollision, Geometry, Lists, QueryFilter}, math::{cvtt64, cvtt64d}};
-use super::{Vehicle, Tuning, model::ForceGeometry, impacts::ImpactModel, forces::{self, ForceCtx,
-    ForceRays, VehicleBody}, contacts, integrate, effects};
+use crate::{
+    CompoundInstanceId, ShapeId, State, Vec3, World,
+    collision::{ContactList, DynaCollision, Geometry, Lists, QueryFilter},
+    dyna::{BodyHandle, Collision, Dyna},
+    math::{cvtt64, cvtt64d},
+};
 
 const COLLISION_CLIP: f32 = 0.01;
 const SPIN_RESPONSE_THRESHOLD: f32 = 0.1;
@@ -56,7 +65,9 @@ pub fn schedule(vehicle: &Vehicle, tuning: &Tuning, dyna: &Dyna, dt: f32) -> Sch
     let body = dyna.body(BodyHandle(vehicle.body));
     let length = |value: Vec3| {
         let squared = (value.x * value.x + value.y * value.y) + value.z * value.z;
-        if 0.0 > squared { todo!("sqrtf of a negative"); }
+        if 0.0 > squared {
+            todo!("sqrtf of a negative");
+        }
         squared.sqrt()
     };
     let power = vehicle.level_power(tuning);
@@ -74,12 +85,16 @@ pub fn schedule(vehicle: &Vehicle, tuning: &Tuning, dyna: &Dyna, dt: f32) -> Sch
     } else if count > 1 {
         let interval = dt / count as f32;
         (interval * power, interval, count - 1)
-    } else { (power, 0.0, 0) };
+    } else {
+        (power, 0.0, 0)
+    };
     Schedule { remaining, substep, repeats, clock_step: cvtt64d(interval as f64 * NS_PER_SECOND) }
 }
 
 pub fn substeps(ctx: &mut StepCtx<'_>) -> Vec<CollisionFrame> {
-    if ControlFlags(ctx.vehicle.control_flags).phase() == ControlPhase::Forced { return Vec::new(); }
+    if ControlFlags(ctx.vehicle.control_flags).phase() == ControlPhase::Forced {
+        return Vec::new();
+    }
     let mut flags = contacts::ContactFlags(ctx.vehicle.flags);
     flags.set(contacts::ContactFlags::HARD, false);
     flags.set(contacts::ContactFlags::OPPOSING, false);
@@ -108,8 +123,10 @@ pub fn substeps(ctx: &mut StepCtx<'_>) -> Vec<CollisionFrame> {
     if flags.contains(contacts::ContactFlags::OPPOSING)
         && flags.contains(contacts::ContactFlags::SOLVED)
         && ctx.vehicle.contact_solve_residual > SPIN_RESPONSE_THRESHOLD
-        && !matches!(ControlFlags(ctx.vehicle.control_flags).phase(),
-            ControlPhase::Forced | ControlPhase::Locked)
+        && !matches!(
+            ControlFlags(ctx.vehicle.control_flags).phase(),
+            ControlPhase::Forced | ControlPhase::Locked
+        )
     {
         todo!("opposing-pipe vehicle response");
     }
@@ -117,8 +134,10 @@ pub fn substeps(ctx: &mut StepCtx<'_>) -> Vec<CollisionFrame> {
 }
 
 fn substep(ctx: &mut StepCtx<'_>, now: i64, dt: f32) -> CollisionFrame {
-    ctx.dyna.kinematic_update(now, &mut DynaCollision {
-        world: ctx.world, state: ctx.state, manager: ctx.manager });
+    ctx.dyna.kinematic_update(
+        now,
+        &mut DynaCollision { world: ctx.world, state: ctx.state, manager: ctx.manager },
+    );
     let handle = BodyHandle(ctx.vehicle.body);
     ctx.dyna.clear_acc(handle);
     let scale = ctx.dyna.body(handle).record.coefficient * ctx.assets.geometry.mass;
@@ -130,16 +149,23 @@ fn substep(ctx: &mut StepCtx<'_>, now: i64, dt: f32) -> CollisionFrame {
     let frame = collision_step(ctx, now, dt, COLLISION_CLIP);
     let forward = ctx.dyna.local_velocity(handle).z;
     let mut events = Vec::new();
-    effects::surface_effects(ctx.vehicle, ctx.assets.tuning, forward, ctx.tick, dt,
-        ctx.events.as_ref().map(|_| &mut events));
-    if let Some(output) = &mut ctx.events { output.extend(events.into_iter().map(Event::Surface)); }
+    effects::surface_effects(
+        ctx.vehicle,
+        ctx.assets.tuning,
+        forward,
+        ctx.tick,
+        dt,
+        ctx.events.as_ref().map(|_| &mut events),
+    );
+    if let Some(output) = &mut ctx.events {
+        output.extend(events.into_iter().map(Event::Surface));
+    }
     frame
 }
 
 pub fn collision_step(ctx: &mut StepCtx<'_>, now: i64, dt: f32, clip: f32) -> CollisionFrame {
     let handle = BodyHandle(ctx.vehicle.body);
-    assert!(!ctx.dyna.body(handle).record.has_pre_collision_callback,
-        "body pre-collision callback");
+    assert!(!ctx.dyna.body(handle).record.has_pre_collision_callback, "body pre-collision callback");
     let run = ControlFlags(ctx.vehicle.control_flags).phase() != ControlPhase::Countdown
         || (ctx.tick.wrapping_sub(ctx.vehicle.race_start) as i32) >= -50;
     let mut list = ContactList::new(contacts::CONTACT_CAPACITY);
@@ -148,27 +174,41 @@ pub fn collision_step(ctx: &mut StepCtx<'_>, now: i64, dt: f32, clip: f32) -> Co
         let pose = ctx.dyna.state(handle).pose();
         let shape = ctx.state.dynamic_item[vehicle_item.index()].shape;
         let scale = ctx.assets.tuning.collision_scale;
-        if scale != 1.0 { crate::shape::scale::shape(ctx.world, ctx.state, shape, scale); }
+        if scale != 1.0 {
+            crate::shape::scale::shape(ctx.world, ctx.state, shape, scale);
+        }
         DynaCollision { world: ctx.world, state: ctx.state, manager: ctx.manager }
             .set_placement(vehicle_item, pose);
         let item = &ctx.state.dynamic_item[vehicle_item.index()];
-        for (lists, layers) in [(Lists::SURFACES, crate::collision::layers::MASKS[item.layer as usize]),
-            (Lists::DISCRETE, 1048576)]
-        {
-            let filter = QueryFilter { lists, layers, excluded_flags: item.flags,
-                ignored: [Some(vehicle_item.into()), None], ..Default::default() };
+        for (lists, layers) in [
+            (Lists::SURFACES, crate::collision::layers::MASKS[item.layer as usize]),
+            (Lists::DISCRETE, 1048576),
+        ] {
+            let filter = QueryFilter {
+                lists,
+                layers,
+                excluded_flags: item.flags,
+                ignored: [Some(vehicle_item.into()), None],
+                ..Default::default()
+            };
             ctx.state.collision_world[ctx.manager].append_contacts_for_item(
-                Geometry::new(ctx.world, ctx.state), vehicle_item, filter, &mut list);
+                Geometry::new(ctx.world, ctx.state),
+                vehicle_item,
+                filter,
+                &mut list,
+            );
         }
         if scale != 1.0 {
             let inverse = 1.0 / scale;
             crate::shape::scale::shape(ctx.world, ctx.state, shape, inverse);
             DynaCollision { world: ctx.world, state: ctx.state, manager: ctx.manager }
                 .set_placement(vehicle_item, pose);
-            for contact in list.as_mut_slice() { contact.rescale(pose, inverse); }
+            for contact in list.as_mut_slice() {
+                contact.rescale(pose, inverse);
+            }
         }
-        output = with_forces(ctx, now, dt, |force, model|
-            contacts::vehicle_contacts(force, model, &mut list));
+        output =
+            with_forces(ctx, now, dt, |force, model| contacts::vehicle_contacts(force, model, &mut list));
         let push = crate::dyna::solver::clip_sum(clip, &output.pushes);
         ctx.dyna.add_position(handle, push);
     }
@@ -176,29 +216,47 @@ pub fn collision_step(ctx: &mut StepCtx<'_>, now: i64, dt: f32, clip: f32) -> Co
     CollisionFrame { time_ns: now, dt, contacts: list, output }
 }
 
-fn with_forces<T>(ctx: &mut StepCtx<'_>, now: i64, dt: f32,
-    call: impl FnOnce(&mut ForceCtx<'_>, &ImpactModel) -> T) -> T
-{
+fn with_forces<T>(
+    ctx: &mut StepCtx<'_>,
+    now: i64,
+    dt: f32,
+    call: impl FnOnce(&mut ForceCtx<'_>, &ImpactModel) -> T,
+) -> T {
     let instance = ctx.vehicle.shape.and_then(ShapeId::compound).map(CompoundInstanceId::index);
-    let mut transforms = instance.map_or_else(Vec::new, |index|
-        ctx.state.compound_instance[index].transforms.clone());
-    let rays = ForceRays { geometry: Geometry::new(ctx.world, ctx.state),
-        manager: &ctx.state.collision_world[ctx.manager], vehicle_item: ctx.vehicle.item };
+    let mut transforms =
+        instance.map_or_else(Vec::new, |index| ctx.state.compound_instance[index].transforms.clone());
+    let rays = ForceRays {
+        geometry: Geometry::new(ctx.world, ctx.state),
+        manager: &ctx.state.collision_world[ctx.manager],
+        vehicle_item: ctx.vehicle.item,
+    };
     let mut events = Vec::new();
     let inverse_inertia = ctx.vehicle.world_inverse_inertia;
     let handle = BodyHandle(ctx.vehicle.body);
-    let mut force = ForceCtx { vehicle: ctx.vehicle, tuning: ctx.assets.tuning,
+    let mut force = ForceCtx {
+        vehicle: ctx.vehicle,
+        tuning: ctx.assets.tuning,
         geometry: ctx.assets.geometry,
         body: VehicleBody { dyna: ctx.dyna, handle, mass: ctx.assets.geometry.mass, inverse_inertia },
-        water: crate::water::WaterManager::new(&ctx.world.water), fluid_tuning: ctx.assets.fluid,
-        collision: &rays, wheel_transforms: &mut transforms,
-        events: ctx.events.as_ref().map(|_| &mut events), tick: ctx.tick, time_ns: now, dt,
-        local_velocity: Vec3::ZERO, local_angular_velocity: Vec3::ZERO, local_force: Vec3::ZERO };
+        water: crate::water::WaterManager::new(&ctx.world.water),
+        fluid_tuning: ctx.assets.fluid,
+        collision: &rays,
+        wheel_transforms: &mut transforms,
+        events: ctx.events.as_ref().map(|_| &mut events),
+        tick: ctx.tick,
+        time_ns: now,
+        dt,
+        local_velocity: Vec3::ZERO,
+        local_angular_velocity: Vec3::ZERO,
+        local_force: Vec3::ZERO,
+    };
     let result = call(&mut force, ctx.assets.impacts);
     if let Some(index) = instance {
         ctx.state.compound_instance[index].transforms.copy_from_slice(&transforms);
     }
-    if let Some(output) = &mut ctx.events { output.extend(events.into_iter().map(Event::Force)); }
+    if let Some(output) = &mut ctx.events {
+        output.extend(events.into_iter().map(Event::Force));
+    }
     result
 }
 
@@ -216,9 +274,19 @@ pub struct Countdown<'a> {
 impl crate::race::countdown::CountdownRespawn for Countdown<'_> {
     fn respawn(&mut self, vehicle: &mut Vehicle, landmark: u32) {
         let pose = super::spawn::arena_pose(self.initial_pose, self.parent_pose, self.waypoints, landmark);
-        let mut services = super::spawn::Services { world: self.world, state: self.state,
-            visuals: self.visuals, ring: self.effects };
-        super::spawn::respawn(vehicle, self.assets, self.dyna, pose,
-            super::spawn::Reset::FULL, &mut services);
+        let mut services = super::spawn::Services {
+            world: self.world,
+            state: self.state,
+            visuals: self.visuals,
+            ring: self.effects,
+        };
+        super::spawn::respawn(
+            vehicle,
+            self.assets,
+            self.dyna,
+            pose,
+            super::spawn::Reset::FULL,
+            &mut services,
+        );
     }
 }

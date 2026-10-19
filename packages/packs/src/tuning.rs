@@ -5,8 +5,8 @@ use gearbox_engine::vehicle::{Tuning, forces::common::PiecewiseResponse, tuning:
 use gearbox_engine::{Curve, Key, Vec3, water::drag::FluidTuning};
 use gearbox_gbx::reader::{FACADE, Reader};
 
-use gearbox_engine::vehicle::model::SurfaceMaterial as Material;
 use crate::packs::PackSet;
+use gearbox_engine::vehicle::model::SurfaceMaterial as Material;
 
 pub const CARS: [(&str, &str); 4] = [
     ("CarSport", "Vehicles\\Cars\\CarSport\\TuningsSport.VehicleTunings.Gbx"),
@@ -37,7 +37,9 @@ impl CarTunings {
         Ok(self.fluids[owner].clone())
     }
 
-    pub fn active_materials(&self) -> Option<&[Material]> { self.materials[self.active].as_deref() }
+    pub fn active_materials(&self) -> Option<&[Material]> {
+        self.materials[self.active].as_deref()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -102,8 +104,10 @@ impl Archive<'_> {
         ensure!((1..128).contains(&count), "tuning count {count}");
         for index in 0..count {
             let node = self.word()?;
-            ensure!(!self.nodes.contains_key(&node) && !self.refs.contains(&node),
-                "unsupported shared tuning");
+            ensure!(
+                !self.nodes.contains_key(&node) && !self.refs.contains(&node),
+                "unsupported shared tuning"
+            );
             ensure!(self.word()? == TUNING, "expected car tuning class");
             let (tuning, fluid) = constructed();
             self.tunings.push(tuning);
@@ -118,7 +122,11 @@ impl Archive<'_> {
         ensure!(active < count, "active tuning {active} / {count}");
         ensure!(self.word()? == FACADE && self.reader.remaining() == 0, "VehicleTunings trailing data");
         Ok(CarTunings {
-            tunings: self.tunings, active, fluids: self.fluids, water: self.water, materials: self.materials,
+            tunings: self.tunings,
+            active,
+            fluids: self.fluids,
+            water: self.water,
+            materials: self.materials,
         })
     }
 
@@ -153,14 +161,18 @@ impl Archive<'_> {
         };
         let current = self.current;
         match target {
-            Target::Water => self.water[current] = match node {
-                Some(Node::Water(owner)) => Some(owner),
-                Some(Node::Tuning) => bail!("unsupported tuning as water model"),
-                None => None,
-            },
-            Target::Materials => if let Some(materials) = self.material_nodes.get(&index) {
-                self.materials[current] = Some(materials.clone());
-            },
+            Target::Water => {
+                self.water[current] = match node {
+                    Some(Node::Water(owner)) => Some(owner),
+                    Some(Node::Tuning) => bail!("unsupported tuning as water model"),
+                    None => None,
+                }
+            }
+            Target::Materials => {
+                if let Some(materials) = self.material_nodes.get(&index) {
+                    self.materials[current] = Some(materials.clone());
+                }
+            }
             Target::Other => {}
         }
         Ok(())
@@ -205,9 +217,15 @@ impl Archive<'_> {
         Ok(())
     }
 
-    fn word(&mut self) -> Result<u32> { self.reader.u32() }
-    fn float(&mut self) -> Result<f32> { Ok(f32::from_bits(self.reader.u32()?)) }
-    fn skip(&mut self) -> Result<()> { self.reader.u32().map(drop) }
+    fn word(&mut self) -> Result<u32> {
+        self.reader.u32()
+    }
+    fn float(&mut self) -> Result<f32> {
+        Ok(f32::from_bits(self.reader.u32()?))
+    }
+    fn skip(&mut self) -> Result<()> {
+        self.reader.u32().map(drop)
+    }
 
     fn version(&mut self, expected: u32) -> Result<()> {
         let version = self.word()?;
@@ -233,7 +251,8 @@ impl Archive<'_> {
         ensure!(count < MAX_ELEMENTS, "curve has {count} keys");
         let flags = u32::from(self.reader.u16()?);
         ensure!(flags & Curve::SPLINE == 0, "unsupported spline car tuning curve");
-        let keys = (0..count).map(|_| Ok(Key { x: self.float()?, y: self.float()? })).collect::<Result<_>>()?;
+        let keys =
+            (0..count).map(|_| Ok(Key { x: self.float()?, y: self.float()? })).collect::<Result<_>>()?;
         Ok(Curve::new(flags, keys))
     }
 
@@ -1524,12 +1543,15 @@ fn constructed() -> (Tuning, FluidTuning) {
         drive_transition_thrust: curve(&[[0.0, 0.0]]),
         drive_thrust_by_grip: curve(&[[0.0, 1.0]]),
         drive_thrust_by_side: curve(&[[0.0, 1.0]]),
-        direction_speed_drag: curve(&[
-            [20.0, 0.0], [50.0, 0.5], [100.0, 1.0], [200.0, 1.25], [300.0, 1.5]
-        ]),
+        direction_speed_drag: curve(&[[20.0, 0.0], [50.0, 0.5], [100.0, 1.0], [200.0, 1.25], [300.0, 1.5]]),
         direction_off_axis_drag: curve(&[[10.0, 0.0], [25.0, 50.0], [100.0, 60.0], [250.0, 75.0]]),
         direction_vertical_drag: curve(&[
-            [10.0, 0.0], [17.0, 2.0], [25.0, 15.0], [37.0, 32.0], [50.0, 36.0], [250.0, 44.0]
+            [10.0, 0.0],
+            [17.0, 2.0],
+            [25.0, 15.0],
+            [37.0, 32.0],
+            [50.0, 36.0],
+            [250.0, 44.0],
         ]),
         meter_thrust: curve(&[[0.0, 1.0], [0.25, 0.8], [0.5, 0.3], [1.0, 0.2]]),
         meter_steering: curve(&[[0.0, 1.0], [0.5, 0.25], [1.0, 0.1]]),
@@ -1562,40 +1584,57 @@ fn constructed() -> (Tuning, FluidTuning) {
         contact_impact_duration_by_speed: curve(&[[0.0, 0.0]]),
         ground_pull_by_distance: curve(&[[0.0, 1.25], [1.0, 0.0]]),
         ground_pull_by_speed: curve(&[
-            [-200.0, 50.0], [-100.0, 20.0], [-25.0, 1.0], [0.0, 0.0], [25.0, -1.5]
+            [-200.0, 50.0],
+            [-100.0, 20.0],
+            [-25.0, 1.0],
+            [0.0, 0.0],
+            [25.0, -1.5],
         ]),
         level_thrust: curve(&[
-            [100.0, 8.0], [150.0, 4.0], [200.0, 3.0], [300.0, 2.5], [400.0, 1.5], [500.0, 1.0],
-            [800.0, 0.5], [1000.0, 0.0]
+            [100.0, 8.0],
+            [150.0, 4.0],
+            [200.0, 3.0],
+            [300.0, 2.5],
+            [400.0, 1.5],
+            [500.0, 1.0],
+            [800.0, 0.5],
+            [1000.0, 0.0],
         ]),
         level_side_slip: curve(&[[0.0, 1.0]]),
         level_lateral_damping: curve(&[
-            [0.0, 0.0], [50.0, 0.05], [100.0, 0.15], [250.0, 0.175], [500.0, 0.2]
+            [0.0, 0.0],
+            [50.0, 0.05],
+            [100.0, 0.15],
+            [250.0, 0.175],
+            [500.0, 0.2],
         ]),
         level_brake: curve(&[[-600.0, 0.0], [-200.0, 1.0], [-100.0, 2.0], [0.0, 3.0]]),
         ground_push_by_distance: curve(&[[0.0, 25.0], [1.0, 10.0]]),
         ground_push_by_vertical_speed: curve(&[[-50.0, 1.5], [0.0, 0.0]]),
         ground_push_by_forward_speed: curve(&[[300.0, 1.0], [400.0, 0.8], [600.0, 0.6], [800.0, 0.2]]),
-        ground_push_by_time: curve(&[
-            [700.0, 1.0], [800.0, 0.8], [900.0, 0.6], [1300.0, 0.2], [1500.0, 0.1]
-        ]),
+        ground_push_by_time: curve(&[[700.0, 1.0], [800.0, 0.8], [900.0, 0.6], [1300.0, 0.2], [1500.0, 0.1]]),
         ground_roll_by_speed: curve(&[[0.0, 0.0], [100.0, 15.0], [500.0, 20.0]]),
         ground_roll_by_time: curve(&[
-            [0.0, 0.0], [1000.0, 0.1], [1500.0, 0.25], [2000.0, 0.5], [2500.0, 1.0]
+            [0.0, 0.0],
+            [1000.0, 0.1],
+            [1500.0, 0.25],
+            [2000.0, 0.5],
+            [2500.0, 1.0],
         ]),
         pitch_limit_scale: curve(&[[0.0, 0.0]]),
         engine_thrust: curve(&[
-            [-100.0, 50.0], [0.0, 50.0], [100.0, 1.0], [200.0, 0.0], [300.0, 0.0], [400.0, 0.0]
+            [-100.0, 50.0],
+            [0.0, 50.0],
+            [100.0, 1.0],
+            [200.0, 0.0],
+            [300.0, 0.0],
+            [400.0, 0.0],
         ]),
-        wheel_sample_expected: curve(&[
-            [0.0, 1.0], [0.25, 0.95], [0.5, 0.8], [0.75, 0.6], [1.0, 0.25]
-        ]),
+        wheel_sample_expected: curve(&[[0.0, 1.0], [0.25, 0.95], [0.5, 0.8], [0.75, 0.6], [1.0, 0.25]]),
         slow_start_boost: curve(&[[1000.0, 1.0], [2000.0, 4.0]]),
         slip_thrust: curve(&[[-100.0, 50.0], [0.0, 50.0], [100.0, 1.0]]),
         grip_by_suspension: curve(&[[0.0, 1.0], [0.5, 2.0], [1.0, 3.0]]),
-        side_speed_roll_torque: curve(&[
-            [0.0, 0.0], [1.0, 0.8], [10.0, 1.0], [20.0, 1.0], [30.0, 1.0]
-        ]),
+        side_speed_roll_torque: curve(&[[0.0, 0.0], [1.0, 0.8], [10.0, 1.0], [20.0, 1.0], [30.0, 1.0]]),
         pivot_radius_by_speed: curve(&[[0.0, 1.0], [5.0, 2.0], [10.0, 3.0]]),
         hover_side_distance: curve(&[[0.0, 8.0], [0.5, 1.0], [1.0, 0.0]]),
         drive_thrust_by_side_speed: curve(&[[0.0, 0.0]]),

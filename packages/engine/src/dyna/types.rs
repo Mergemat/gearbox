@@ -54,8 +54,16 @@ pub struct DynaModel {
 
 impl Default for DynaModel {
     fn default() -> Self {
-        Self { mass: 0.0, inverse_inertia_matrix: crate::Mat3::diagonal(crate::Vec3::ZERO),
-            center_x: 0.0, center_y: 0.0, center_z: 0.0, max_angular_velocity: 0.0,
-            externally_simulated: 0, substep_distance: 0.0, kind: 0 }
+        Self {
+            mass: 0.0,
+            inverse_inertia_matrix: crate::Mat3::diagonal(crate::Vec3::ZERO),
+            center_x: 0.0,
+            center_y: 0.0,
+            center_z: 0.0,
+            max_angular_velocity: 0.0,
+            externally_simulated: 0,
+            substep_distance: 0.0,
+            kind: 0,
+        }
     }
 }

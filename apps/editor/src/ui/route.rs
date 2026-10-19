@@ -14,7 +14,9 @@ impl Editor {
             self.route.to = last.at;
         }
         let ms0 = self.race_ms0;
-        let at = move |t: Option<usize>| t.map_or("not reached".to_string(), |k| format!("{} s", fmt_ms(ms0 + 10 * k as i32)));
+        let at = move |t: Option<usize>| {
+            t.map_or("not reached".to_string(), |k| format!("{} s", fmt_ms(ms0 + 10 * k as i32)))
+        };
         let mut v: Vec<AnyElement> = vec![heading("Stretch").into_any_element()];
         let mut from: Vec<(String, RouteFrom)> = vec![("Race start".into(), RouteFrom::RaceStart)];
         if self.doc.start.is_some() {
@@ -25,33 +27,51 @@ impl Editor {
                 from.push((format!("{}  {}", s.name, at(s.tick)), RouteFrom::Stop(i)));
             }
         }
-        let sel = self.dropdown("route.from", self.route.from, from, |e, v, _| {
-            e.route.from = v;
-            e.frame_route();
-        }, cx);
+        let sel = self.dropdown(
+            "route.from",
+            self.route.from,
+            from,
+            |e, v, _| {
+                e.route.from = v;
+                e.frame_route();
+            },
+            cx,
+        );
         v.push(prop("From", sel).into_any_element());
         let to = stops.iter().map(|s| (format!("{}  {}", s.name, at(s.tick)), s.at)).collect();
-        let sel = self.dropdown("route.to", self.route.to, to, |e, v, _| {
-            e.route.to = v;
-            e.frame_route();
-        }, cx);
+        let sel = self.dropdown(
+            "route.to",
+            self.route.to,
+            to,
+            |e, v, _| {
+                e.route.to = v;
+                e.frame_route();
+            },
+            cx,
+        );
         v.push(prop("To", sel).into_any_element());
         let first = match self.route.from {
             RouteFrom::Stop(i) => i + 1,
             _ => 0,
         };
         let through = match stops.iter().position(|s| s.at == self.route.to) {
-            Some(l) if l >= first => stops[first..=l].iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(" \u{2192} "),
+            Some(l) if l >= first => {
+                stops[first..=l].iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(" \u{2192} ")
+            }
             _ => "To is before From".into(),
         };
         v.push(prop_top("Through", div().pt(px(5.0)).child(self.ro(through))).into_any_element());
         if let Some((a, b)) = self.route_ticks() {
-            v.push(prop("Your run", self.ro(format!("{} s", fmt_ms(10 * (b - a) as i32)))).into_any_element());
+            v.push(
+                prop("Your run", self.ro(format!("{} s", fmt_ms(10 * (b - a) as i32)))).into_any_element(),
+            );
         }
         v.push(heading("Search").into_any_element());
         let budget = self.budget_field("route-budget", self.route.seconds, |e, v, _| e.route.seconds = v, cx);
         v.push(prop("For", budget).into_any_element());
-        v.push(prop("", self.run_button("route-find", "Find route", |e| e.find_route(), cx)).into_any_element());
+        v.push(
+            prop("", self.run_button("route-find", "Find route", |e| e.find_route(), cx)).into_any_element(),
+        );
         v.extend(self.takes(cx));
         v
     }

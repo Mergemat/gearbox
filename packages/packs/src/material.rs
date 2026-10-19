@@ -23,7 +23,9 @@ pub fn user_material_ids(buf: &[u8], start: usize) -> Result<MaterialIds> {
     anyhow::ensure!(r.u32()? == 0x090fd000, "user material chunk");
     let version = r.u32()?;
     anyhow::ensure!((10..=11).contains(&version), "user material version {version}");
-    if version >= 11 { r.bool8()?; }
+    if version >= 11 {
+        r.bool8()?;
+    }
     crate::crystal::id(&mut r)?;
     crate::crystal::id(&mut r)?;
     r.string()?;
@@ -41,7 +43,8 @@ pub fn modifier(buf: &[u8], path: &str) -> Result<Modifier> {
     let layout = crate::nodes::layout(buf)?;
     let head = &layout.head;
     let w = 0x0915d000u32.to_le_bytes();
-    let p = buf[head.body_start..].windows(4).position(|x| x == w).context("no chunk 0x0915D000")? + head.body_start;
+    let p = buf[head.body_start..].windows(4).position(|x| x == w).context("no chunk 0x0915D000")?
+        + head.body_start;
     let mut r = Reader::new(buf);
     r.skip(p + 4)?;
     let ctx = crate::prefab::Ctx { buf, layout: &layout, path };
@@ -113,14 +116,23 @@ pub fn skin_files(buf: &[u8]) -> Result<Vec<(u32, String, String)>> {
         r.string()?;
     }
     let n = r.u8()?;
-    (0..n).map(|_| {
-        let entry = (r.u32()?, r.string()?, r.string()?);
-        if version >= 2 { r.bool32()?; }
-        Ok(entry)
-    }).collect()
+    (0..n)
+        .map(|_| {
+            let entry = (r.u32()?, r.string()?, r.string()?);
+            if version >= 2 {
+                r.bool32()?;
+            }
+            Ok(entry)
+        })
+        .collect()
 }
 
-pub fn replacement(material: &str, folder: &str, skin_folder: Option<&str>, skinned: &[(String, String)]) -> Option<String> {
+pub fn replacement(
+    material: &str,
+    folder: &str,
+    skin_folder: Option<&str>,
+    skinned: &[(String, String)],
+) -> Option<String> {
     let norm = |s: &str| s.replace('/', "\\").to_lowercase();
     let (name, _) = skinned.iter().find(|(_, p)| norm(p) == norm(material))?;
     let (folder, name) = match name.strip_prefix('*') {

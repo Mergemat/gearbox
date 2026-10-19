@@ -1,6 +1,10 @@
+use super::{
+    ForceCtx,
+    common::{KMH, TINY, sign_one},
+    contact,
+};
 use crate::Vec3;
 use crate::math::{cvtt64, minss};
-use super::{ForceCtx, common::{KMH, TINY, sign_one}, contact};
 
 const TEXTURE_SIDE: f32 = 128.0;
 const TEXTURE_AMPLITUDE: f32 = 255.0;
@@ -20,22 +24,24 @@ pub fn surface_bumps(ctx: &mut ForceCtx<'_>) {
         let state = ctx.body.state();
         let rotation = state.rot.to_array();
         let anchor = ctx.geometry.wheels[index].anchor;
-        let world_z = ((anchor.x * rotation[6] + anchor.y * rotation[7])
-            + anchor.z * rotation[8]) + state.pos.z;
+        let world_z =
+            ((anchor.x * rotation[6] + anchor.y * rotation[7]) + anchor.z * rotation[8]) + state.pos.z;
         let row = (crate::numeric::fmod(world_z as f64, material.bump_period_z as f64) as f32).abs()
-            / material.bump_period_z * TEXTURE_SIDE;
+            / material.bump_period_z
+            * TEXTURE_SIDE;
         let row = (cvtt64(row) as u32) << 7;
-        let world_x = ((anchor.y * rotation[1] + anchor.x * rotation[0])
-            + anchor.z * rotation[2]) + state.pos.x;
+        let world_x =
+            ((anchor.y * rotation[1] + anchor.x * rotation[0]) + anchor.z * rotation[2]) + state.pos.x;
         let column = (crate::numeric::fmod(world_x as f64, material.bump_period_x as f64) as f32).abs()
-            / material.bump_period_x * TEXTURE_SIDE;
+            / material.bump_period_x
+            * TEXTURE_SIDE;
         let texture_index = row.wrapping_add(cvtt64(column) as u32);
         let bump = BUMP[texture_index as usize];
         if bump == 0 {
             continue;
         }
-        let force = minss(material.bump_limit,
-            bump as i32 as f32 / TEXTURE_AMPLITUDE * speed * material.bump_scale);
+        let force =
+            minss(material.bump_limit, bump as i32 as f32 / TEXTURE_AMPLITUDE * speed * material.bump_scale);
         bump_contact(ctx, index, force);
     }
 }
@@ -81,25 +87,32 @@ fn bump_contact(ctx: &mut ForceCtx<'_>, index: usize, force: f32) {
     }
     if impact && ctx.tuning.contact_impact_timer_enabled != 0 {
         let speed = -((velocity.y * normal.y + normal.x * velocity.x) + velocity.z * normal.z) * KMH;
-        contact::impact_timer(&ctx.tuning.contact_impact_duration_by_speed,
-            ctx.tuning.contact_impact_limit_ms, speed,
-            tick as i64 * NS_PER_MS, &mut ctx.vehicle.contact_impact_thrust_until);
+        contact::impact_timer(
+            &ctx.tuning.contact_impact_duration_by_speed,
+            ctx.tuning.contact_impact_limit_ms,
+            speed,
+            tick as i64 * NS_PER_MS,
+            &mut ctx.vehicle.contact_impact_thrust_until,
+        );
     }
     if ctx.tuning.suspension_kind != 2 {
         return;
     }
-    let restitution = if material == 4 {
-        ctx.tuning.dirt_contact_restitution
-    } else {
-        ctx.tuning.contact_restitution
-    };
+    let restitution =
+        if material == 4 { ctx.tuning.dirt_contact_restitution } else { ctx.tuning.contact_restitution };
     let into_surface = (velocity.x * normal.x + velocity.y * normal.y) + velocity.z * normal.z;
     if !(0.0 > into_surface) {
         return;
     }
     let radius = point - ctx.geometry.reference_center;
-    let impulse = contact::contact_impulse(ctx.geometry.mass, ctx.geometry.local_inverse_inertia,
-        -restitution, velocity, normal, radius);
+    let impulse = contact::contact_impulse(
+        ctx.geometry.mass,
+        ctx.geometry.local_inverse_inertia,
+        -restitution,
+        velocity,
+        normal,
+        radius,
+    );
     let scale = ctx.vehicle.wheel_grip[index];
     contact::contact_response(ctx, material, point, impulse, velocity, true, scale);
 }

@@ -1,8 +1,17 @@
+use super::{
+    Tuning, Vehicle, VisualWheel,
+    flags::{BodyFlags, EffectFlags, ToggleFlags, WheelFlags},
+    forces::common::{KMH, PedalMode, TINY, clamp01},
+    impacts::{Accumulator, Category},
+    model::ForceGeometry,
+    vis,
+};
 use crate::race::countdown::{ControlFlags, ControlPhase};
-use crate::{Curve, Vec3, Iso, Quat, dyna::{BodyHandle, Dyna}, math::{maxss, minss}};
-use super::{Vehicle, Tuning, VisualWheel, model::ForceGeometry, impacts::{Accumulator, Category},
-    forces::common::{KMH, TINY, clamp01, PedalMode},
-    flags::{BodyFlags, EffectFlags, WheelFlags, ToggleFlags}, vis};
+use crate::{
+    Curve, Iso, Quat, Vec3,
+    dyna::{BodyHandle, Dyna},
+    math::{maxss, minss},
+};
 
 const STRONG_IMPACT: f32 = 0.2;
 const HARD_BODY_IMPACT: f32 = 0.85;
@@ -50,7 +59,10 @@ pub struct ImpactEvent {
     pub flags: u32,
 }
 #[derive(Clone, Debug, PartialEq)]
-pub enum Event { Impact(ImpactEvent), Exit(crate::arena::StateExitEvent) }
+pub enum Event {
+    Impact(ImpactEvent),
+    Exit(crate::arena::StateExitEvent),
+}
 
 pub struct Context<'a> {
     pub tuning: &'a Tuning,
@@ -68,23 +80,30 @@ pub struct Context<'a> {
 pub fn ramp(value: f32, middle: f32, high: f32) -> f32 {
     let phase = if value <= middle {
         ((value - middle * STRONG_IMPACT) * 0.5) / (middle - middle * STRONG_IMPACT)
-    } else { ((value - middle) * 0.5) / (high - middle) + 0.5 };
+    } else {
+        ((value - middle) * 0.5) / (high - middle) + 0.5
+    };
     let mut result = 0.0;
     if 0.0 < phase {
         result = 1.0;
-        if phase < 1.0 { result = phase * 3.0 * phase - (phase + phase) * phase * phase; }
+        if phase < 1.0 {
+            result = phase * 3.0 * phase - (phase + phase) * phase * phase;
+        }
     }
     result
 }
 
 pub fn follow(value: f32, target: f32, tolerance: f32) -> f32 {
-    if target + tolerance < value { value - tolerance }
-    else if value < target - tolerance { value + tolerance } else { target }
+    if target + tolerance < value {
+        value - tolerance
+    } else if value < target - tolerance {
+        value + tolerance
+    } else {
+        target
+    }
 }
 
-pub fn spring_step(value: &mut f32, target: f32, velocity: &mut f32,
-    stiffness: f32, damping: f32, dt: f32)
-{
+pub fn spring_step(value: &mut f32, target: f32, velocity: &mut f32, stiffness: f32, damping: f32, dt: f32) {
     let acceleration = (target - *value) * stiffness - *velocity * damping;
     *velocity = acceleration * dt + *velocity;
     *value = *velocity * dt + *value;
@@ -113,20 +132,27 @@ pub fn idle_update(vehicle: &mut Vehicle, tick: u32) {
 }
 
 pub fn vehicle_post_step(vehicle: &mut Vehicle, ctx: &mut Context<'_>) {
-    if vehicle.body == u32::MAX { return; }
+    if vehicle.body == u32::MAX {
+        return;
+    }
     idle_update(vehicle, ctx.tick);
     if matches!(ctx.tuning.model_kind, 9 | 15) {
         todo!("post step of model 9/15");
     }
-    let target = if vehicle.effect_mode_is(PedalMode::Cut) { 0.0 }
-        else if vehicle.effect_mode_is(PedalMode::Full) { 1.0 } else {
-            let pedal = if vehicle.cached_gear == 0 { vehicle.controls.brake } else { vehicle.controls.gas };
-            let enabled = if vehicle.shift_remaining > 0.0 { 0.0 } else { 1.0 };
-            enabled * pedal
-        };
-    vehicle.smoothed_pedal = clamp01(((target - vehicle.smoothed_pedal) * 5.0) * ctx.dt
-        + vehicle.smoothed_pedal);
-    let Some(model) = ctx.model else { return; };
+    let target = if vehicle.effect_mode_is(PedalMode::Cut) {
+        0.0
+    } else if vehicle.effect_mode_is(PedalMode::Full) {
+        1.0
+    } else {
+        let pedal = if vehicle.cached_gear == 0 { vehicle.controls.brake } else { vehicle.controls.gas };
+        let enabled = if vehicle.shift_remaining > 0.0 { 0.0 } else { 1.0 };
+        enabled * pedal
+    };
+    vehicle.smoothed_pedal =
+        clamp01(((target - vehicle.smoothed_pedal) * 5.0) * ctx.dt + vehicle.smoothed_pedal);
+    let Some(model) = ctx.model else {
+        return;
+    };
     let state = ctx.dyna.state(BodyHandle(vehicle.body));
     let rotation = state.rot.to_array();
     let forward = (state.vel.y * rotation[5] + rotation[2] * state.vel.x) + state.vel.z * rotation[8];
@@ -138,25 +164,28 @@ pub fn vehicle_post_step(vehicle: &mut Vehicle, ctx: &mut Context<'_>) {
     layers(vehicle, ctx, forward, &wet);
     wear_states(vehicle, ctx);
     super::maintenance::parts_update(ctx.parts_count as usize);
-    if (strengths[1] >= LOUD_IMPACT
-            && !crate::surface::SOFT.contains(&vehicle.free_wheel_impact_material))
-        || (strengths[0] >= LOUD_IMPACT
-            && !crate::surface::SOFT.contains(&vehicle.wheel_impact_material))
-    { vehicle.recent_events[0] = ctx.tick; }
+    if (strengths[1] >= LOUD_IMPACT && !crate::surface::SOFT.contains(&vehicle.free_wheel_impact_material))
+        || (strengths[0] >= LOUD_IMPACT && !crate::surface::SOFT.contains(&vehicle.wheel_impact_material))
+    {
+        vehicle.recent_events[0] = ctx.tick;
+    }
 }
 
 fn impact_events(vehicle: &mut Vehicle, model: &Model, ctx: &mut Context<'_>) -> [f32; 3] {
     let range = model.wheel_impact_range;
-    let strengths = [ramp(vehicle.wheel_impact_peak * KMH, range[0], range[1]),
+    let strengths = [
+        ramp(vehicle.wheel_impact_peak * KMH, range[0], range[1]),
         ramp(vehicle.free_wheel_impact_peak * KMH, range[0], range[1]),
-        ramp(vehicle.body_impact_peak * KMH, model.body_impact_range[0], model.body_impact_range[1])];
+        ramp(vehicle.body_impact_peak * KMH, model.body_impact_range[0], model.body_impact_range[1]),
+    ];
     let [body_delay, wheel_delay, free_delay, separation] = model.impact_delays;
     let wheel_last = vehicle.wheel_impact_last_event;
     let free_last = vehicle.free_wheel_impact_last_event;
-    let conditions = [ctx.tick > wheel_delay.wrapping_add(wheel_last)
-            && ctx.tick >= free_last.wrapping_add(separation),
+    let conditions = [
+        ctx.tick > wheel_delay.wrapping_add(wheel_last) && ctx.tick >= free_last.wrapping_add(separation),
         ctx.tick > free_last.wrapping_add(free_delay) && ctx.tick >= wheel_last.wrapping_add(separation),
-        ctx.tick > vehicle.body_impact_last_event.wrapping_add(body_delay)];
+        ctx.tick > vehicle.body_impact_last_event.wrapping_add(body_delay),
+    ];
     for (index, category) in [Category::Wheel, Category::FreeWheel, Category::Body].into_iter().enumerate() {
         let mut value = vehicle.impact(category);
         if strengths[index] >= STRONG_IMPACT && conditions[index] {
@@ -168,8 +197,11 @@ fn impact_events(vehicle: &mut Vehicle, model: &Model, ctx: &mut Context<'_>) ->
                 Category::Body => vehicle.body_impact_last_event = ctx.tick,
             }
         }
-        value.count = 0; value.point = Vec3::ZERO; value.normal = Vec3::ZERO;
-        value.gripping = 0; value.peak = 0.0;
+        value.count = 0;
+        value.point = Vec3::ZERO;
+        value.normal = Vec3::ZERO;
+        value.gripping = 0;
+        value.peak = 0.0;
         vehicle.set_impact(category, value);
     }
     vehicle.impact_flags = 0;
@@ -180,24 +212,48 @@ fn impact_events(vehicle: &mut Vehicle, model: &Model, ctx: &mut Context<'_>) ->
 fn average(value: &mut Accumulator) {
     let normal = value.normal;
     let squared = (normal.x * normal.x + normal.y * normal.y) + normal.z * normal.z;
-    let normal = if squared > TINY && f32::MAX > squared { (1.0 / squared.sqrt()) * normal }
-        else { Vec3::new(0.0, 1.0, 0.0) };
+    let normal = if squared > TINY && f32::MAX > squared {
+        (1.0 / squared.sqrt()) * normal
+    } else {
+        Vec3::new(0.0, 1.0, 0.0)
+    };
     value.normal = -normal;
     let inverse = 1.0 / value.count as f32;
     value.point = inverse * value.point;
 }
 
-fn emit_impact(vehicle: &Vehicle, ctx: &mut Context<'_>, category: Category,
-    value: Accumulator, strength: f32)
-{
+fn emit_impact(
+    vehicle: &Vehicle,
+    ctx: &mut Context<'_>,
+    category: Category,
+    value: Accumulator,
+    strength: f32,
+) {
     if super::race_flags::RaceFlags(vehicle.flags).contains(super::race_flags::RaceFlags::MUTED)
-        || vehicle.tag == u8::MAX { return; }
-    let material = if category == Category::Body { vehicle.body_impact_material }
-        else { vehicle.free_wheel_impact_material };
-    let event = ImpactEvent { category, tick: ctx.tick, vehicle: vehicle.key, tag: vehicle.tag,
-        point: vehicle.quat.rotate(value.point) + vehicle.pos, normal: value.normal, material,
-        strength, free: category != Category::Body && value.gripping == 0, flags: vehicle.impact_flags };
-    if let Some(events) = &mut ctx.events { events.push(Event::Impact(event)); }
+        || vehicle.tag == u8::MAX
+    {
+        return;
+    }
+    let material = if category == Category::Body {
+        vehicle.body_impact_material
+    } else {
+        vehicle.free_wheel_impact_material
+    };
+    let event = ImpactEvent {
+        category,
+        tick: ctx.tick,
+        vehicle: vehicle.key,
+        tag: vehicle.tag,
+        point: vehicle.quat.rotate(value.point) + vehicle.pos,
+        normal: value.normal,
+        material,
+        strength,
+        free: category != Category::Body && value.gripping == 0,
+        flags: vehicle.impact_flags,
+    };
+    if let Some(events) = &mut ctx.events {
+        events.push(Event::Impact(event));
+    }
 }
 
 fn clamp_symmetric(value: f32, limit: f32) -> f32 {
@@ -211,10 +267,22 @@ fn suspension(vehicle: &mut Vehicle, model: &Model, state: &crate::dyna::BodySta
     let forward = (delta.y * rotation[5] + delta.x * rotation[2]) + delta.z * rotation[8];
     vehicle.previous_body_velocity = state.vel;
     vehicle.suspension_frame = state.rot;
-    spring_filter(&mut vehicle.lateral_spring_value, vehicle.lateral_spring_target,
-        &mut vehicle.lateral_spring_velocity, lateral, model, dt);
-    spring_filter(&mut vehicle.forward_spring_value, vehicle.forward_spring_target,
-        &mut vehicle.forward_spring_velocity, forward, model, dt);
+    spring_filter(
+        &mut vehicle.lateral_spring_value,
+        vehicle.lateral_spring_target,
+        &mut vehicle.lateral_spring_velocity,
+        lateral,
+        model,
+        dt,
+    );
+    spring_filter(
+        &mut vehicle.forward_spring_value,
+        vehicle.forward_spring_target,
+        &mut vehicle.forward_spring_velocity,
+        forward,
+        model,
+        dt,
+    );
 }
 
 fn spring_filter(value: &mut f32, target: f32, velocity: &mut f32, drive: f32, model: &Model, dt: f32) {
@@ -226,58 +294,95 @@ fn spring_filter(value: &mut f32, target: f32, velocity: &mut f32, drive: f32, m
 }
 
 fn wet_wheels(ctx: &Context<'_>, pose: Iso) -> Vec<bool> {
-    ctx.geometry.wheels.iter().map(|wheel| {
-        let point = pose.rot.transform_y_first(wheel.anchor) + pose.pos;
-        let bottom = point.y - wheel.radius;
-        let height = (wheel.radius + point.y) - bottom;
-        let mut depth = 0.0;
-        ctx.water.query(Vec3::new(point.x, bottom, point.z), height, Some(&mut depth), None)
-            && depth > wheel.radius * WATER_RADIUS_FRACTION + bottom
-    }).collect()
+    ctx.geometry
+        .wheels
+        .iter()
+        .map(|wheel| {
+            let point = pose.rot.transform_y_first(wheel.anchor) + pose.pos;
+            let bottom = point.y - wheel.radius;
+            let height = (wheel.radius + point.y) - bottom;
+            let mut depth = 0.0;
+            ctx.water.query(Vec3::new(point.x, bottom, point.z), height, Some(&mut depth), None)
+                && depth > wheel.radius * WATER_RADIUS_FRACTION + bottom
+        })
+        .collect()
 }
 
 fn surface_summary(vehicle: &mut Vehicle, ctx: &Context<'_>, forward: f32, wet: &[bool]) {
     let tuning = ctx.tuning;
-    let records: Vec<_> = ctx.geometry.wheels.iter().enumerate().map(|(index, _)| {
-        let wheel = &vehicle.wheels[index];
-        let coefficient = vehicle.wheel_grip[index];
-        let mut flags = WheelFlags::default();
-        flags.set(WheelFlags::WET, wet[index]);
-        flags.set(WheelFlags::CONTACT, wheel.contact != 0 && vehicle.level_consistent());
-        flags.set(WheelFlags::BOOST, ToggleFlags(wheel.boost_contact).enabled());
-        let slip = if tuning.low_grip_threshold >= coefficient { LOW_GRIP_SLIP } else { wheel.slip };
-        VisualWheel { flags: flags.0, slip, material: wheel.material as u16 | (wheel.surface as u16) << 8,
-            ..VisualWheel::default() }
-    }).collect();
-    let fixed = if vehicle.fixed_wheel_spin != 0 { true }
-        else { vehicle.effect_mode_is_free()
-            && ControlFlags(vehicle.control_flags).phase() == ControlPhase::Countdown && vehicle.in_water == 0
+    let records: Vec<_> = ctx
+        .geometry
+        .wheels
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            let wheel = &vehicle.wheels[index];
+            let coefficient = vehicle.wheel_grip[index];
+            let mut flags = WheelFlags::default();
+            flags.set(WheelFlags::WET, wet[index]);
+            flags.set(WheelFlags::CONTACT, wheel.contact != 0 && vehicle.level_consistent());
+            flags.set(WheelFlags::BOOST, ToggleFlags(wheel.boost_contact).enabled());
+            let slip = if tuning.low_grip_threshold >= coefficient { LOW_GRIP_SLIP } else { wheel.slip };
+            VisualWheel {
+                flags: flags.0,
+                slip,
+                material: wheel.material as u16 | (wheel.surface as u16) << 8,
+                ..VisualWheel::default()
+            }
+        })
+        .collect();
+    let fixed = if vehicle.fixed_wheel_spin != 0 {
+        true
+    } else {
+        vehicle.effect_mode_is_free()
+            && ControlFlags(vehicle.control_flags).phase() == ControlPhase::Countdown
+            && vehicle.in_water == 0
             && forward * KMH > tuning.fixed_spin_minimum_speed
-            && tuning.fixed_spin_maximum_speed > forward * KMH && vehicle.controls.gas > 0.0 };
+            && tuning.fixed_spin_maximum_speed > forward * KMH
+            && vehicle.controls.gas > 0.0
+    };
     let mode = fixed && !EffectFlags::FRAGILE.contains_in(vehicle.effect_flags);
     let sides = contact_summary(&ctx.geometry.wheels, &records, false, mode);
     let material = if sides[1].count > sides[0].count { sides[1].material } else { sides[0].material };
-    if material == 80 { return; }
+    if material == 80 {
+        return;
+    }
     let material = ctx.geometry.material(material);
     let speed = forward.abs();
-    let amplitude = if vehicle.angular_freeze == 0 { 0.0 }
-        else { minss(speed * material.bump_scale, material.bump_limit) };
+    let amplitude = if vehicle.angular_freeze == 0 {
+        0.0
+    } else {
+        minss(speed * material.bump_scale, material.bump_limit)
+    };
     let amplitude = amplitude * material.bump_amplitude_scale;
     vehicle.bump_frequency = follow(vehicle.bump_frequency, speed / material.bump_speed_period, 0.5);
-    vehicle.bump_amplitude = follow(vehicle.bump_amplitude, minss(amplitude, BUMP_AMPLITUDE_LIMIT),
-        BUMP_FOLLOW_TOLERANCE);
+    vehicle.bump_amplitude =
+        follow(vehicle.bump_amplitude, minss(amplitude, BUMP_AMPLITUDE_LIMIT), BUMP_FOLLOW_TOLERANCE);
 }
 
 fn shake(vehicle: &mut Vehicle, strengths: [f32; 3]) {
     let wheel = strengths[1] * FREE_WHEEL_SHAKE + strengths[0] * WHEEL_SHAKE;
     let strength = maxss(strengths[2], wheel);
-    if !(strength >= 0.5) { return; }
+    if !(strength >= 0.5) {
+        return;
+    }
     let excess = strength - 0.5;
     let frequency = 4.0 - ((excess + excess) + (excess + excess));
     let amplitude = (excess * SHAKE_SLOPE + excess * SHAKE_SLOPE) + SHAKE_BASE;
-    let frequency = if !(frequency >= 4.0) { 4.0 } else if 2.0 >= frequency { frequency } else { 2.0 };
-    let amplitude = if !(amplitude >= SHAKE_BASE) { SHAKE_BASE }
-        else if 1.0 >= amplitude { amplitude } else { 1.0 };
+    let frequency = if !(frequency >= 4.0) {
+        4.0
+    } else if 2.0 >= frequency {
+        frequency
+    } else {
+        2.0
+    };
+    let amplitude = if !(amplitude >= SHAKE_BASE) {
+        SHAKE_BASE
+    } else if 1.0 >= amplitude {
+        amplitude
+    } else {
+        1.0
+    };
     vehicle.bump_frequency = maxss(vehicle.bump_frequency, frequency);
     vehicle.bump_amplitude = maxss(vehicle.bump_amplitude, amplitude);
 }
@@ -291,37 +396,55 @@ fn layers(vehicle: &mut Vehicle, ctx: &Context<'_>, forward: f32, wet: &[bool]) 
     let mut builds = 0;
     for (index, &wet) in wet.iter().enumerate() {
         let wheel = &vehicle.wheels[index];
-        let material = if wet { 13 } else {
-            if wheel.contact == 0 || wheel.material == 255 { continue; }
+        let material = if wet {
+            13
+        } else {
+            if wheel.contact == 0 || wheel.material == 255 {
+                continue;
+            }
             wheel.material
         };
         if model.layer_materials[material as usize] {
             builds += 1;
             layers[index] = clamp01(ctx.dt * build + layers[index]);
-        } else { layers[index] = clamp01(layers[index] - ctx.dt * clear); }
+        } else {
+            layers[index] = clamp01(layers[index] - ctx.dt * clear);
+        }
     }
     vehicle.wheel_layers = layers;
-    if builds != 0 { vehicle.surface_layer = clamp01(ctx.dt * build + vehicle.surface_layer); }
-    else if vehicle.in_water != 0 { vehicle.surface_layer = clamp01(vehicle.surface_layer - ctx.dt * clear); }
+    if builds != 0 {
+        vehicle.surface_layer = clamp01(ctx.dt * build + vehicle.surface_layer);
+    } else if vehicle.in_water != 0 {
+        vehicle.surface_layer = clamp01(vehicle.surface_layer - ctx.dt * clear);
+    }
 }
 
 pub fn grid_reduce(wear: [f32; 9], all: bool) -> [f32; 4] {
     if all {
         let mut maximum = 0.0;
-        for value in wear { maximum = maxss(maximum, value); }
+        for value in wear {
+            maximum = maxss(maximum, value);
+        }
         return [maximum; 4];
     }
-    [maxss((wear[6] + wear[4]) * 0.5, wear[5]),
-        maxss((wear[0] + wear[2]) * 0.5, wear[1]), maxss(wear[2], maxss(wear[3], wear[4])),
-        maxss(wear[0], maxss(wear[7], wear[6]))]
+    [
+        maxss((wear[6] + wear[4]) * 0.5, wear[5]),
+        maxss((wear[0] + wear[2]) * 0.5, wear[1]),
+        maxss(wear[2], maxss(wear[3], wear[4])),
+        maxss(wear[0], maxss(wear[7], wear[6])),
+    ]
 }
 
 pub fn wheel_flags(wear: [f32; 9], parts: [f32; 4]) -> [u32; 5] {
     let all = DAMAGE_THRESHOLD < wear[8];
     let last = if wear[7] <= DAMAGE_THRESHOLD && !all { 0 } else { 2 };
-    [if DAMAGE_THRESHOLD < parts[0] || all { 2 } else { 0 },
+    [
+        if DAMAGE_THRESHOLD < parts[0] || all { 2 } else { 0 },
         if DAMAGE_THRESHOLD < parts[1] || all { 2 } else { 0 },
-        if DAMAGE_THRESHOLD < wear[3] || all { 2 } else { 0 }, last, last]
+        if DAMAGE_THRESHOLD < wear[3] || all { 2 } else { 0 },
+        last,
+        last,
+    ]
 }
 
 fn wear_states(vehicle: &mut Vehicle, ctx: &mut Context<'_>) {
@@ -334,30 +457,50 @@ fn wear_states(vehicle: &mut Vehicle, ctx: &mut Context<'_>) {
     for index in 0..4 {
         if detached[index] == 0 && !(model.damage_threshold > parts[index]) {
             detached[index] = 1;
-            delays[index] = crate::numeric::random_range(ctx.rng, model.detach_delay[0], model.detach_delay[1]);
+            delays[index] =
+                crate::numeric::random_range(ctx.rng, model.detach_delay[0], model.detach_delay[1]);
         }
     }
     vehicle.detached_parts = detached;
     vehicle.detach_delays = delays;
     let previous = vehicle.damage_flags;
     let layer_state = |value| crate::arena::LayerState::from_code(value);
-    let events = crate::arena::state_exit_events(vehicle, ctx.tick, ctx.events.is_some(),
-        flags.map(layer_state), previous.map(layer_state));
-    if let Some(output) = &mut ctx.events { output.extend(events.into_iter().map(Event::Exit)); }
+    let events = crate::arena::state_exit_events(
+        vehicle,
+        ctx.tick,
+        ctx.events.is_some(),
+        flags.map(layer_state),
+        previous.map(layer_state),
+    );
+    if let Some(output) = &mut ctx.events {
+        output.extend(events.into_iter().map(Event::Exit));
+    }
     vehicle.damage_flags = flags;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct SideSummary { pub sum: f32, pub count: u32, pub material: u8, pub weighted: f32 }
+pub struct SideSummary {
+    pub sum: f32,
+    pub count: u32,
+    pub material: u8,
+    pub weighted: f32,
+}
 impl Default for SideSummary {
-    fn default() -> Self { Self { sum: 0.0, count: 0, material: 80, weighted: 0.0 } }
+    fn default() -> Self {
+        Self { sum: 0.0, count: 0, material: 80, weighted: 0.0 }
+    }
 }
 
-pub fn contact_summary(wheels: &[super::model::WheelDefinition], records: &[VisualWheel],
-    select_x: bool, mode: bool) -> [SideSummary; 2]
-{
+pub fn contact_summary(
+    wheels: &[super::model::WheelDefinition],
+    records: &[VisualWheel],
+    select_x: bool,
+    mode: bool,
+) -> [SideSummary; 2] {
     let mut sides = [SideSummary::default(); 2];
-    if records.is_empty() || wheels.is_empty() { return sides; }
+    if records.is_empty() || wheels.is_empty() {
+        return sides;
+    }
     let mut counts = [0; 2];
     let mut last = [0; 2];
     for (wheel, record) in wheels.iter().zip(records) {
@@ -367,25 +510,39 @@ pub fn contact_summary(wheels: &[super::model::WheelDefinition], records: &[Visu
         let summary = &mut sides[side];
         if WheelFlags(record.flags).contains(WheelFlags::CONTACT) {
             summary.count += 1;
-            if summary.material != 13 { summary.material = record.material as u8; }
+            if summary.material != 13 {
+                summary.material = record.material as u8;
+            }
             summary.sum = record.slip + summary.sum;
             summary.weighted = wheel.radius * record.spin + summary.weighted;
-        } else { last[side] = record.material as u8; }
-        if WheelFlags(record.flags).contains(WheelFlags::WET) { summary.material = 13; }
+        } else {
+            last[side] = record.material as u8;
+        }
+        if WheelFlags(record.flags).contains(WheelFlags::WET) {
+            summary.material = 13;
+        }
     }
     if mode {
-        if sides[1].count != 0 { sides[0].sum = 2.0; }
-        if sides[0].count != 0 { sides[1].sum = 2.0; }
+        if sides[1].count != 0 {
+            sides[0].sum = 2.0;
+        }
+        if sides[0].count != 0 {
+            sides[1].sum = 2.0;
+        }
     } else {
         for side in 0..2 {
-            if counts[1 - side] != 0 { sides[side].sum = 1.0 / counts[1 - side] as f32 * sides[side].sum; }
+            if counts[1 - side] != 0 {
+                sides[side].sum = 1.0 / counts[1 - side] as f32 * sides[side].sum;
+            }
         }
     }
     for side in 0..2 {
         if counts[1 - side] != 0 {
             sides[side].weighted = 1.0 / counts[1 - side] as f32 * sides[side].weighted;
         }
-        if sides[side].material >= 80 { sides[side].material = last[side]; }
+        if sides[side].material >= 80 {
+            sides[side].material = last[side];
+        }
     }
     sides
 }
@@ -397,11 +554,15 @@ pub fn post(vehicle: &mut Vehicle, ctx: &mut Context<'_>, recent_event_duration:
         vehicle.previous_body_velocity = vehicle.vel;
         let previous = Iso::from_quat_pos(vehicle.quat, vehicle.pos);
         vehicle.suspension_frame = previous.rot;
-        vehicle.slow_start_forward_threshold = Quat::new(vehicle.quat.w, -vehicle.quat.x,
-            -vehicle.quat.y, -vehicle.quat.z).rotate(vehicle.vel).z;
+        vehicle.slow_start_forward_threshold =
+            Quat::new(vehicle.quat.w, -vehicle.quat.x, -vehicle.quat.y, -vehicle.quat.z)
+                .rotate(vehicle.vel)
+                .z;
         let state = ctx.dyna.state(BodyHandle(vehicle.body));
-        vehicle.quat = state.quat; vehicle.pos = state.pos;
-        vehicle.vel = state.vel; vehicle.ang_vel = state.ang_vel;
+        vehicle.quat = state.quat;
+        vehicle.pos = state.pos;
+        vehicle.vel = state.vel;
+        vehicle.ang_vel = state.ang_vel;
         if matches!(ctx.tuning.model_kind, 9 | 14 | 15) {
             todo!("wheel spin of model 9/14/15");
         }
@@ -410,16 +571,31 @@ pub fn post(vehicle: &mut Vehicle, ctx: &mut Context<'_>, recent_event_duration:
         if !(front >= -SPIN_LIMIT && SPIN_LIMIT > front) || !(rear >= -SPIN_LIMIT && SPIN_LIMIT > rear) {
             todo!("wheel spin angle wrap");
         }
-        vehicle.front_spin = front; vehicle.rear_spin = rear;
+        vehicle.front_spin = front;
+        vehicle.rear_spin = rear;
         vehicle_post_step(vehicle, ctx);
-        if vehicle.gear_effect_active != 0 { todo!("input override copy"); }
+        if vehicle.gear_effect_active != 0 {
+            todo!("input override copy");
+        }
         if vehicle.replica != 0 && BodyFlags(vehicle.body_enabled).enabled() {
             todo!("vehicle body hook");
         }
     }
-    if fast { vis::vehicle_vis_fast(vehicle); }
-    else { vis::vehicle_vis(vehicle, ctx.dyna, &vis::Config { tuning: ctx.tuning,
-        geometry: ctx.geometry, tick: ctx.tick, recent_event_duration }, 1); }
+    if fast {
+        vis::vehicle_vis_fast(vehicle);
+    } else {
+        vis::vehicle_vis(
+            vehicle,
+            ctx.dyna,
+            &vis::Config {
+                tuning: ctx.tuning,
+                geometry: ctx.geometry,
+                tick: ctx.tick,
+                recent_event_duration,
+            },
+            1,
+        );
+    }
     if vehicle.zone_mode == 3 && vehicle.zone_bounds != 0 {
         todo!("vehicle zone 3 bounds check");
     }

@@ -24,9 +24,15 @@ pub struct Gpu {
 
 impl Gpu {
     pub fn new() -> Result<Self> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::METAL, ..wgpu::InstanceDescriptor::new_without_display_handle() });
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, ..Default::default() }))
-            .context("no Metal adapter")?;
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::METAL,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            ..Default::default()
+        }))
+        .context("no Metal adapter")?;
         let timestamps = adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY);
         let bc = adapter.features().contains(wgpu::Features::TEXTURE_COMPRESSION_BC);
         let mut required_features = wgpu::Features::empty();
@@ -118,7 +124,12 @@ impl DynBuf {
         }
         if self.cap < bytes.len() as u64 {
             self.cap = (bytes.len() as u64).next_power_of_two().max(4096);
-            self.buf = Some(d.create_buffer(&wgpu::BufferDescriptor { label: Some(self.label), size: self.cap, usage: self.usage, mapped_at_creation: false }));
+            self.buf = Some(d.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(self.label),
+                size: self.cap,
+                usage: self.usage,
+                mapped_at_creation: false,
+            }));
         }
         q.write_buffer(self.buf.as_ref().unwrap(), 0, bytes);
     }
@@ -184,7 +195,10 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(gpu: Gpu, composite: Composite, sky: [u8; 3]) -> Self {
         let d = &gpu.device;
-        let shader = d.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("scene"), source: wgpu::ShaderSource::Wgsl(include_str!("scene.wgsl").into()) });
+        let shader = d.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("scene"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("scene.wgsl").into()),
+        });
         let globals = d.create_buffer(&wgpu::BufferDescriptor {
             label: Some("globals"),
             size: std::mem::size_of::<Globals>() as u64,
@@ -196,7 +210,11 @@ impl Renderer {
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
                 count: None,
             }],
         });
@@ -211,10 +229,19 @@ impl Renderer {
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
                     count: None,
                 },
-                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         let sampler = d.create_sampler(&wgpu::SamplerDescriptor {
@@ -227,35 +254,75 @@ impl Renderer {
             anisotropy_clamp: 8,
             ..Default::default()
         });
-        let mesh_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("mesh"), bind_group_layouts: &[Some(&globals_layout), Some(&tex_layout)], immediate_size: 0 });
-        let line_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("lines"), bind_group_layouts: &[Some(&globals_layout)], immediate_size: 0 });
+        let mesh_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("mesh"),
+            bind_group_layouts: &[Some(&globals_layout), Some(&tex_layout)],
+            immediate_size: 0,
+        });
+        let line_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("lines"),
+            bind_group_layouts: &[Some(&globals_layout)],
+            immediate_size: 0,
+        });
         let vattrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Snorm8x4, 2 => Unorm8x4, 3 => Float32x2];
         let iattrs = wgpu::vertex_attr_array![4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4];
         let lattrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Unorm8x4];
         let mesh_buffers = [
-            Some(wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &vattrs }),
-            Some(wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<RawInstance>() as u64, step_mode: wgpu::VertexStepMode::Instance, attributes: &iattrs }),
+            Some(wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<Vertex>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &vattrs,
+            }),
+            Some(wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<RawInstance>() as u64,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &iattrs,
+            }),
         ];
-        let line_buffers = [Some(wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<LineVertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &lattrs })];
-        let pipeline_ex = |label: &str, line: bool, depth_write: bool, depth_test: bool, blend: wgpu::BlendState, fs_entry: &str, bias: wgpu::DepthBiasState| {
-            let (layout, vs, fs, buffers, topology): (_, _, _, &[Option<wgpu::VertexBufferLayout>], _) = if line {
-                (&line_layout, "vs_line", "fs_line", &line_buffers, wgpu::PrimitiveTopology::LineList)
-            } else {
-                (&mesh_layout, "vs_mesh", fs_entry, &mesh_buffers, wgpu::PrimitiveTopology::TriangleList)
-            };
+        let line_buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<LineVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &lattrs,
+        })];
+        let pipeline_ex = |label: &str,
+                           line: bool,
+                           depth_write: bool,
+                           depth_test: bool,
+                           blend: wgpu::BlendState,
+                           fs_entry: &str,
+                           bias: wgpu::DepthBiasState| {
+            let (layout, vs, fs, buffers, topology): (_, _, _, &[Option<wgpu::VertexBufferLayout>], _) =
+                if line {
+                    (&line_layout, "vs_line", "fs_line", &line_buffers, wgpu::PrimitiveTopology::LineList)
+                } else {
+                    (&mesh_layout, "vs_mesh", fs_entry, &mesh_buffers, wgpu::PrimitiveTopology::TriangleList)
+                };
             d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(layout),
-                vertex: wgpu::VertexState { module: &shader, entry_point: Some(vs), compilation_options: Default::default(), buffers },
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some(vs),
+                    compilation_options: Default::default(),
+                    buffers,
+                },
                 primitive: wgpu::PrimitiveState { topology, cull_mode: None, ..Default::default() },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH,
                     depth_write_enabled: Some(depth_write),
-                    depth_compare: Some(if depth_test { wgpu::CompareFunction::GreaterEqual } else { wgpu::CompareFunction::Always }),
+                    depth_compare: Some(if depth_test {
+                        wgpu::CompareFunction::GreaterEqual
+                    } else {
+                        wgpu::CompareFunction::Always
+                    }),
                     stencil: Default::default(),
                     bias,
                 }),
-                multisample: wgpu::MultisampleState { count: SAMPLES, mask: !0, alpha_to_coverage_enabled: false },
+                multisample: wgpu::MultisampleState {
+                    count: SAMPLES,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some(fs),
@@ -271,22 +338,68 @@ impl Renderer {
             })
         };
         let pipeline = |label: &str, line: bool, depth_write: bool, depth_test: bool, blend: bool| {
-            pipeline_ex(label, line, depth_write, depth_test, if blend { wgpu::BlendState::ALPHA_BLENDING } else { wgpu::BlendState::REPLACE }, "fs_mesh", Default::default())
+            pipeline_ex(
+                label,
+                line,
+                depth_write,
+                depth_test,
+                if blend { wgpu::BlendState::ALPHA_BLENDING } else { wgpu::BlendState::REPLACE },
+                "fs_mesh",
+                Default::default(),
+            )
         };
         let additive = wgpu::BlendState {
-            color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::SrcAlpha, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
-            alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::Zero,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
         };
         let timestamps = gpu.timestamps.then(|| Timestamps {
-            set: d.create_query_set(&wgpu::QuerySetDescriptor { label: Some("timestamps"), ty: wgpu::QueryType::Timestamp, count: 4 }),
-            resolve: d.create_buffer(&wgpu::BufferDescriptor { label: Some("ts resolve"), size: 32, usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false }),
-            read: d.create_buffer(&wgpu::BufferDescriptor { label: Some("ts read"), size: 32, usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false }),
+            set: d.create_query_set(&wgpu::QuerySetDescriptor {
+                label: Some("timestamps"),
+                ty: wgpu::QueryType::Timestamp,
+                count: 4,
+            }),
+            resolve: d.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("ts resolve"),
+                size: 32,
+                usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            }),
+            read: d.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("ts read"),
+                size: 32,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
             period_ns: gpu.queue.get_timestamp_period(),
         });
         let decal_bias = wgpu::DepthBiasState { constant: 8, slope_scale: 2.0, clamp: 0.0 };
         let mut r = Self {
-            cutout: pipeline_ex("cutout", false, true, true, wgpu::BlendState::REPLACE, "fs_cutout", Default::default()),
-            decal: pipeline_ex("decal", false, false, true, wgpu::BlendState::ALPHA_BLENDING, "fs_mesh", decal_bias),
+            cutout: pipeline_ex(
+                "cutout",
+                false,
+                true,
+                true,
+                wgpu::BlendState::REPLACE,
+                "fs_cutout",
+                Default::default(),
+            ),
+            decal: pipeline_ex(
+                "decal",
+                false,
+                false,
+                true,
+                wgpu::BlendState::ALPHA_BLENDING,
+                "fs_mesh",
+                decal_bias,
+            ),
             holo: pipeline_ex("holo", false, false, true, additive, "fs_holo", Default::default()),
             glow: pipeline_ex("glow", false, false, true, additive, "fs_glow", Default::default()),
             mesh: pipeline("mesh", false, true, true, false),
@@ -329,11 +442,29 @@ impl Renderer {
         self.add_mesh_parts(&m.vertices, &m.indices, &[(0, m.indices.len() as u32)])[0]
     }
 
-    pub fn add_mesh_parts(&mut self, vertices: &[Vertex], indices: &[u32], parts: &[(u32, u32)]) -> Vec<MeshId> {
+    pub fn add_mesh_parts(
+        &mut self,
+        vertices: &[Vertex],
+        indices: &[u32],
+        parts: &[(u32, u32)],
+    ) -> Vec<MeshId> {
         let d = &self.gpu.device;
-        let vb = Arc::new(d.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("mesh vertices"), contents: bytemuck::cast_slice(vertices), usage: wgpu::BufferUsages::VERTEX }));
-        let ib = Arc::new(d.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("mesh indices"), contents: bytemuck::cast_slice(indices), usage: wgpu::BufferUsages::INDEX }));
-        parts.iter().map(|&(first, count)| self.insert_mesh(GpuMesh { vertices: vb.clone(), indices: ib.clone(), first, count })).collect()
+        let vb = Arc::new(d.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("mesh vertices"),
+            contents: bytemuck::cast_slice(vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        }));
+        let ib = Arc::new(d.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("mesh indices"),
+            contents: bytemuck::cast_slice(indices),
+            usage: wgpu::BufferUsages::INDEX,
+        }));
+        parts
+            .iter()
+            .map(|&(first, count)| {
+                self.insert_mesh(GpuMesh { vertices: vb.clone(), indices: ib.clone(), first, count })
+            })
+            .collect()
     }
 
     fn insert_mesh(&mut self, gm: GpuMesh) -> MeshId {
@@ -359,7 +490,13 @@ impl Renderer {
         self.add_texture_mips(wgpu::TextureFormat::Rgba8UnormSrgb, w, h, &[rgba])
     }
 
-    pub fn add_texture_mips(&mut self, format: wgpu::TextureFormat, w: u32, h: u32, mips: &[&[u8]]) -> TextureId {
+    pub fn add_texture_mips(
+        &mut self,
+        format: wgpu::TextureFormat,
+        w: u32,
+        h: u32,
+        mips: &[&[u8]],
+    ) -> TextureId {
         let d = &self.gpu.device;
         let data: Vec<u8> = mips.concat();
         let tex = d.create_texture_with_data(
@@ -381,7 +518,10 @@ impl Renderer {
         self.textures.push(d.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("texture"),
             layout: &self.tex_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) }, wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) }],
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+            ],
         }));
         TextureId(self.textures.len() as u32 - 1)
     }
@@ -397,7 +537,11 @@ impl Renderer {
         if let Some(seq) = wait_for
             && let Some(i) = self.slot_seq.iter().position(|&s| s == seq)
             && let Some(sub) = self.slot_sub[i].clone()
-            && self.gpu.device.poll(wgpu::PollType::Wait { submission_index: Some(sub), timeout: Some(limit) }).is_ok()
+            && self
+                .gpu
+                .device
+                .poll(wgpu::PollType::Wait { submission_index: Some(sub), timeout: Some(limit) })
+                .is_ok()
         {
             self.done.fetch_max(seq, std::sync::atomic::Ordering::AcqRel);
         }
@@ -405,7 +549,15 @@ impl Renderer {
         order.sort_by_key(|&i| std::cmp::Reverse(self.slot_seq[i]));
         for i in order {
             let Some(sub) = self.slot_sub[i].clone() else { continue };
-            if self.gpu.device.poll(wgpu::PollType::Wait { submission_index: Some(sub), timeout: Some(std::time::Duration::ZERO) }).is_ok() {
+            if self
+                .gpu
+                .device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(sub),
+                    timeout: Some(std::time::Duration::ZERO),
+                })
+                .is_ok()
+            {
                 self.done.fetch_max(self.slot_seq[i], std::sync::atomic::Ordering::AcqRel);
                 break;
             }
@@ -416,7 +568,12 @@ impl Renderer {
     fn newest_done(&self) -> Option<Output> {
         let done = self.done.load(std::sync::atomic::Ordering::Acquire);
         let ring = self.ring.as_ref()?;
-        let (i, _) = self.slot_seq.iter().enumerate().filter(|(_, s)| **s != 0 && **s <= done).max_by_key(|(_, s)| **s)?;
+        let (i, _) = self
+            .slot_seq
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| **s != 0 && **s <= done)
+            .max_by_key(|(_, s)| **s)?;
         Some(Output::Surface(ring.slot(i).buffer.clone()))
     }
 
@@ -437,18 +594,30 @@ impl Renderer {
                 view_formats,
             })
         };
-        let resolve = tex("resolve", COLOR, 1, wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC, &[COLOR_RAW]);
+        let resolve = tex(
+            "resolve",
+            COLOR,
+            1,
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            &[COLOR_RAW],
+        );
         self.targets = Some(Targets {
             size,
-            msaa: tex("msaa", COLOR, SAMPLES, wgpu::TextureUsages::RENDER_ATTACHMENT, &[]).create_view(&Default::default()),
+            msaa: tex("msaa", COLOR, SAMPLES, wgpu::TextureUsages::RENDER_ATTACHMENT, &[])
+                .create_view(&Default::default()),
             resolve_view: resolve.create_view(&Default::default()),
-            resolve_raw: resolve.create_view(&wgpu::TextureViewDescriptor { format: Some(COLOR_RAW), ..Default::default() }),
+            resolve_raw: resolve
+                .create_view(&wgpu::TextureViewDescriptor { format: Some(COLOR_RAW), ..Default::default() }),
             resolve,
-            depth: tex("depth", DEPTH, SAMPLES, wgpu::TextureUsages::RENDER_ATTACHMENT, &[]).create_view(&Default::default()),
+            depth: tex("depth", DEPTH, SAMPLES, wgpu::TextureUsages::RENDER_ATTACHMENT, &[])
+                .create_view(&Default::default()),
         });
         match self.composite {
             Composite::Surface => {
-                d.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).map_err(|e| anyhow::anyhow!("{e}"))?;
+                d.poll(wgpu::PollType::Wait { submission_index: None, timeout: None })
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
                 let ring = SurfaceRing::new(d, size)?;
                 self.slot_seq = vec![0; ring.len()];
                 self.slot_sub = vec![None; ring.len()];
@@ -467,7 +636,8 @@ impl Renderer {
         let pipelined = self.pipelined && self.composite == Composite::Surface;
         if pipelined {
             use std::sync::atomic::Ordering;
-            times.wait_us = self.refresh_done((self.seq > 0).then_some(self.seq), std::time::Duration::from_millis(50));
+            times.wait_us =
+                self.refresh_done((self.seq > 0).then_some(self.seq), std::time::Duration::from_millis(50));
             let done = self.done.load(Ordering::Acquire);
             if self.seq.saturating_sub(done) >= 2 {
                 if let Some(out) = self.newest_done() {
@@ -490,7 +660,11 @@ impl Renderer {
         };
         q.write_buffer(&self.globals, 0, bytemuck::bytes_of(&g));
 
-        let mut order: Vec<&Instance> = draw.instances.iter().filter(|i| self.meshes.get(i.mesh.0 as usize).is_some_and(Option::is_some)).collect();
+        let mut order: Vec<&Instance> = draw
+            .instances
+            .iter()
+            .filter(|i| self.meshes.get(i.mesh.0 as usize).is_some_and(Option::is_some))
+            .collect();
         order.sort_by_key(|i| (i.pass(), i.mesh, i.texture));
         let rel = |m: &Mat4| {
             let mut c = m.to_cols_array_2d();
@@ -499,7 +673,8 @@ impl Renderer {
             }
             c
         };
-        let mut raw: Vec<RawInstance> = order.iter().map(|i| RawInstance { model: rel(&i.transform), tint: i.tint }).collect();
+        let mut raw: Vec<RawInstance> =
+            order.iter().map(|i| RawInstance { model: rel(&i.transform), tint: i.tint }).collect();
         let identity = raw.len() as u32;
         raw.push(RawInstance { model: rel(&Mat4::IDENTITY), tint: [1.0; 4] });
         self.instances.upload(d, q, bytemuck::cast_slice(&raw));
@@ -511,7 +686,12 @@ impl Renderer {
 
         let t = self.targets.as_ref().unwrap();
         let mut enc = d.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
-        let sky = wgpu::Color { r: lin(self.sky[0]) as f64, g: lin(self.sky[1]) as f64, b: lin(self.sky[2]) as f64, a: 1.0 };
+        let sky = wgpu::Color {
+            r: lin(self.sky[0]) as f64,
+            g: lin(self.sky[1]) as f64,
+            b: lin(self.sky[2]) as f64,
+            a: 1.0,
+        };
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
@@ -523,10 +703,17 @@ impl Renderer {
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &t.depth,
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Discard }),
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: self.timestamps.as_ref().map(|ts| wgpu::RenderPassTimestampWrites { query_set: &ts.set, beginning_of_pass_write_index: Some(0), end_of_pass_write_index: Some(1) }),
+                timestamp_writes: self.timestamps.as_ref().map(|ts| wgpu::RenderPassTimestampWrites {
+                    query_set: &ts.set,
+                    beginning_of_pass_write_index: Some(0),
+                    end_of_pass_write_index: Some(1),
+                }),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
@@ -537,7 +724,11 @@ impl Renderer {
             while k < order.len() {
                 let (m, tex, kind) = (order[k].mesh, order[k].texture, order[k].pass());
                 let mut e = k + 1;
-                while e < order.len() && order[e].mesh == m && order[e].texture == tex && order[e].pass() == kind {
+                while e < order.len()
+                    && order[e].mesh == m
+                    && order[e].texture == tex
+                    && order[e].pass() == kind
+                {
                     e += 1;
                 }
                 let gm = self.meshes[m.0 as usize].as_ref().unwrap();
@@ -557,7 +748,11 @@ impl Renderer {
                 k = e;
             }
             pass.set_bind_group(1, &self.textures[0], &[]);
-            let imm = |pass: &mut wgpu::RenderPass<'_>, p: &wgpu::RenderPipeline, b: &DynBuf, n: usize, inst: bool| {
+            let imm = |pass: &mut wgpu::RenderPass<'_>,
+                       p: &wgpu::RenderPipeline,
+                       b: &DynBuf,
+                       n: usize,
+                       inst: bool| {
                 if n > 0 {
                     pass.set_pipeline(p);
                     pass.set_vertex_buffer(0, b.slice());
@@ -579,7 +774,13 @@ impl Renderer {
         let output_slot = match self.composite {
             Composite::Surface => {
                 let (i, slot) = self.ring.as_mut().unwrap().advance();
-                self.nv12.encode(d, &mut enc, &t.resolve_raw, slot, self.timestamps.as_ref().filter(|_| ts_on).map(|ts| (&ts.set, 2)));
+                self.nv12.encode(
+                    d,
+                    &mut enc,
+                    &t.resolve_raw,
+                    slot,
+                    self.timestamps.as_ref().filter(|_| ts_on).map(|ts| (&ts.set, 2)),
+                );
                 self.seq += 1;
                 self.slot_seq[i] = self.seq;
                 self.slot_sub[i] = None;
@@ -606,7 +807,8 @@ impl Renderer {
                 Some(o) => o,
                 None => {
                     let tw = Instant::now();
-                    d.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).map_err(|e| anyhow::anyhow!("{e}"))?;
+                    d.poll(wgpu::PollType::Wait { submission_index: None, timeout: None })
+                        .map_err(|e| anyhow::anyhow!("{e}"))?;
                     self.done.fetch_max(self.seq, std::sync::atomic::Ordering::AcqRel);
                     times.wait_us = tw.elapsed().as_secs_f32() * 1e6;
                     self.newest_done().context("no completed frame")?
@@ -620,7 +822,8 @@ impl Renderer {
         }
         times.encode_us = t0.elapsed().as_secs_f32() * 1e6;
         let tw = Instant::now();
-        d.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).map_err(|e| anyhow::anyhow!("{e}"))?;
+        d.poll(wgpu::PollType::Wait { submission_index: None, timeout: None })
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
         times.wait_us = tw.elapsed().as_secs_f32() * 1e6;
         if let Some(ts) = self.timestamps.as_ref().filter(|_| ts_on) {
             {

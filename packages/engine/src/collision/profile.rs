@@ -1,4 +1,8 @@
-use crate::{Vec3, math::{cvtt, sincos}, numeric::floorf};
+use crate::{
+    Vec3,
+    math::{cvtt, sincos},
+    numeric::floorf,
+};
 
 const TINY: f32 = 1.0e-10;
 const FLOOR_BLEND: f32 = 0.1;
@@ -18,7 +22,12 @@ pub struct PipeProfile {
 
 impl PipeProfile {
     pub fn contact_normal(
-        self, point: Vec3, axis_start: Vec3, axis_end: Vec3, normal: &mut Vec3, velocity: &mut Vec3,
+        self,
+        point: Vec3,
+        axis_start: Vec3,
+        axis_end: Vec3,
+        normal: &mut Vec3,
+        velocity: &mut Vec3,
     ) -> u32 {
         let old = *normal;
         let r1 = self.height * self.inner;
@@ -39,19 +48,24 @@ impl PipeProfile {
             let mut y = n.y * t;
             let z = n.z * t;
             let sign = if delta.x.to_bits() >> 31 == 0 { 1.0 } else { -1.0 };
-            if delta.y > 0.0 { y = delta.y; }
+            if delta.y > 0.0 {
+                y = delta.y;
+            }
             let n = Vec3::new(sign * r1 - delta.x, y - delta.y, z - delta.z);
             *normal = normalise(n, n.y * n.y + n.x * n.x + n.z * n.z);
             !(normal.y > tilt_sine)
-        } else { true };
+        } else {
+            true
+        };
         if floor {
             let n = Vec3::new(point.x - axis_end.x, 0.0, (point.z - axis_end.z) * FLOOR_BLEND);
             *normal = normalise(n, n.x * n.x + 0.0 + n.z * n.z);
         }
         let n = *normal;
         let alignment = n.x * old.x + old.y * n.y + n.z * old.z;
-        if FLOOR_BLEND > alignment { *normal = old; }
-        else {
+        if FLOOR_BLEND > alignment {
+            *normal = old;
+        } else {
             let vv = n.x * velocity.x + n.y * velocity.y + n.z * velocity.z;
             *velocity = Vec3::new(n.x * vv, vv * n.y, n.z * vv);
         }
@@ -78,8 +92,8 @@ impl HeightField<'_> {
         let lx = fx - i as u32 as f32 * self.cell_size[0];
         let lz = fz - j as u32 as f32 * self.cell_size[1];
         let tri = u32::from(!(lx > lz));
-        let index = self.cells[0].wrapping_mul(j as u32).wrapping_add(i as u32)
-            .wrapping_mul(2).wrapping_add(tri);
+        let index =
+            self.cells[0].wrapping_mul(j as u32).wrapping_add(i as u32).wrapping_mul(2).wrapping_add(tri);
         let [a, b, c, d] = self.planes[index as usize];
         point.y - (point.y * b + point.x * a + point.z * c + d) * b
     }

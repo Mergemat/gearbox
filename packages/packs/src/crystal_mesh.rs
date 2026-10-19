@@ -75,9 +75,18 @@ pub fn keep_triangle(a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> bool {
     let ab2 = len2(ab);
     let ac2 = len2(ac);
     let lengths = [ab2.sqrt(), ac2.sqrt(), len2(bc).sqrt()];
-    let i_min = if lengths[(lengths[1] < lengths[0]) as usize] <= lengths[2] { (lengths[1] < lengths[0]) as usize } else { 2 };
-    let i_max = if lengths[2] <= lengths[(lengths[0] < lengths[1]) as usize] { (lengths[0] < lengths[1]) as usize } else { 2 };
-    let normal = [ac[2] * ab[1] - ac[1] * ab[2], ac[0] * ab[2] - ac[2] * ab[0], ac[1] * ab[0] - ac[0] * ab[1]];
+    let i_min = if lengths[(lengths[1] < lengths[0]) as usize] <= lengths[2] {
+        (lengths[1] < lengths[0]) as usize
+    } else {
+        2
+    };
+    let i_max = if lengths[2] <= lengths[(lengths[0] < lengths[1]) as usize] {
+        (lengths[0] < lengths[1]) as usize
+    } else {
+        2
+    };
+    let normal =
+        [ac[2] * ab[1] - ac[1] * ab[2], ac[0] * ab[2] - ac[2] * ab[0], ac[1] * ab[0] - ac[0] * ab[1]];
     let area2 = len2(normal);
     !(lengths[i_min] < lengths[i_max] * 0.00001
         || area2 <= (ab2 * 1.0e-10) * ac2

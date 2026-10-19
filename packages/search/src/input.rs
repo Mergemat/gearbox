@@ -13,10 +13,7 @@ pub struct Timeline {
 
 impl Timeline {
     pub fn read(path: &Path) -> Result<Self> {
-        Self::parse(
-            &std::fs::read_to_string(path)
-                .with_context(|| format!("reading {}", path.display()))?,
-        )
+        Self::parse(&std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?)
     }
 
     pub fn parse(text: &str) -> Result<Self> {
@@ -25,7 +22,11 @@ impl Timeline {
         let timeline = Self {
             t0: inputs.t0,
             seed: inputs.seed,
-            controls: inputs.controls.into_iter().map(|c| Controls { gas: c.gas, brake: c.brake, steer: c.steer }).collect(),
+            controls: inputs
+                .controls
+                .into_iter()
+                .map(|c| Controls { gas: c.gas, brake: c.brake, steer: c.steer })
+                .collect(),
         };
         timeline.end_ms()?;
         Ok(timeline)
@@ -33,18 +34,10 @@ impl Timeline {
 
     pub fn starting_at(&self, t0: i32) -> Result<Self> {
         let gap = i64::from(self.t0) - i64::from(t0);
-        ensure!(
-            gap >= 0 && gap % 10 == 0,
-            "inputs at T0 {} cannot start at {t0}",
-            self.t0
-        );
+        ensure!(gap >= 0 && gap % 10 == 0, "inputs at T0 {} cannot start at {t0}", self.t0);
         let mut controls = vec![Controls::default(); usize::try_from(gap / 10)?];
         controls.extend_from_slice(&self.controls);
-        Ok(Self {
-            t0,
-            seed: self.seed,
-            controls,
-        })
+        Ok(Self { t0, seed: self.seed, controls })
     }
 
     pub fn end_ms(&self) -> Result<i32> {
@@ -60,10 +53,7 @@ impl Timeline {
             self.t0
         );
         let index = usize::try_from(delta / 10)?;
-        ensure!(
-            index <= self.controls.len(),
-            "time {ms} exceeds input coverage"
-        );
+        ensure!(index <= self.controls.len(), "time {ms} exceeds input coverage");
         Ok(index)
     }
 

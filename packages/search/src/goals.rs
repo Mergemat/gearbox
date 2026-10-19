@@ -1,25 +1,34 @@
+use crate::Body;
 use crate::{
     gate::{Gate, crossing_waypoint},
     pose::{Pose, PoseGoal},
 };
 use anyhow::{Result, ensure};
-use crate::Body;
 use gearbox_engine::Session;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Goal {
-    Point { point: [f32; 3], radius: f32 },
-    Box { trigger: TriggerBox },
-    Pose { target: PoseGoal },
+    Point {
+        point: [f32; 3],
+        radius: f32,
+    },
+    Box {
+        trigger: TriggerBox,
+    },
+    Pose {
+        target: PoseGoal,
+    },
     Gate {
         ordinal: usize,
         gate: Gate,
         #[serde(default)]
         also: Vec<u32>,
     },
-    Waypoint { ordinal: usize },
+    Waypoint {
+        ordinal: usize,
+    },
     Finish,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -72,7 +81,11 @@ impl Conditions {
             miss += outside(fwd[1].clamp(-1.0, 1.0).asin().to_degrees(), range);
         }
         if let Some(range) = self.slide {
-            let angle = if speed < 1e-3 { 0.0 } else { ((fwd[0] * v[0] + fwd[1] * v[1] + fwd[2] * v[2]) / speed).clamp(-1.0, 1.0).acos().to_degrees() };
+            let angle = if speed < 1e-3 {
+                0.0
+            } else {
+                ((fwd[0] * v[0] + fwd[1] * v[1] + fwd[2] * v[2]) / speed).clamp(-1.0, 1.0).acos().to_degrees()
+            };
             miss += outside(angle, range);
         }
         if let Some(c) = self.min_crossings {
@@ -109,7 +122,9 @@ fn goal_bottom(g: &Goal) -> Option<f64> {
     match g {
         Goal::Point { point, radius } => Some(f64::from(point[1] - radius)),
         Goal::Pose { target } => Some(f64::from(target.pose.position[1] - target.position_tolerance[1])),
-        Goal::Box { trigger } => Some(f64::from(trigger.center[1]) - f64::from(trigger.half.iter().fold(0.0f32, |a, h| a.max(*h)))),
+        Goal::Box { trigger } => {
+            Some(f64::from(trigger.center[1]) - f64::from(trigger.half.iter().fold(0.0f32, |a, h| a.max(*h))))
+        }
         Goal::Gate { gate, .. } => gate.boxes.iter().map(|b| f64::from(b.min[1])).reduce(f64::min),
         Goal::Waypoint { .. } | Goal::Finish => None,
     }
@@ -120,7 +135,9 @@ pub fn goal_point(g: &Goal) -> Option<[f32; 3]> {
         Goal::Point { point, .. } => Some(*point),
         Goal::Box { trigger } => Some(trigger.center),
         Goal::Pose { target } => Some(target.pose.position),
-        Goal::Gate { gate, .. } => gate.boxes.first().map(|b| std::array::from_fn(|k| (b.min[k] + b.max[k]) * 0.5)),
+        Goal::Gate { gate, .. } => {
+            gate.boxes.first().map(|b| std::array::from_fn(|k| (b.min[k] + b.max[k]) * 0.5))
+        }
         Goal::Waypoint { .. } | Goal::Finish => None,
     }
 }
@@ -174,7 +191,11 @@ impl Progress {
             }
             if self.anchors.len() != goals.ordered.len() {
                 let end = path.points.windows(2).map(|w| crate::objective::distance(w[0], w[1])).sum::<f64>();
-                self.anchors = goals.ordered.iter().map(|g| goal_point(g).map_or(Some(end), |q| Some(path.project(q, f64::INFINITY).0))).collect();
+                self.anchors = goals
+                    .ordered
+                    .iter()
+                    .map(|g| goal_point(g).map_or(Some(end), |q| Some(path.project(q, f64::INFINITY).0)))
+                    .collect();
             }
             along = Some((progress, off * path.deviation_penalty));
         }
@@ -195,25 +216,21 @@ impl Progress {
                     (trigger.car_distance(body), hit.then_some(n.race_ms()))
                 }
                 Goal::Gate { ordinal, gate, also } => {
-                    let t = n
-                        .race()
-                        .and_then(|r| r.checkpoints.get(ordinal - 1).copied());
+                    let t = n.race().and_then(|r| r.checkpoints.get(ordinal - 1).copied());
                     (
                         gate.distance(body.position()),
-                        t.filter(|_| crossing_waypoint(n, *ordinal).is_some_and(|w| w == gate.waypoint || also.contains(&w)))
-                            .map(|t| t as i32),
+                        t.filter(|_| {
+                            crossing_waypoint(n, *ordinal)
+                                .is_some_and(|w| w == gate.waypoint || also.contains(&w))
+                        })
+                        .map(|t| t as i32),
                     )
                 }
                 Goal::Waypoint { ordinal } => (
                     f64::INFINITY,
-                    n.race()
-                        .and_then(|r| r.checkpoints.get(ordinal - 1).copied())
-                        .map(|t| t as i32),
+                    n.race().and_then(|r| r.checkpoints.get(ordinal - 1).copied()).map(|t| t as i32),
                 ),
-                Goal::Finish => (
-                    f64::INFINITY,
-                    n.race().and_then(|r| r.finish).map(|t| t as i32),
-                ),
+                Goal::Finish => (f64::INFINITY, n.race().and_then(|r| r.finish).map(|t| t as i32)),
             };
             let error = match (along, self.anchors.get(self.times.len()).copied().flatten()) {
                 (Some((progress, off)), Some(anchor)) => (anchor - progress).max(0.0) + off,
@@ -221,18 +238,25 @@ impl Progress {
             };
             let below = goal_bottom(goal).map_or(0.0, |y| (y - f64::from(body.position()[1])).max(0.0));
             let near = error + below * f64::from(crate::track::CLIMB_COST - 1.0);
-            let error = match goals.track.as_ref().and_then(|t| t.goals.get(self.times.len()).and_then(Option::as_ref).map(|f| (f, t.reach))) {
-                Some((f, reach)) => {
-                    let along = f.distance_within(body.position(), reach).unwrap_or(1e6 + error);
-                    if error < NEAR_GOAL_M { along.min(near) } else { along }
-                }
-                None if matches!(goal, Goal::Gate { .. } | Goal::Point { .. } | Goal::Box { .. }) => near,
-                None => error,
-            };
+            let error =
+                match goals.track.as_ref().and_then(|t| {
+                    t.goals.get(self.times.len()).and_then(Option::as_ref).map(|f| (f, t.reach))
+                }) {
+                    Some((f, reach)) => {
+                        let along = f.distance_within(body.position(), reach).unwrap_or(1e6 + error);
+                        if error < NEAR_GOAL_M { along.min(near) } else { along }
+                    }
+                    None if matches!(goal, Goal::Gate { .. } | Goal::Point { .. } | Goal::Box { .. }) => near,
+                    None => error,
+                };
             let i = self.times.len();
             let fresh = sampled || time.is_some_and(|t| t > n.race_ms() - 10);
             let short = match (time.filter(|t| *t >= self.activated), goals.conditions.get(i)) {
-                (Some(_), Some(c)) if !c.is_empty() => Some(if fresh { c.shortfall(body, n.race().map_or(0, |r| r.checkpoints.len() as u32)) } else { f64::INFINITY }),
+                (Some(_), Some(c)) if !c.is_empty() => Some(if fresh {
+                    c.shortfall(body, n.race().map_or(0, |r| r.checkpoints.len() as u32))
+                } else {
+                    f64::INFINITY
+                }),
                 _ => None,
             };
             let error = match short {
@@ -251,11 +275,7 @@ impl Progress {
                 break;
             };
             self.times.push(t);
-            self.activated = if sampled {
-                (t - 9).max(self.start_ms)
-            } else {
-                t
-            };
+            self.activated = if sampled { (t - 9).max(self.start_ms) } else { t };
             self.error = 0.0;
             if self.times.len() < goals.ordered.len() {
                 self.error = f64::INFINITY;
@@ -283,7 +303,8 @@ pub struct TriggerBox {
 impl TriggerBox {
     pub fn validate(&self) -> Result<()> {
         ensure!(
-            self.center.iter().chain(&self.rotation).all(|v| v.is_finite()) && self.half.iter().all(|h| h.is_finite() && *h > 0.0),
+            self.center.iter().chain(&self.rotation).all(|v| v.is_finite())
+                && self.half.iter().all(|h| h.is_finite() && *h > 0.0),
             "invalid box goal"
         );
         let n: f32 = self.rotation.iter().map(|v| v * v).sum();
@@ -298,7 +319,9 @@ impl TriggerBox {
     fn local_dir(&self, v: [f64; 3]) -> [f64; 3] {
         let [x, y, z, w] = self.rotation.map(f64::from);
         let u = [-x, -y, -z];
-        let cross = |a: [f64; 3], b: [f64; 3]| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+        let cross = |a: [f64; 3], b: [f64; 3]| {
+            [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+        };
         let t = cross(u, v).map(|c| 2.0 * c);
         let ut = cross(u, t);
         [0, 1, 2].map(|k| v[k] + w * t[k] + ut[k])
@@ -307,7 +330,8 @@ impl TriggerBox {
     fn car_box(&self, body: Body) -> ([f64; 3], [[f64; 3]; 3]) {
         let r = body.rotation().map(f64::from);
         let c = self.local(body.position());
-        let axes = [0, 1, 2].map(|k| self.local_dir([r[k], r[3 + k], r[6 + k]]).map(|v| v * f64::from(CAR_HALF[k])));
+        let axes =
+            [0, 1, 2].map(|k| self.local_dir([r[k], r[3 + k], r[6 + k]]).map(|v| v * f64::from(CAR_HALF[k])));
         (c, axes)
     }
 
@@ -315,7 +339,9 @@ impl TriggerBox {
         let (c, a) = self.car_box(body);
         let h = self.half.map(f64::from);
         let dot = |x: [f64; 3], y: [f64; 3]| x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
-        let cross = |x: [f64; 3], y: [f64; 3]| [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]];
+        let cross = |x: [f64; 3], y: [f64; 3]| {
+            [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]]
+        };
         let unit = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
         let separates = |n: [f64; 3]| {
             if dot(n, n) < 1e-12 {
@@ -401,7 +427,8 @@ mod tests {
 
     #[test]
     fn a_box_counts_any_part_of_the_car_touching_it() {
-        let slab = TriggerBox { center: [0.0, 0.0, 0.0], half: [15.0, 0.3, 15.0], rotation: [0.0, 0.0, 0.0, 1.0] };
+        let slab =
+            TriggerBox { center: [0.0, 0.0, 0.0], half: [15.0, 0.3, 15.0], rotation: [0.0, 0.0, 0.0, 1.0] };
         let mut b = car([0.0, -1.0, 0.0], [0.0; 3]);
         b.0[10] = 2.0;
         assert!(!slab.contains(b.position()));
@@ -421,7 +448,10 @@ mod tests {
         let faster = Conditions { min_speed: Some(90.0), ..Default::default() };
         assert!((faster.shortfall(b, 0) - 10.0).abs() < 1e-3);
         assert_eq!(Conditions { pitch: Some([-90.0, -30.0]), ..Default::default() }.shortfall(b, 0), 0.0);
-        assert!((Conditions { pitch: Some([-90.0, -60.0]), ..Default::default() }.shortfall(b, 0) - 3.0).abs() < 1e-3);
+        assert!(
+            (Conditions { pitch: Some([-90.0, -60.0]), ..Default::default() }.shortfall(b, 0) - 3.0).abs()
+                < 1e-3
+        );
         assert_eq!(Conditions { slide: Some([40.0, 50.0]), ..Default::default() }.shortfall(b, 0), 0.0);
         assert_eq!(Conditions { min_crossings: Some(3), ..Default::default() }.shortfall(b, 1), 200.0);
     }

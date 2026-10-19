@@ -1,5 +1,8 @@
 use super::{BodyIndex, BodyInertia, BodyState, Collision, Dyna, DynaBody, DynaModel, ForceAcc};
-use super::{BodyOptions, constants::{ACTIVE_HANDLE, NULL_INDEX, SOLVER_EPSILON}};
+use super::{
+    BodyOptions,
+    constants::{ACTIVE_HANDLE, NULL_INDEX, SOLVER_EPSILON},
+};
 use crate::{DynamicItemId, Iso, Mat3, Vec3};
 
 const HANDLE_RECORD_BYTES: u32 = 12;
@@ -25,13 +28,7 @@ pub struct Handles {
 
 impl Default for Handles {
     fn default() -> Self {
-        Self {
-            slots: Vec::new(),
-            reverse: Vec::new(),
-            next: Vec::new(),
-            head: NULL_INDEX,
-            used: 0,
-        }
+        Self { slots: Vec::new(), reverse: Vec::new(), next: Vec::new(), head: NULL_INDEX, used: 0 }
     }
 }
 
@@ -48,11 +45,7 @@ impl Handles {
             for i in old..capacity {
                 self.slots.push(i);
                 self.reverse.push(i);
-                self.next.push(if i + 1 < capacity {
-                    i + 1
-                } else {
-                    NULL_INDEX
-                });
+                self.next.push(if i + 1 < capacity { i + 1 } else { NULL_INDEX });
             }
             self.head = old;
         }
@@ -67,19 +60,11 @@ impl Handles {
 pub fn grow_capacity(current: u32, wanted: u32, element_size: u32) -> u32 {
     let bytes = current.wrapping_mul(element_size);
     let step = if bytes < 0x100_0001 {
-        if bytes > 0x40_0000 {
-            current >> 2
-        } else {
-            current >> 1
-        }
+        if bytes > 0x40_0000 { current >> 2 } else { current >> 1 }
     } else {
         current >> 3
     };
-    if (wanted.wrapping_sub(current) as i32) <= step as i32 {
-        current.wrapping_add(step)
-    } else {
-        wanted
-    }
+    if (wanted.wrapping_sub(current) as i32) <= step as i32 { current.wrapping_add(step) } else { wanted }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -155,8 +140,11 @@ impl BodyState {
     pub fn point_velocity(&self, p: Vec3) -> Vec3 {
         let r = p - self.pos;
         let w = self.ang_vel;
-        Vec3::new((w.y * r.z - w.z * r.y) + self.vel.x,
-            (w.z * r.x - w.x * r.z) + self.vel.y, (w.x * r.y - w.y * r.x) + self.vel.z)
+        Vec3::new(
+            (w.y * r.z - w.z * r.y) + self.vel.x,
+            (w.z * r.x - w.x * r.z) + self.vel.y,
+            (w.x * r.y - w.y * r.x) + self.vel.z,
+        )
     }
 
     pub fn clamp_angular_velocity(&mut self, max: f32) {
@@ -179,9 +167,11 @@ impl Body {
     pub fn velocity_at(&self, point: Vec3) -> Vec3 {
         let r = point - self.center_of_mass();
         let w = self.state.ang_vel;
-        Vec3::new((r.z * w.y - r.y * w.z) + self.state.vel.x,
+        Vec3::new(
+            (r.z * w.y - r.y * w.z) + self.state.vel.x,
             (r.x * w.z - r.z * w.x) + self.state.vel.y,
-            (r.y * w.x - r.x * w.y) + self.state.vel.z)
+            (r.y * w.x - r.x * w.y) + self.state.vel.z,
+        )
     }
 
     pub fn place_at_center(&mut self, negative: bool) {
@@ -228,21 +218,14 @@ impl Dyna {
         flags.set(BodyOptions::SPECIAL, params.special);
         flags.set(BodyOptions::KINEMATIC, params.kinematic);
         self.bodies.push(Body {
-            inertia: BodyInertia {
-                diagonal: params.model.inverse_inertia(),
-                inverse_mass: 0.0,
-            },
+            inertia: BodyInertia { diagonal: params.model.inverse_inertia(), inverse_mass: 0.0 },
             model: params.model,
             record,
             state,
             item: params.item,
             owner_item: params.owner_item,
             flags,
-            index: BodyIndex {
-                rest_since: NULL_INDEX,
-                index,
-                wake_disabled: 0,
-            },
+            index: BodyIndex { rest_since: NULL_INDEX, index, wake_disabled: 0 },
             forces: params.forces,
             acc: ForceAcc::default(),
         });
@@ -397,13 +380,17 @@ impl Dyna {
         let b = self.body(h);
         let [a, c, d] = b.state.rot.rows;
         let t = b.state.pos;
-        let world = Vec3::new(p.x * a.x + p.y * a.y + p.z * a.z + t.x,
+        let world = Vec3::new(
+            p.x * a.x + p.y * a.y + p.z * a.z + t.x,
             p.y * c.y + p.x * c.x + p.z * c.z + t.y,
-            p.y * d.y + p.x * d.x + p.z * d.z + t.z);
+            p.y * d.y + p.x * d.x + p.z * d.z + t.z,
+        );
         let v = b.velocity_at(world);
-        Vec3::new(v.x * a.x + v.y * c.x + v.z * d.x,
+        Vec3::new(
+            v.x * a.x + v.y * c.x + v.z * d.x,
             v.x * a.y + v.y * c.y + v.z * d.y,
-            v.y * c.z + v.x * a.z + v.z * d.z)
+            v.y * c.z + v.x * a.z + v.z * d.z,
+        )
     }
 
     pub fn contact_time_ms(
@@ -416,11 +403,7 @@ impl Dyna {
         other: Iso,
     ) -> i64 {
         let b = self.body(h);
-        let v = if self.centered {
-            b.state.point_velocity(point)
-        } else {
-            b.velocity_at(point)
-        };
+        let v = if self.centered { b.state.point_velocity(point) } else { b.velocity_at(point) };
         let local_velocity = other.rot.transpose_mul_vec(-v);
         let local_normal = other.rot.transpose_mul_vec(-normal);
         super::solver::closest_time_ms(now, max, local_normal, local_velocity)
@@ -440,8 +423,11 @@ impl Dyna {
         b.state.vel = add_velocity(b.state.vel, dv);
         b.wake();
         let r = point - b.center_of_mass();
-        let t = Vec3::new(r.y * impulse.z - r.z * impulse.y,
-            r.z * impulse.x - r.x * impulse.z, r.x * impulse.y - r.y * impulse.x);
+        let t = Vec3::new(
+            r.y * impulse.z - r.z * impulse.y,
+            r.z * impulse.x - r.x * impulse.z,
+            r.x * impulse.y - r.y * impulse.x,
+        );
         let k = inverse_inertia.rows;
         let w = Vec3::new(t.dot_yxz(k[0]), t.dot_yxz(k[1]), t.dot_yxz(k[2]));
         b.state.ang_vel = add_velocity(b.state.ang_vel, w);
@@ -451,8 +437,11 @@ impl Dyna {
 
 fn local(r: Mat3, v: Vec3) -> Vec3 {
     let [a, b, c] = r.rows;
-    Vec3::new(b.x * v.y + v.x * a.x + c.x * v.z,
-        a.y * v.x + b.y * v.y + c.y * v.z, a.z * v.x + b.z * v.y + c.z * v.z)
+    Vec3::new(
+        b.x * v.y + v.x * a.x + c.x * v.z,
+        a.y * v.x + b.y * v.y + c.y * v.z,
+        a.z * v.x + b.z * v.y + c.z * v.z,
+    )
 }
 
 fn add_velocity(a: Vec3, b: Vec3) -> Vec3 {

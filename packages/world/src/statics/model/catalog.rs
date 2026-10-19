@@ -54,17 +54,22 @@ fn size_of(units: &[[i32; 3]]) -> [u32; 3] {
 impl Catalog {
     pub fn from_assets(assets: &gearbox_packs::assets::Assets, env: &str) -> Self {
         let mut variants = HashMap::new();
-        let names: std::collections::BTreeSet<&str> = assets.block_names()
-            .chain(assets.index.custom_blocks.keys().map(String::as_str)).collect();
+        let names: std::collections::BTreeSet<&str> =
+            assets.block_names().chain(assets.index.custom_blocks.keys().map(String::as_str)).collect();
         for name in names {
             let Some(block) = assets.block_in(name, env) else { continue };
-            let kind = if gearbox_packs::blockinfo::is_clip(block.class_id) { GeometrySource::Clip } else { GeometrySource::Block };
+            let kind = if gearbox_packs::blockinfo::is_clip(block.class_id) {
+                GeometrySource::Clip
+            } else {
+                GeometrySource::Block
+            };
             for variant in &block.variants {
                 let mobils = variant
                     .mobils
                     .iter()
                     .map(|geometry| {
-                        geometry.iter()
+                        geometry
+                            .iter()
                             .map(|mobil| VariantOffset {
                                 pos: mobil.geom_translation.unwrap_or_default(),
                                 deg: mobil.geom_rotation.unwrap_or_default(),
@@ -73,33 +78,48 @@ impl Catalog {
                     })
                     .collect();
                 let metadata = Variant {
-                    clip_faces: Default::default(), ground_heights: Default::default(),
-                    units: variant.units.clone(), size: size_of(&variant.units), mobils,
+                    clip_faces: Default::default(),
+                    ground_heights: Default::default(),
+                    units: variant.units.clone(),
+                    size: size_of(&variant.units),
+                    mobils,
                 };
-                variants.entry((name.to_ascii_lowercase(), variant.ground, variant.index as u8))
-                    .or_insert((block.class_id, kind, block.clip_type, metadata));
+                variants.entry((name.to_ascii_lowercase(), variant.ground, variant.index as u8)).or_insert((
+                    block.class_id,
+                    kind,
+                    block.clip_type,
+                    metadata,
+                ));
             }
         }
         Self { variants, cell: crate::statics::place::CELL }
     }
 
     pub fn load_clip_faces(
-        &mut self, assets: &gearbox_packs::assets::Assets, map: &gearbox_gbx::Map,
-        env: &str, packs: &gearbox_packs::packs::PackSet,
+        &mut self,
+        assets: &gearbox_packs::assets::Assets,
+        map: &gearbox_gbx::Map,
+        env: &str,
+        packs: &gearbox_packs::packs::PackSet,
     ) -> anyhow::Result<()> {
         let blocks: Vec<_> = map.blocks.iter().chain(&map.baked_blocks).collect();
         if !blocks.iter().any(|block| {
             (block.free.is_some() || block.flags & 0x1000_0000 != 0)
-                && self.geometry(&BlockKey::of(block))
+                && self
+                    .geometry(&BlockKey::of(block))
                     .is_some_and(|geometry| geometry.kind == GeometrySource::Clip && geometry.clip_type != 0)
         }) {
             return Ok(());
         }
         let mut seen = std::collections::HashSet::new();
         for block in blocks {
-            if block.free.is_none() && block.flags & 0x1000_0000 == 0 { continue; }
+            if block.free.is_none() && block.flags & 0x1000_0000 == 0 {
+                continue;
+            }
             let Some(info) = assets.block_in(&block.name, env) else { continue };
-            if gearbox_packs::blockinfo::is_clip(info.class_id) || !seen.insert(info.path.clone()) { continue; }
+            if gearbox_packs::blockinfo::is_clip(info.class_id) || !seen.insert(info.path.clone()) {
+                continue;
+            }
             let bytes = packs.read_path(&info.path)?;
             let layout = gearbox_packs::nodes::layout(&bytes)?;
             let parsed = gearbox_packs::blockinfo::read_block_info(&bytes, &layout, &info.path)?;
@@ -109,7 +129,11 @@ impl Catalog {
                 if let Some((_, _, _, metadata)) = self.variants.get_mut(&key) {
                     let mut faces = variant.clip_faces;
                     for name in faces.iter_mut().flat_map(|u| &mut u.faces).flatten().flatten() {
-                        *name = assets.index.blocks.get(name).and_then(|block| block.name.clone())
+                        *name = assets
+                            .index
+                            .blocks
+                            .get(name)
+                            .and_then(|block| block.name.clone())
                             .unwrap_or_else(|| gearbox_packs::assets::block_name(name).to_string());
                     }
                     metadata.clip_faces = std::rc::Rc::new(faces);
@@ -117,16 +141,24 @@ impl Catalog {
                         Some(at) => gearbox_packs::blockinfo::auto_terrain(&bytes, &layout, &info.path, at)?,
                         None => (Vec::new(), 0),
                     };
-                    metadata.ground_heights = std::rc::Rc::new(columns.iter().map(|column| {
-                        let height = column.target.as_deref().and_then(|target| {
-                            let flat = assets.block_in(target, env)
-                                .is_some_and(|block| block.class_id == 0x0304f000);
-                            (flat && column.steps.len() == 1
-                                && column.steps[0].as_deref() == Some(format!("VoidTo{target}").as_str()))
-                                .then_some(offset)
-                        });
-                        ([column.coord[0], column.coord[2]], height)
-                    }).collect());
+                    metadata.ground_heights = std::rc::Rc::new(
+                        columns
+                            .iter()
+                            .map(|column| {
+                                let height = column.target.as_deref().and_then(|target| {
+                                    let flat = assets
+                                        .block_in(target, env)
+                                        .is_some_and(|block| block.class_id == 0x0304f000);
+                                    (flat
+                                        && column.steps.len() == 1
+                                        && column.steps[0].as_deref()
+                                            == Some(format!("VoidTo{target}").as_str()))
+                                    .then_some(offset)
+                                });
+                                ([column.coord[0], column.coord[2]], height)
+                            })
+                            .collect(),
+                    );
                 }
             }
         }
@@ -134,9 +166,8 @@ impl Catalog {
     }
 
     pub fn geometry(&self, key: &BlockKey) -> Option<Geometry> {
-        let variant_key = (
-            key.name.to_ascii_lowercase(), key.flags & 0x1000 != 0, ((key.flags >> 21) & 0x7f) as u8,
-        );
+        let variant_key =
+            (key.name.to_ascii_lowercase(), key.flags & 0x1000 != 0, ((key.flags >> 21) & 0x7f) as u8);
         let (class, kind, clip_type, variant) = self.variants.get(&variant_key)?;
         let offset = variant
             .mobils
@@ -153,7 +184,11 @@ impl Catalog {
             kind: *kind,
             clip_type: *clip_type,
             cell: self.cell,
-            offset: if *kind == GeometrySource::Clip && *clip_type == 0 { VariantOffset::default() } else { offset },
+            offset: if *kind == GeometrySource::Clip && *clip_type == 0 {
+                VariantOffset::default()
+            } else {
+                offset
+            },
         })
     }
 }

@@ -61,7 +61,10 @@ pub fn is_clip(class_id: u32) -> bool {
 }
 
 pub fn is_block_info(class_id: u32) -> bool {
-    matches!(class_id >> 12, 0x0304f | 0x03050 | 0x0314c | 0x03051 | 0x03052 | 0x03053 | 0x03054 | 0x03340 | 0x0335a | 0x0335b)
+    matches!(
+        class_id >> 12,
+        0x0304f | 0x03050 | 0x0314c | 0x03051 | 0x03052 | 0x03053 | 0x03054 | 0x03340 | 0x0335a | 0x0335b
+    )
 }
 
 fn symmetrical_clip(b: &[u8], p: usize) -> Option<String> {
@@ -107,7 +110,8 @@ fn path_of(r: NodeLink<()>) -> Option<String> {
 fn mobil(ctx: &Ctx, index: u32, start: usize, end: usize) -> Result<Mobil> {
     let b = ctx.buf;
     let at = find_all(&b[..end.min(b.len())], start, 0x03122003).into_iter().next();
-    let mut m = Mobil { index, solid_frequency: 0, geom_translation: None, geom_rotation: None, prefab: None };
+    let mut m =
+        Mobil { index, solid_frequency: 0, geom_translation: None, geom_rotation: None, prefab: None };
     let Some(at) = at else { return Ok(m) };
     let mut r = Reader::new(b);
     r.skip(at + 4)?;
@@ -127,22 +131,28 @@ fn mobil(ctx: &Ctx, index: u32, start: usize, end: usize) -> Result<Mobil> {
 }
 
 fn ref_span(ctx: &Ctx, r: &mut Reader) -> Result<Option<(usize, u32)>> {
-    Ok(match ctx.noderef(r, |ctx, r, class| {
-        let start = r.pos();
-        ctx.skip_node(r)?;
-        Ok((start, class))
-    })? {
-        NodeLink::Inline(span) => Some(span),
-        NodeLink::Earlier(index) => ctx.layout.nodes.iter().find(|n| n.index == index).map(|n| (n.start, n.class_id)),
-        _ => None,
-    })
+    Ok(
+        match ctx.noderef(r, |ctx, r, class| {
+            let start = r.pos();
+            ctx.skip_node(r)?;
+            Ok((start, class))
+        })? {
+            NodeLink::Inline(span) => Some(span),
+            NodeLink::Earlier(index) => {
+                ctx.layout.nodes.iter().find(|n| n.index == index).map(|n| (n.start, n.class_id))
+            }
+            _ => None,
+        },
+    )
 }
 
 fn new_id(r: &mut Reader) -> Result<Option<String>> {
     let id = r.u32()?;
     if id != u32::MAX && id & 0xc000_0000 != 0 && id & 0x3fff_ffff == 0 {
         Ok(Some(r.string()?))
-    } else { Ok(None) }
+    } else {
+        Ok(None)
+    }
 }
 
 pub fn auto_terrain(buf: &[u8], layout: &Layout, path: &str, at: usize) -> Result<(Vec<AutoTerrain>, i32)> {
@@ -156,12 +166,16 @@ pub fn auto_terrain(buf: &[u8], layout: &Layout, path: &str, at: usize) -> Resul
     let mut out = Vec::new();
     for _ in 0..n {
         let span = ref_span(ctx, &mut r)?;
-        let Some((p, 0x03120000)) = span else { anyhow::bail!("automatic terrain node not decoded"); };
+        let Some((p, 0x03120000)) = span else {
+            anyhow::bail!("automatic terrain node not decoded");
+        };
         let mut a = Reader::new(ctx.buf);
         a.skip(p)?;
         ensure!(a.u32()? == 0x03120001, "unsupported automatic terrain archive");
         let coord = [a.i32()?, a.i32()?, a.i32()?];
-        let Some((p, 0x0311d000)) = ref_span(ctx, &mut a)? else { anyhow::bail!("automatic terrain genealogy not decoded"); };
+        let Some((p, 0x0311d000)) = ref_span(ctx, &mut a)? else {
+            anyhow::bail!("automatic terrain genealogy not decoded");
+        };
         let mut g = Reader::new(ctx.buf);
         g.skip(p)?;
         ensure!(g.u32()? == 0x0311d002, "unsupported zone genealogy archive");
@@ -177,7 +191,15 @@ pub fn auto_terrain(buf: &[u8], layout: &Layout, path: &str, at: usize) -> Resul
     Ok((out, offset))
 }
 
-fn variant(ctx: &Ctx, kind: VariantKind, index: usize, start: usize, end: usize, mobils: &std::collections::HashMap<u32, Mobil>, own: impl Fn(usize) -> bool) -> Result<Variant> {
+fn variant(
+    ctx: &Ctx,
+    kind: VariantKind,
+    index: usize,
+    start: usize,
+    end: usize,
+    mobils: &std::collections::HashMap<u32, Mobil>,
+    own: impl Fn(usize) -> bool,
+) -> Result<Variant> {
     let (buf, layout) = (ctx.buf, ctx.layout);
     let unit_nodes: Vec<&crate::nodes::NodeSpan> = layout
         .nodes
@@ -185,7 +207,10 @@ fn variant(ctx: &Ctx, kind: VariantKind, index: usize, start: usize, end: usize,
         .filter(|n| n.class_id == 0x03036000 && n.start > start && n.start < end && own(n.start))
         .filter(|n| u32_at(buf, n.start) == Some(0x03036000))
         .collect();
-    let units = unit_nodes.iter().map(|n| std::array::from_fn(|k| u32_at(buf, n.start + 16 + 4 * k).unwrap_or(0) as i32)).collect();
+    let units = unit_nodes
+        .iter()
+        .map(|n| std::array::from_fn(|k| u32_at(buf, n.start + 16 + 4 * k).unwrap_or(0) as i32))
+        .collect();
     let mut clip_faces = Vec::new();
     for n in &unit_nodes {
         let mut clips = UnitClips::default();
@@ -225,7 +250,8 @@ fn variant(ctx: &Ctx, kind: VariantKind, index: usize, start: usize, end: usize,
         }
         clip_faces.push(clips);
     }
-    let unit_clips = clip_faces.iter().map(|c| c.faces.iter().flatten().flatten().cloned().collect()).collect();
+    let unit_clips =
+        clip_faces.iter().map(|c| c.faces.iter().flatten().flatten().cloned().collect()).collect();
     let mut groups = Vec::new();
     {
         let mut q = start + 8;
@@ -275,10 +301,23 @@ fn variant(ctx: &Ctx, kind: VariantKind, index: usize, start: usize, end: usize,
             }
             _ => anyhow::bail!("legacy trigger solid reference not decoded"),
         };
-        waypoint_trigger = refs.get(3).and_then(|r| match r { NodeLink::External(p) => Some(p.clone()), _ => None });
+        waypoint_trigger = refs.get(3).and_then(|r| match r {
+            NodeLink::External(p) => Some(p.clone()),
+            _ => None,
+        });
     }
     let ground_chunk = find_all(&buf[..end.min(buf.len())], start, 0x0315c001).into_iter().find(|&p| own(p));
-    Ok(Variant { kind, index, mobils: groups, units, unit_clips, clip_faces, ground_archive: ground_chunk, waypoint_trigger, legacy_waypoint_trigger })
+    Ok(Variant {
+        kind,
+        index,
+        mobils: groups,
+        units,
+        unit_clips,
+        clip_faces,
+        ground_archive: ground_chunk,
+        waypoint_trigger,
+        legacy_waypoint_trigger,
+    })
 }
 
 pub(crate) fn nested_blocks(buf: &[u8], layout: &Layout) -> Vec<(usize, usize)> {
@@ -343,7 +382,11 @@ pub fn read_block_info(buf: &[u8], layout: &Layout, path: &str) -> Result<BlockI
         }
     }
     let clip_type = if is_clip(layout.head.class_id) {
-        find_all(buf, body, 0x03053005).into_iter().find(|&p| own(p)).and_then(|p| u32_at(buf, p + 4)).unwrap_or(0)
+        find_all(buf, body, 0x03053005)
+            .into_iter()
+            .find(|&p| own(p))
+            .and_then(|p| u32_at(buf, p + 4))
+            .unwrap_or(0)
     } else {
         0
     };
@@ -356,6 +399,16 @@ pub fn read_block_info(buf: &[u8], layout: &Layout, path: &str) -> Result<BlockI
     let name = if let Some(chunk) = container.header_chunk(0x2e001003) {
         let mut r = Reader::new(chunk);
         r.ident()?[0].clone()
-    } else { None };
-    Ok(BlockInfo { name, class_id: layout.head.class_id, variants, material_modifier: mm, material_modifier2: mm2, clip_type, symmetrical_clip })
+    } else {
+        None
+    };
+    Ok(BlockInfo {
+        name,
+        class_id: layout.head.class_id,
+        variants,
+        material_modifier: mm,
+        material_modifier2: mm2,
+        clip_type,
+        symmetrical_clip,
+    })
 }

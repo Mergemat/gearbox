@@ -1,18 +1,14 @@
-use crate::math::{minss, sincos as sincos_value};
-use super::{ForceCtx, angular, adhesion, boost, bumps, control, drag, surface, water, wheel_step, wheels};
+use super::common::{DIRECTION_DEAD_ZONE, KMH, PEDAL_THRESHOLD as TENTH, PedalMode, TINY, clamp01};
 use super::surface::{SurfaceFactors, SurfaceResponse};
-use super::common::{KMH, TINY, PEDAL_THRESHOLD as TENTH, PedalMode, DIRECTION_DEAD_ZONE, clamp01};
+use super::{ForceCtx, adhesion, angular, boost, bumps, control, drag, surface, water, wheel_step, wheels};
+use crate::math::{minss, sincos as sincos_value};
 
 const PI: f32 = std::f32::consts::PI;
 
 pub fn forces(ctx: &mut ForceCtx<'_>) {
     let fraction = clamp01((1.0 - ctx.vehicle.grip) / (1.0 - ctx.tuning.effect_minimum_grip));
     let all_boost = ctx.vehicle.wheels.iter().all(|wheel| wheel.has_boost_material());
-    let drive_blend = if all_boost {
-        0.0
-    } else {
-        ctx.tuning.material_slip.eval(fraction)
-    };
+    let drive_blend = if all_boost { 0.0 } else { ctx.tuning.material_slip.eval(fraction) };
     control::input_overrides(ctx);
     if ctx.tuning.water_enabled != 0 {
         water::simple_water(ctx);
@@ -63,7 +59,8 @@ pub fn forces(ctx: &mut ForceCtx<'_>) {
 fn select_direction(ctx: &mut ForceCtx<'_>, speed: f32) {
     let velocity = ctx.local_velocity;
     if !ctx.vehicle.effect_mode_is_free() {
-        let reverse = !(velocity.z >= 0.0) && !(DIRECTION_DEAD_ZONE > velocity.z.abs())
+        let reverse = !(velocity.z >= 0.0)
+            && !(DIRECTION_DEAD_ZONE > velocity.z.abs())
             && !(velocity.x.abs() > DIRECTION_DEAD_ZONE);
         ctx.vehicle.reversing = reverse as u32;
     } else if ctx.tuning.reverse_selection_speed > speed {
@@ -81,13 +78,13 @@ fn set_slip_flags(ctx: &mut ForceCtx<'_>) {
 
 fn finish(ctx: &mut ForceCtx<'_>) {
     for wheel in &mut ctx.vehicle.wheels {
-        wheel.slip = if wheel.slipping != 0 {
-            1.0
-        } else {
-            0.0
-        };
+        wheel.slip = if wheel.slipping != 0 { 1.0 } else { 0.0 };
     }
-    let flagged = ctx.vehicle.wheels.iter().zip(&ctx.geometry.wheels)
+    let flagged = ctx
+        .vehicle
+        .wheels
+        .iter()
+        .zip(&ctx.geometry.wheels)
         .any(|(wheel, definition)| wheel.contact != 0 && definition.contact_flag);
     if 0.0 > ctx.tuning.lateral_stiffness && flagged {
         ctx.local_velocity.x = 0.0;
@@ -98,8 +95,13 @@ fn finish(ctx: &mut ForceCtx<'_>) {
     boost::level_models(ctx);
 }
 
-fn grip_force(ctx: &mut ForceCtx<'_>, index: usize, grip_slope: f32, factors: SurfaceFactors,
-    steer: f32) -> bool {
+fn grip_force(
+    ctx: &mut ForceCtx<'_>,
+    index: usize,
+    grip_slope: f32,
+    factors: SurfaceFactors,
+    steer: f32,
+) -> bool {
     let slope_grip = grip_slope;
 
     let mut slipping = false;
@@ -107,11 +109,8 @@ fn grip_force(ctx: &mut ForceCtx<'_>, index: usize, grip_slope: f32, factors: Su
     if ctx.vehicle.level_consistent() {
         wheels::suspension_force(ctx, index);
     }
-    let material = if ctx.vehicle.effect_flags & 0x10 != 0 {
-        0x4a
-    } else {
-        ctx.vehicle.wheels[index].material
-    };
+    let material =
+        if ctx.vehicle.effect_flags & 0x10 != 0 { 0x4a } else { ctx.vehicle.wheels[index].material };
     let material = ctx.geometry.material(material);
     if ctx.vehicle.wheels[index].contact == 0 {
         return false;
@@ -120,11 +119,8 @@ fn grip_force(ctx: &mut ForceCtx<'_>, index: usize, grip_slope: f32, factors: Su
     if !(lateral_stiffness >= 0.0) || !ctx.tuning.car_model_kind().uses_legacy_drive_thrust() {
         return false;
     }
-    let slip_scale = if ctx.vehicle.wheels[index].slipping != 0 {
-        ctx.tuning.slipping_grip_scale
-    } else {
-        1.0
-    };
+    let slip_scale =
+        if ctx.vehicle.wheels[index].slipping != 0 { ctx.tuning.slipping_grip_scale } else { 1.0 };
     let forward_speed = ctx.local_velocity.z;
     let speed_grip = ctx.tuning.grip_by_speed.eval(forward_speed * KMH);
     let immersion = ctx.vehicle.immersion;
@@ -132,15 +128,11 @@ fn grip_force(ctx: &mut ForceCtx<'_>, index: usize, grip_slope: f32, factors: Su
     let cap = wet_grip * ((((slope_grip * material.grip_scale) * factors.grip) * speed_grip) * slip_scale);
     let (axis_x, axis_y, axis_z) = grip_axis(ctx, index, steer);
     let velocity = [ctx.local_velocity.x, ctx.local_velocity.y, ctx.local_velocity.z];
-    let mut side_force = ((axis_y * velocity[1] + axis_x * velocity[0]) + axis_z * velocity[2])
-        * (-lateral_stiffness * 0.5);
+    let mut side_force =
+        ((axis_y * velocity[1] + axis_x * velocity[0]) + axis_z * velocity[2]) * (-lateral_stiffness * 0.5);
     if side_force.abs() > cap {
         let k = ctx.tuning.grip_excess_blend;
-        let cap = if side_force > 0.0 {
-            cap
-        } else {
-            -cap
-        };
+        let cap = if side_force > 0.0 { cap } else { -cap };
         ctx.vehicle.wheels[index].slipping = 1;
         slipping = true;
         side_force = (1.0 - k) * cap + k * side_force;
@@ -168,18 +160,10 @@ fn steering_force(ctx: &mut ForceCtx<'_>, index: usize, speed: f32, grip_capacit
     let steers = ctx.geometry.wheels[index].steers as u32;
     let l1 = ctx.local_velocity.y + 0.0;
     let l2 = ctx.local_velocity.z + 0.0;
-    let axle_offset = if steers == 0 {
-        -axle_span
-    } else {
-        axle_span
-    } * 0.5;
+    let axle_offset = if steers == 0 { -axle_span } else { axle_span } * 0.5;
     let lateral_speed = axle_offset * ctx.local_angular_velocity.y + ctx.local_velocity.x;
     let top = ctx.tuning.steering_full_response_speed;
-    let steering_response = if speed > top {
-        1.0
-    } else {
-        sincos_value(speed / top * PI * 0.5).0
-    };
+    let steering_response = if speed > top { 1.0 } else { sincos_value(speed / top * PI * 0.5).0 };
     let speed_kmh = ctx.local_velocity.z * KMH;
     let speed_grip = ctx.tuning.grip_by_speed.eval(speed_kmh);
     let cap = speed_grip * grip_capacity;
@@ -189,28 +173,18 @@ fn steering_force(ctx: &mut ForceCtx<'_>, index: usize, speed: f32, grip_capacit
     if side.abs() > cap {
         let k = ctx.tuning.lateral_excess_blend;
         let r = (1.0 - k) * cap + side.abs() * k;
-        side_force = if side > 0.0 {
-            r
-        } else {
-            -r
-        };
+        side_force = if side > 0.0 { r } else { -r };
     }
     let mut side_force = side_force * ctx.tuning.lateral_torque_scale;
     if steers != 0 {
-        let sg = if ctx.vehicle.reversing != 0 {
-            -1.0f32
-        } else {
-            1.0
-        };
-        let slip_scale = if ctx.vehicle.wheels[index].slipping != 0 {
-            ctx.tuning.slipping_steering_scale
-        } else {
-            1.0
-        };
+        let sg = if ctx.vehicle.reversing != 0 { -1.0f32 } else { 1.0 };
+        let slip_scale =
+            if ctx.vehicle.wheels[index].slipping != 0 { ctx.tuning.slipping_steering_scale } else { 1.0 };
         let speed_steering = ctx.tuning.steering_by_speed.eval(speed_kmh);
         let steering_scale = clamp01(ctx.geometry.steering_scale * ctx.vehicle.steering_scale);
-        side_force = side_force - ((((steering_scale * sg) * steering_response)
-            * ctx.vehicle.steering) * speed_steering) * slip_scale;
+        side_force = side_force
+            - ((((steering_scale * sg) * steering_response) * ctx.vehicle.steering) * speed_steering)
+                * slip_scale;
     }
     if ctx.tuning.direction_drag_enabled != 0 {
         let x = ctx.vehicle.wheel_meter;
@@ -221,10 +195,14 @@ fn steering_force(ctx: &mut ForceCtx<'_>, index: usize, speed: f32, grip_capacit
     ctx.body.add_local_torque((torque).into());
 }
 
-fn engine_thrust(ctx: &mut ForceCtx<'_>, surface: &SurfaceResponse, factors: SurfaceFactors,
-    capk: f32) -> f32 {
-    let (full_pedal, cut_pedal) = (ctx.vehicle.effect_mode_is(PedalMode::Full),
-        ctx.vehicle.effect_mode_is(PedalMode::Cut));
+fn engine_thrust(
+    ctx: &mut ForceCtx<'_>,
+    surface: &SurfaceResponse,
+    factors: SurfaceFactors,
+    capk: f32,
+) -> f32 {
+    let (full_pedal, cut_pedal) =
+        (ctx.vehicle.effect_mode_is(PedalMode::Full), ctx.vehicle.effect_mode_is(PedalMode::Cut));
     let tick = ctx.tick;
     let forward_speed = ctx.local_velocity.z;
     let speed_kmh = forward_speed * KMH;
@@ -240,20 +218,12 @@ fn engine_thrust(ctx: &mut ForceCtx<'_>, surface: &SurfaceResponse, factors: Sur
     } else if cut_pedal {
         0.0
     } else {
-        let sg = if ctx.vehicle.reversing != 0 {
-            -1.0f32
-        } else {
-            0.0
-        };
+        let sg = if ctx.vehicle.reversing != 0 { -1.0f32 } else { 0.0 };
         let s4 = surface.thrust;
         s4 * ctx.vehicle.controls.brake * sg + s4 * ctx.vehicle.controls.gas
     };
     let turbo_active = ctx.vehicle.turbo_active != 0;
-    let turbo_scale = if turbo_active {
-        ctx.vehicle.turbo_thrust_scale
-    } else {
-        0.0
-    };
+    let turbo_scale = if turbo_active { ctx.vehicle.turbo_thrust_scale } else { 0.0 };
     let mut thrust = (base_thrust - lost_thrust) * (turbo_scale + pedal) * factors.thrust;
     if cut_pedal {
         thrust = turbo_scale * base_thrust;
@@ -287,8 +257,13 @@ fn engine_thrust(ctx: &mut ForceCtx<'_>, surface: &SurfaceResponse, factors: Sur
     thrust
 }
 
-fn braking_thrust(ctx: &mut ForceCtx<'_>, surface: &SurfaceResponse, thrust: f32, any_slip: bool,
-    thrust_slope: f32) {
+fn braking_thrust(
+    ctx: &mut ForceCtx<'_>,
+    surface: &SurfaceResponse,
+    thrust: f32,
+    any_slip: bool,
+    thrust_slope: f32,
+) {
     let cut_pedal = ctx.vehicle.effect_mode_is(PedalMode::Cut);
     let forward_speed = ctx.local_velocity.z;
     let surface_brake = surface.brake;
@@ -296,11 +271,8 @@ fn braking_thrust(ctx: &mut ForceCtx<'_>, surface: &SurfaceResponse, thrust: f32
     if forward_speed > 0.0 {
         brake = (forward_speed * ctx.tuning.brake_speed_scale + ctx.tuning.brake_constant)
             * ctx.vehicle.controls.brake;
-        let pitch_offset = if any_slip {
-            ctx.tuning.brake_slipping_cap
-        } else {
-            ctx.tuning.brake_gripping_cap
-        };
+        let pitch_offset =
+            if any_slip { ctx.tuning.brake_slipping_cap } else { ctx.tuning.brake_gripping_cap };
         let immersion = ctx.vehicle.immersion;
         let cap = ctx.tuning.wet_brake.eval(immersion) * (surface_brake * pitch_offset);
         if brake > cap {
@@ -312,11 +284,8 @@ fn braking_thrust(ctx: &mut ForceCtx<'_>, surface: &SurfaceResponse, thrust: f32
         if cut_pedal {
             brake = (ctx.tuning.brake_constant - forward_speed * ctx.tuning.brake_speed_scale)
                 * ctx.vehicle.controls.gas;
-            let cap = surface_brake * (if any_slip {
-                ctx.tuning.brake_slipping_cap
-            } else {
-                ctx.tuning.brake_gripping_cap
-            });
+            let cap = surface_brake
+                * (if any_slip { ctx.tuning.brake_slipping_cap } else { ctx.tuning.brake_gripping_cap });
             if brake > cap {
                 brake = cap;
                 set_slip_flags(ctx);
@@ -334,8 +303,8 @@ fn braking_thrust(ctx: &mut ForceCtx<'_>, surface: &SurfaceResponse, thrust: f32
     }
     let mut force = thrust - brake;
     let surface_limit = surface.speed_limit;
-    let (forward_limit, reverse_limit) = (surface_limit * ctx.tuning.forward_speed_limit,
-        surface_limit * ctx.tuning.reverse_speed_limit);
+    let (forward_limit, reverse_limit) =
+        (surface_limit * ctx.tuning.forward_speed_limit, surface_limit * ctx.tuning.reverse_speed_limit);
     if forward_speed > forward_limit {
         force = -ctx.tuning.speed_limit_force;
     }
@@ -348,14 +317,17 @@ fn braking_thrust(ctx: &mut ForceCtx<'_>, surface: &SurfaceResponse, thrust: f32
     let pitch_offset = ctx.tuning.thrust_pitch_offset;
     ctx.body.add_local_torque(([-force * pitch_offset, 0.0, 0.0]).into());
     let force_scale = clamp01(ctx.geometry.gravity_scale * ctx.vehicle.gravity_scale);
-    let feedback = (-ctx.tuning.longitudinal_force_feedback * ctx.local_force.z) / (force_scale
-        * ctx.tuning.ground_gravity);
+    let feedback = (-ctx.tuning.longitudinal_force_feedback * ctx.local_force.z)
+        / (force_scale * ctx.tuning.ground_gravity);
     ctx.body.add_local_force(([0.0, 0.0, feedback]).into());
 }
 
 fn grip_axis(ctx: &ForceCtx<'_>, index: usize, steer: f32) -> (f32, f32, f32) {
-    let (nx, ny, nz) = (ctx.vehicle.wheels[index].contact_normal_x,
-        ctx.vehicle.wheels[index].contact_normal_y, ctx.vehicle.wheels[index].contact_normal_z);
+    let (nx, ny, nz) = (
+        ctx.vehicle.wheels[index].contact_normal_x,
+        ctx.vehicle.wheels[index].contact_normal_y,
+        ctx.vehicle.wheels[index].contact_normal_z,
+    );
     let nz0 = nz * 0.0;
     let c0 = ny - nz0;
     let c1 = nz0 - nx;

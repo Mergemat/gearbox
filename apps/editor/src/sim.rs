@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::engine::display::World;
 use crate::engine::frame::Frame;
 use crate::engine::input::InputFile;
-use gearbox_engine::Savestate;
 use crate::engine::session::{Command, Engine, Event, InputSel, Probe, SessionInfo, Source};
-use crate::engine::display::World;
+use gearbox_engine::Savestate;
 
 pub struct Sim {
     engine: Engine,
@@ -41,7 +41,19 @@ pub struct Opened {
 impl Sim {
     pub fn spawn(packs: std::path::PathBuf, wake: Arc<dyn Fn() + Send + Sync>) -> Self {
         let engine = Engine::spawn(packs, wake);
-        Self { engine, frames: Vec::new(), generation: 0, len: 0, busy: None, stop: None, rate: 0.0, savestates: 0, probe: None, info: None, error: None }
+        Self {
+            engine,
+            frames: Vec::new(),
+            generation: 0,
+            len: 0,
+            busy: None,
+            stop: None,
+            rate: 0.0,
+            savestates: 0,
+            probe: None,
+            info: None,
+            error: None,
+        }
     }
 
     pub fn open(&mut self, source: Source, inputs: InputSel, len: Option<usize>) {
@@ -105,7 +117,9 @@ impl Sim {
     }
 
     pub fn done(&self) -> bool {
-        self.busy.is_none() && !self.frames.is_empty() && (self.frames.len() > self.len || self.stop.is_some())
+        self.busy.is_none()
+            && !self.frames.is_empty()
+            && (self.frames.len() > self.len || self.stop.is_some())
     }
 }
 

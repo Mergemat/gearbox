@@ -36,7 +36,8 @@ pub fn keys() -> &'static HashMap<String, [u8; 16]> {
         BASE_KEYS
             .iter()
             .map(|(name, hex)| {
-                let base: [u8; 16] = std::array::from_fn(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap());
+                let base: [u8; 16] =
+                    std::array::from_fn(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap());
                 (name.to_lowercase(), key_from_base(&base))
             })
             .collect()
@@ -64,7 +65,8 @@ pub struct PackSet {
 
 impl PackSet {
     pub fn open(dir: &Path) -> Result<PackSet> {
-        let mut entries: Vec<PathBuf> = std::fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))?
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+            .with_context(|| format!("reading {}", dir.display()))?
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| {
                 let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
@@ -124,10 +126,9 @@ impl PackSet {
     }
 
     pub fn files(&self) -> impl Iterator<Item = (FileRef, &crate::pak::PakFile)> {
-        self.paks
-            .iter()
-            .enumerate()
-            .flat_map(|(pi, p)| p.files.iter().enumerate().map(move |(fi, f)| (FileRef { pak: pi, file: fi }, f)))
+        self.paks.iter().enumerate().flat_map(|(pi, p)| {
+            p.files.iter().enumerate().map(move |(fi, f)| (FileRef { pak: pi, file: fi }, f))
+        })
     }
 }
 

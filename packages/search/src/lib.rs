@@ -15,7 +15,7 @@ pub mod track;
 pub mod tricks;
 pub mod tries;
 
-pub mod session;
 mod body;
+pub mod session;
 pub use body::Body;
-pub use gearbox_engine::{Session, Controls, Savestate};
+pub use gearbox_engine::{Controls, Savestate, Session};

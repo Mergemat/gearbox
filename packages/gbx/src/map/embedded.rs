@@ -33,9 +33,10 @@ impl EmbeddedFile {
         let namespaces = ["Items", "Blocks", "ClubItems"];
         let parts: Vec<_> = path.split('\\').collect();
         if !namespaces.iter().any(|n| parts[0].eq_ignore_ascii_case(n)) {
-            if let Some(root) = parts.windows(2).position(|p|
+            if let Some(root) = parts.windows(2).position(|p| {
                 ["Trackmania", "Trackmania2020"].iter().any(|n| p[0].eq_ignore_ascii_case(n))
-                && namespaces.iter().any(|n| p[1].eq_ignore_ascii_case(n))) {
+                    && namespaces.iter().any(|n| p[1].eq_ignore_ascii_case(n))
+            }) {
                 path = parts[root + 1..].join("\\");
             }
         }
@@ -54,7 +55,8 @@ impl EmbeddedFile {
 impl EmbeddedData {
     pub fn item_file(&self, model: &str) -> Result<&EmbeddedFile> {
         let name = model.replace('/', "\\");
-        let mut matches = self.files.iter().filter(|f| f.model_path().is_some_and(|p| p.eq_ignore_ascii_case(&name)));
+        let mut matches =
+            self.files.iter().filter(|f| f.model_path().is_some_and(|p| p.eq_ignore_ascii_case(&name)));
         let file = matches.next().with_context(|| format!("missing embedded item {model}"))?;
         ensure!(matches.next().is_none(), "ambiguous embedded item {model}");
         Ok(file)
@@ -79,18 +81,13 @@ pub(super) fn read(r: &mut Reader) -> Result<EmbeddedData> {
             }
             let path = file.name().replace('/', "\\");
             let mut data = Vec::new();
-            file.read_to_end(&mut data)
-                .with_context(|| format!("embedded file {path}"))?;
+            file.read_to_end(&mut data).with_context(|| format!("embedded file {path}"))?;
             let item_model = if path.to_ascii_lowercase().ends_with(".gbx") {
                 let c = Container::parse(&data).with_context(|| format!("embedded GBX {path}"))?;
                 if c.class_id == 0x2E00_2000 {
-                    let desc = c
-                        .header_chunk(0x2E00_1003)
-                        .context("item model without collector header")?;
+                    let desc = c.header_chunk(0x2E00_1003).context("item model without collector header")?;
                     let ident = Reader::new(desc).ident()?;
-                    let desc = c
-                        .header_chunk(0x2E00_2000)
-                        .context("item model without type header")?;
+                    let desc = c.header_chunk(0x2E00_2000).context("item model without type header")?;
                     let item_type = Reader::new(desc).i32()?;
                     Some(EmbeddedItemModel { ident, item_type })
                 } else {
@@ -99,11 +96,7 @@ pub(super) fn read(r: &mut Reader) -> Result<EmbeddedData> {
             } else {
                 None
             };
-            embedded.files.push(EmbeddedFile {
-                path,
-                data,
-                item_model,
-            });
+            embedded.files.push(EmbeddedFile { path, data, item_model });
         }
     }
     if version >= 1 {

@@ -1,5 +1,5 @@
-use crate::{Iso, ShapeId, State, Vec3, World};
 use crate::static_world as sw;
+use crate::{Iso, ShapeId, State, Vec3, World};
 
 pub fn shape(world: &mut World, state: &mut State, shape_id: ShapeId, scale: f32) {
     match shape_id {
@@ -13,12 +13,18 @@ pub fn shape(world: &mut World, state: &mut State, shape_id: ShapeId, scale: f32
         }
         ShapeId::Shared(id) => match &mut world.statics.shapes[id.index()].geometry {
             sw::Geometry::Mesh(mesh) => {
-                for vertex in &mut mesh.vertices { *vertex = scale * *vertex; }
+                for vertex in &mut mesh.vertices {
+                    *vertex = scale * *vertex;
+                }
             }
             sw::Geometry::Compound(compound) => {
-                for location in &mut compound.locations { location.pos = scale * location.pos; }
+                for location in &mut compound.locations {
+                    location.pos = scale * location.pos;
+                }
                 let children = compound.children.clone();
-                for child in children { shape(world, state, child, scale); }
+                for child in children {
+                    shape(world, state, child, scale);
+                }
             }
             sw::Geometry::Convex(_) => {}
         },
@@ -32,7 +38,9 @@ pub fn shape(world: &mut World, state: &mut State, shape_id: ShapeId, scale: f32
 }
 
 fn positions(transforms: &mut [Iso], scale: f32) {
-    for transform in transforms { transform.pos = scale * transform.pos; }
+    for transform in transforms {
+        transform.pos = scale * transform.pos;
+    }
 }
 
 pub fn point(iso: Iso, scale: f32, p: Vec3) -> Vec3 {

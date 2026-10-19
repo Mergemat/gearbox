@@ -4,8 +4,8 @@ use std::sync::OnceLock;
 use anyhow::{Context, Result};
 
 use crate::classes::CLASSES;
-use gearbox_gbx::classid;
 use crate::pak::{FileDecoder, Pak};
+use gearbox_gbx::classid;
 
 struct Registry {
     ids: HashSet<u32>,
@@ -113,7 +113,12 @@ pub fn parse_head(buf: &[u8]) -> Option<Result<GbxHead>> {
             return Some(Err(anyhow::anyhow!("bad ref count")));
         }
         ancestor_level = t!(r.u32());
-        fn dirs(r: &mut gearbox_gbx::reader::Reader, depth: usize, prefix: &str, out: &mut Vec<String>) -> Option<()> {
+        fn dirs(
+            r: &mut gearbox_gbx::reader::Reader,
+            depth: usize,
+            prefix: &str,
+            out: &mut Vec<String>,
+        ) -> Option<()> {
             let n = r.u32().ok()?;
             if n > 10_000 || depth > 32 {
                 return None;
@@ -148,7 +153,15 @@ pub fn parse_head(buf: &[u8]) -> Option<Result<GbxHead>> {
             }
         }
     }
-    Some(Ok(GbxHead { class_id, num_nodes, body_start: r.pos(), refs, ref_files, ancestor_level, body_compressed: fmt[2] == b'C' }))
+    Some(Ok(GbxHead {
+        class_id,
+        num_nodes,
+        body_start: r.pos(),
+        refs,
+        ref_files,
+        ancestor_level,
+        body_compressed: fmt[2] == b'C',
+    }))
 }
 
 #[derive(Clone)]
@@ -209,7 +222,14 @@ enum Parsed<T> {
 
 impl NodeScanner {
     pub fn new() -> Self {
-        NodeScanner { head: None, seen: HashSet::new(), pos: 0, ids: Vec::new(), pending: Vec::new(), not_gbx: false }
+        NodeScanner {
+            head: None,
+            seen: HashSet::new(),
+            pos: 0,
+            ids: Vec::new(),
+            pending: Vec::new(),
+            not_gbx: false,
+        }
     }
 
     fn tuning_chunk(&self, b: &[u8], p: usize) -> Parsed<([u8; 4], usize)> {
@@ -248,7 +268,8 @@ impl NodeScanner {
         }
         let Some(idx) = u32_at(b, q) else { return Parsed::NeedMore };
         q += 4;
-        if idx != 0xffff_ffff && !self.seen.contains(&idx) && !self.head.as_ref().unwrap().refs.contains(&idx) {
+        if idx != 0xffff_ffff && !self.seen.contains(&idx) && !self.head.as_ref().unwrap().refs.contains(&idx)
+        {
             let Some(end) = b[q..].windows(4).position(|w| w == 0xfacade01u32.to_le_bytes()) else {
                 return Parsed::NeedMore;
             };
@@ -278,7 +299,12 @@ impl NodeScanner {
                     if !h.body_compressed {
                         let Some(first) = u32_at(out, h.body_start) else { return Ok(ev) };
                         if is_class(first & !0xfff) {
-                            ev.push(NodeEvent { end: h.body_start, class_id: h.class_id, main: true, raw: None });
+                            ev.push(NodeEvent {
+                                end: h.body_start,
+                                class_id: h.class_id,
+                                main: true,
+                                raw: None,
+                            });
                         }
                     }
                     self.pos = h.body_start;
@@ -319,10 +345,16 @@ impl NodeScanner {
                     Parsed::No => {}
                 }
             }
-            if (w == 0x4000_0000 || w == 0x8000_0000) && let Some((t, _)) = new_id_at(out, p) {
+            if (w == 0x4000_0000 || w == 0x8000_0000)
+                && let Some((t, _)) = new_id_at(out, p)
+            {
                 self.ids.push(t);
             }
-            if w != 0 && w < num_nodes && !self.seen.contains(&w) && !self.head.as_ref().unwrap().refs.contains(&w) {
+            if w != 0
+                && w < num_nodes
+                && !self.seen.contains(&w)
+                && !self.head.as_ref().unwrap().refs.contains(&w)
+            {
                 let cid = u32_at(out, p + 4).unwrap();
                 if is_class(cid) {
                     let chunked = u32_at(out, p + 8).is_none_or(|c| is_class(c & !0xfff));

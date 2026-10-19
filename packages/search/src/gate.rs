@@ -34,11 +34,7 @@ impl TryFrom<GateJson> for Gate {
             (None, None) => {}
             _ => return Err("gate needs both min and max".into()),
         }
-        Ok(Self {
-            waypoint: j.waypoint,
-            kind: j.kind,
-            boxes,
-        })
+        Ok(Self { waypoint: j.waypoint, kind: j.kind, boxes })
     }
 }
 
@@ -71,18 +67,15 @@ impl Gate {
 }
 
 pub fn gates(native: &mut Session) -> Result<Vec<Gate>> {
-    let items = native.waypoint_triggers().into_iter().map(|trigger| {
-        (trigger.waypoint, trigger.kind, Bounds { min: trigger.min, max: trigger.max })
-    });
+    let items = native
+        .waypoint_triggers()
+        .into_iter()
+        .map(|trigger| (trigger.waypoint, trigger.kind, Bounds { min: trigger.min, max: trigger.max }));
     let mut gates = std::collections::BTreeMap::<u32, Gate>::new();
     for (waypoint, kind, bounds) in items {
         gates
             .entry(waypoint)
-            .or_insert_with(|| Gate {
-                waypoint,
-                kind,
-                boxes: Vec::new(),
-            })
+            .or_insert_with(|| Gate { waypoint, kind, boxes: Vec::new() })
             .boxes
             .push(bounds);
     }
@@ -96,8 +89,7 @@ pub fn target_gate(native: &mut Session, ordinal: usize) -> Result<Gate> {
     ensure!(ordinal > 0, "waypoint indices start at 1");
     let gates = gates(native)?;
     let order = |g: &Gate| native.waypoint_order(g.waypoint).unwrap_or(u32::MAX);
-    let (mut checkpoints, finishes): (Vec<_>, Vec<_>) =
-        gates.into_iter().partition(|g| g.kind != 1);
+    let (mut checkpoints, finishes): (Vec<_>, Vec<_>) = gates.into_iter().partition(|g| g.kind != 1);
     checkpoints.sort_by_cached_key(|g| (order(g), g.waypoint));
     if checkpoints.len() > 1 {
         let mut orders = std::collections::BTreeSet::new();
@@ -125,11 +117,7 @@ pub fn target_gate(native: &mut Session, ordinal: usize) -> Result<Gate> {
             "ordinal {ordinal} is the finish and the map has {} alternate finishes \
              (waypoint IDs {}): select one with --waypoint or supply a reference run",
             finishes.len(),
-            finishes
-                .iter()
-                .map(|g| g.waypoint.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
+            finishes.iter().map(|g| g.waypoint.to_string()).collect::<Vec<_>>().join(", ")
         ),
     }
 }
@@ -150,12 +138,8 @@ pub fn reference_gate(
         let end = inputs.index(until_ms)?;
         for c in &inputs.controls[start..end] {
             native.step(*c);
-            if native
-                .race()
-                .is_some_and(|r| r.checkpoints.len() >= ordinal)
-            {
-                let wp =
-                    crossing_waypoint(native, ordinal).context("crossing has no waypoint ID")?;
+            if native.race().is_some_and(|r| r.checkpoints.len() >= ordinal) {
+                let wp = crossing_waypoint(native, ordinal).context("crossing has no waypoint ID")?;
                 return Ok(gates(native)?.into_iter().find(|g| g.waypoint == wp));
             }
         }
@@ -184,10 +168,7 @@ mod tests {
         let round_trip: Gate = serde_json::from_str(&serde_json::to_string(&gate).unwrap()).unwrap();
         assert_eq!(round_trip, gate);
         assert!(serde_json::from_str::<Gate>(r#"{"waypoint":3,"kind":1,"min":[0,0,0]}"#).is_err());
-        let empty = Gate {
-            boxes: Vec::new(),
-            ..gate
-        };
+        let empty = Gate { boxes: Vec::new(), ..gate };
         assert!(empty.validate().is_err());
     }
 }

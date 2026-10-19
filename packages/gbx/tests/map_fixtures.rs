@@ -62,10 +62,7 @@ fn v7_large_map_with_camera_tracks_keeps_item_transforms() {
     assert_eq!(map.items[0].model.as_deref(), Some("SupportConnectorX6"));
     assert_eq!(map.items[0].position, [864.0, 55.0, 603.0]);
     assert_eq!(map.items[1].position, [864.0, 66.0, 596.0]);
-    assert_eq!(
-        map.items[0].yaw_pitch_roll,
-        [1.5707963, std::f32::consts::PI, 0.0]
-    );
+    assert_eq!(map.items[0].yaw_pitch_roll, [1.5707963, std::f32::consts::PI, 0.0]);
 }
 
 #[test]
@@ -96,27 +93,14 @@ fn embedded_kacky_models_are_real_gbx_files() {
     assert_eq!(map.embedded.models.len(), 2);
     assert_eq!(map.embedded.files.len(), 2);
     let file = &map.embedded.files[0];
-    assert_eq!(
-        file.path,
-        "Items\\Kacky\\204\\Mini_Pltf_Flat_NoGrip.Item.Gbx"
-    );
+    assert_eq!(file.path, "Items\\Kacky\\204\\Mini_Pltf_Flat_NoGrip.Item.Gbx");
     let model = file.item_model.as_ref().unwrap();
-    assert_eq!(
-        model.ident[0].as_deref(),
-        Some("Kacky\\204\\Mini_Pltf_Flat_NoGrip.Item.Gbx")
-    );
+    assert_eq!(model.ident[0].as_deref(), Some("Kacky\\204\\Mini_Pltf_Flat_NoGrip.Item.Gbx"));
     assert_eq!(model.ident[1].as_deref(), Some("26"));
     assert_eq!(model.ident[2].as_deref(), Some("1hQaX_h5TiG8r96WElL8rQ"));
     assert_eq!(model.item_type, 1);
-    assert_eq!(
-        gearbox_gbx::Container::parse(&file.data).unwrap().class_id,
-        0x2E00_2000
-    );
-    assert!(
-        map.items
-            .iter()
-            .any(|i| i.model == model.ident[0] && i.author == model.ident[2])
-    );
+    assert_eq!(gearbox_gbx::Container::parse(&file.data).unwrap().class_id, 0x2E00_2000);
+    assert!(map.items.iter().any(|i| i.model == model.ident[0] && i.author == model.ident[2]));
 }
 
 #[test]
@@ -126,10 +110,7 @@ fn pf_gate_placements_match_the_game() {
     };
     assert_eq!(map.items.len(), 9);
     assert_eq!(map.items[0].model.as_deref(), Some("GateStartCenter32m"));
-    assert_eq!(
-        map.items[0].waypoint.as_ref().unwrap().tag.as_deref(),
-        Some("Spawn")
-    );
+    assert_eq!(map.items[0].waypoint.as_ref().unwrap().tag.as_deref(), Some("Spawn"));
     assert_eq!(map.items[0].position, [782.0, 254.0, 706.0]);
     let expected = [
         ("NoSteering", 111.0),
@@ -141,10 +122,7 @@ fn pf_gate_placements_match_the_game() {
         ("Boost", 109.0),
     ];
     for (item, (effect, y)) in map.items[1..8].iter().zip(expected) {
-        assert_eq!(
-            item.model.as_deref().unwrap(),
-            format!("GateSpecial32m{effect}")
-        );
+        assert_eq!(item.model.as_deref().unwrap(), format!("GateSpecial32m{effect}"));
         assert_eq!(item.position, [784.0, y, 706.0]);
     }
     assert_eq!(map.items[8].model.as_deref(), Some("Podium"));
@@ -165,19 +143,10 @@ fn pf_custom_nogrip_gate_matches_embedded_model() {
     assert_eq!(gate.position, [668.0, 71.0, 762.0]);
     assert_eq!(map.embedded.files.len(), 1);
     let model = map.embedded.files[0].item_model.as_ref().unwrap();
-    assert_eq!(
-        model.ident,
-        [gate.model.clone(), Some("26".into()), gate.author.clone()]
-    );
+    assert_eq!(model.ident, [gate.model.clone(), Some("26".into()), gate.author.clone()]);
     assert_eq!(model.item_type, 1);
-    assert_eq!(
-        map.items[1].model.as_deref(),
-        Some("GateCheckpointCenter32mv2")
-    );
-    assert_eq!(
-        map.items[1].waypoint.as_ref().unwrap().tag.as_deref(),
-        Some("Checkpoint")
-    );
+    assert_eq!(map.items[1].model.as_deref(), Some("GateCheckpointCenter32mv2"));
+    assert_eq!(map.items[1].waypoint.as_ref().unwrap().tag.as_deref(), Some("Checkpoint"));
     assert_eq!(map.items[1].position, [668.0, 73.0, 738.0]);
     for mat in &map.items[3..5] {
         assert_eq!(mat.model.as_deref(), Some("InflatableMat1mSlopeBase1x1"));

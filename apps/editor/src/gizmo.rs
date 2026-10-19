@@ -51,10 +51,12 @@ impl Gizmo {
         let u = n.any_orthonormal_vector();
         let v = n.cross(u);
         let r = self.scale * if k == 1 { 1.2 } else { 1.0 };
-        (0..=64).map(|i| {
-            let a = i as f32 / 64.0 * std::f32::consts::TAU;
-            self.center + (u * a.cos() + v * a.sin()) * r
-        }).collect()
+        (0..=64)
+            .map(|i| {
+                let a = i as f32 / 64.0 * std::f32::consts::TAU;
+                self.center + (u * a.cos() + v * a.sin()) * r
+            })
+            .collect()
     }
 
     pub fn dir(&self, k: usize) -> Vec3 {
@@ -98,7 +100,8 @@ impl Gizmo {
             }
             GizmoMode::Rotate => {
                 for k in self.rings() {
-                    let pts: Vec<Vec2> = self.ring_points(k).into_iter().filter_map(|p| project(vp, size, p)).collect();
+                    let pts: Vec<Vec2> =
+                        self.ring_points(k).into_iter().filter_map(|p| project(vp, size, p)).collect();
                     for w in pts.windows(2) {
                         consider(Handle::Ring(k), seg(w[0], w[1]), 7.0);
                     }
@@ -170,10 +173,12 @@ impl Gizmo {
                     let rgb = if on { theme::rgb8(theme::PIN) } else { theme::rgb8(theme::TEXT) };
                     let c = [rgb[0], rgb[1], rgb[2], 230];
                     let r = s * 0.09;
-                    let pts: Vec<Vec3> = (0..=24).map(|i| {
-                        let a = i as f32 / 24.0 * std::f32::consts::TAU;
-                        self.center + Vec3::new(a.cos(), 0.0, a.sin()) * r
-                    }).collect();
+                    let pts: Vec<Vec3> = (0..=24)
+                        .map(|i| {
+                            let a = i as f32 / 24.0 * std::f32::consts::TAU;
+                            self.center + Vec3::new(a.cos(), 0.0, a.sin()) * r
+                        })
+                        .collect();
                     for w in pts.windows(2) {
                         for p in [self.center, w[0], w[1]] {
                             d.overlay.push(Vertex::unlit(p, c));
@@ -184,7 +189,15 @@ impl Gizmo {
             GizmoMode::Rotate => {
                 for k in self.rings() {
                     let on = active == Some(Handle::Ring(k));
-                    let rgb = if on { theme::rgb8(theme::TEXT) } else { axis_rgb(match k { 0 => 0, 1 => 1, _ => 2 }) };
+                    let rgb = if on {
+                        theme::rgb8(theme::TEXT)
+                    } else {
+                        axis_rgb(match k {
+                            0 => 0,
+                            1 => 1,
+                            _ => 2,
+                        })
+                    };
                     let c = [rgb[0], rgb[1], rgb[2], if on { 255 } else { 220 }];
                     let pts = self.ring_points(k);
                     let n = self.ring_axis(k);

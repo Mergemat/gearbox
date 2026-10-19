@@ -1,7 +1,10 @@
+use super::{contact_response, forces::ForceCtx, impacts::ImpactModel};
 use crate::race::countdown::ControlFlags;
-use crate::{ItemId, Vec3, collision::{Contact, ContactList, Geometry},
-    dyna::{BodyHandle, solver::ImpulseContact}};
-use super::{forces::ForceCtx, impacts::ImpactModel, contact_response};
+use crate::{
+    ItemId, Vec3,
+    collision::{Contact, ContactList, Geometry},
+    dyna::{BodyHandle, solver::ImpulseContact},
+};
 
 pub const CONTACT_CAPACITY: usize = 500;
 const HARD_CONTACT_SQUARED: f32 = 0.010000001;
@@ -14,14 +17,24 @@ impl ContactFlags {
     pub const PIPE: Self = Self(1024);
     pub const OPPOSING: Self = Self(2048);
     pub const SOLVED: Self = Self(4096);
-    pub fn contains(self, flag: Self) -> bool { self.0 & flag.0 == flag.0 }
+    pub fn contains(self, flag: Self) -> bool {
+        self.0 & flag.0 == flag.0
+    }
     pub fn set(&mut self, flag: Self, enabled: bool) {
-        if enabled { self.0 |= flag.0; } else { self.0 &= !flag.0; }
+        if enabled {
+            self.0 |= flag.0;
+        } else {
+            self.0 &= !flag.0;
+        }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct TriggerContact { pub item: ItemId, pub time: u32, pub contact: Contact }
+pub struct TriggerContact {
+    pub item: ItemId,
+    pub time: u32,
+    pub contact: Contact,
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Output {
@@ -32,8 +45,8 @@ pub struct Output {
 pub fn vehicle_contacts(ctx: &mut ForceCtx<'_>, model: &ImpactModel, list: &mut ContactList) -> Output {
     let geometry = ctx.collision.geometry;
     list.sort(geometry);
-    let initial_yaw = if ctx.tuning.impact_yaw_enabled != 0 { ctx.body.local_angular_velocity().y }
-        else { 0.0 };
+    let initial_yaw =
+        if ctx.tuning.impact_yaw_enabled != 0 { ctx.body.local_angular_velocity().y } else { 0.0 };
     let mut out = Output::default();
     let mut contacts = Vec::new();
     let mut weights = Vec::new();
@@ -43,8 +56,10 @@ pub fn vehicle_contacts(ctx: &mut ForceCtx<'_>, model: &ImpactModel, list: &mut 
         let item_b = geometry.item(other);
         hard_contact(ctx.vehicle, source.penetration, item_b.layer);
         if let ItemId::Dynamic(id) = other {
-            assert!(!geometry.state.dynamic_item[id.index()].has_contact_callback,
-                "contact callback of touched item");
+            assert!(
+                !geometry.state.dynamic_item[id.index()].has_contact_callback,
+                "contact callback of touched item"
+            );
         }
         match item_b.layer {
             1 if receives_triggers(geometry, other) => {
@@ -62,8 +77,11 @@ pub fn vehicle_contacts(ctx: &mut ForceCtx<'_>, model: &ImpactModel, list: &mut 
                 assert!(out.pushes.len() < CONTACT_CAPACITY, "push-out list overflow (ud2)");
                 out.pushes.push(result.push);
                 if source.material_b as u8 != 13 {
-                    contacts.push(ImpulseContact { point: source.point, normal: source.normal,
-                        other: item_b.dynamic.then_some(BodyHandle(item_b.body)) });
+                    contacts.push(ImpulseContact {
+                        point: source.point,
+                        normal: source.normal,
+                        other: item_b.dynamic.then_some(BodyHandle(item_b.body)),
+                    });
                     weights.push(result.weight);
                 }
             }
@@ -77,8 +95,13 @@ pub fn vehicle_contacts(ctx: &mut ForceCtx<'_>, model: &ImpactModel, list: &mut 
     if solve {
         let inertia = ctx.geometry.local_inverse_inertia;
         let inverse = Vec3::new(inertia.rows[0].x, inertia.rows[1].y, inertia.rows[2].z);
-        let residual = ctx.body.dyna.contact_impulses(ctx.body.handle, &contacts, &weights,
-            1.0 / ctx.geometry.mass, inverse);
+        let residual = ctx.body.dyna.contact_impulses(
+            ctx.body.handle,
+            &contacts,
+            &weights,
+            1.0 / ctx.geometry.mass,
+            inverse,
+        );
         flags.set(ContactFlags::SOLVED, true);
         ctx.vehicle.contact_solve_residual = residual.abs();
     }
@@ -91,9 +114,11 @@ pub fn vehicle_contacts(ctx: &mut ForceCtx<'_>, model: &ImpactModel, list: &mut 
 }
 
 fn hard_contact(vehicle: &mut super::Vehicle, displacement: Vec3, other_layer: u8) {
-    let squared = displacement.x * displacement.x + displacement.y * displacement.y
-        + displacement.z * displacement.z;
-    if !(squared > HARD_CONTACT_SQUARED) { return; }
+    let squared =
+        displacement.x * displacement.x + displacement.y * displacement.y + displacement.z * displacement.z;
+    if !(squared > HARD_CONTACT_SQUARED) {
+        return;
+    }
     let mut flags = ContactFlags(vehicle.flags);
     if !flags.contains(ContactFlags::HARD) {
         flags.set(ContactFlags::HARD, true);
@@ -125,15 +150,26 @@ fn trigger_time(ctx: &ForceCtx<'_>, item: ItemId, source: &Contact) -> u32 {
         ItemId::Dynamic(id) => geometry.state.dynamic_item[id.index()].event_flags,
     };
     if timed.contains(crate::collision::ItemEvents::CONTACT_TIME) {
-        ctx.body.dyna.contact_time_ms(ctx.body.handle, ctx.time_ns, ctx.dt,
-            source.point, source.penetration, geometry.item(item).iso) as u32
-    } else { ctx.tick }
+        ctx.body.dyna.contact_time_ms(
+            ctx.body.handle,
+            ctx.time_ns,
+            ctx.dt,
+            source.point,
+            source.penetration,
+            geometry.item(item).iso,
+        ) as u32
+    } else {
+        ctx.tick
+    }
 }
 
 fn gate_contact(vehicle: &mut super::Vehicle, geometry: Geometry<'_>, item: ItemId) {
-    let ItemId::Static(id) = item else { return; };
-    let crate::static_world::Entity::Gate(index) = geometry.world.statics.items[id.index()].entity
-        else { return; };
+    let ItemId::Static(id) = item else {
+        return;
+    };
+    let crate::static_world::Entity::Gate(index) = geometry.world.statics.items[id.index()].entity else {
+        return;
+    };
     let record = &geometry.world.gate_record[index as usize];
     vehicle.surface_contact_effect = record.effect;
     vehicle.surface_contact_item = Some(item);
@@ -143,17 +179,20 @@ fn gate_contact(vehicle: &mut super::Vehicle, geometry: Geometry<'_>, item: Item
 
 fn spin_bookkeeping(ctx: &mut ForceCtx<'_>, initial_yaw: f32, volume_contact: bool) {
     if ctx.tuning.impact_yaw_enabled != 0 && volume_contact {
-        if ctx.vehicle.impact_yaw_begin == u32::MAX { ctx.vehicle.impact_yaw_begin = ctx.tick; }
+        if ctx.vehicle.impact_yaw_begin == u32::MAX {
+            ctx.vehicle.impact_yaw_begin = ctx.tick;
+        }
         let yaw = ctx.body.local_angular_velocity().y;
         ctx.vehicle.impact_yaw_change = (initial_yaw - yaw).abs() + ctx.vehicle.impact_yaw_change;
     }
     let start = ctx.vehicle.impact_yaw_begin;
-    if start == u32::MAX || ctx.tick <= start.wrapping_add(400) { return; }
+    if start == u32::MAX || ctx.tick <= start.wrapping_add(400) {
+        return;
+    }
     let base = (ctx.vehicle.impact_thrust_until as i64).max(ctx.time_ns);
     let duration = crate::math::cvtt64(ctx.tuning.impact_yaw_duration.eval(ctx.vehicle.impact_yaw_change));
     let deadline = (duration as u32 as i64).wrapping_mul(NS_PER_MS).wrapping_add(base);
-    let limit = (ctx.tuning.impact_thrust_limit_ms as i64).wrapping_mul(NS_PER_MS)
-        .wrapping_add(ctx.time_ns);
+    let limit = (ctx.tuning.impact_thrust_limit_ms as i64).wrapping_mul(NS_PER_MS).wrapping_add(ctx.time_ns);
     ctx.vehicle.impact_thrust_until = deadline.min(limit) as u64;
     ctx.vehicle.impact_yaw_begin = u32::MAX;
     ctx.vehicle.impact_yaw_change = 0.0;

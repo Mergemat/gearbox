@@ -64,7 +64,11 @@ pub struct Ctx<'a> {
 }
 
 impl Ctx<'_> {
-    pub fn noderef<T>(&self, r: &mut Reader, inline: impl FnOnce(&Self, &mut Reader, u32) -> Result<T>) -> Result<NodeLink<T>> {
+    pub fn noderef<T>(
+        &self,
+        r: &mut Reader,
+        inline: impl FnOnce(&Self, &mut Reader, u32) -> Result<T>,
+    ) -> Result<NodeLink<T>> {
         let idx = r.u32()?;
         if idx == u32::MAX {
             return Ok(NodeLink::Null);
@@ -85,9 +89,13 @@ impl Ctx<'_> {
     }
 
     pub fn skip_node(&self, r: &mut Reader) -> Result<()> {
-        let ni = *self.layout.by_start.get(&r.pos()).ok_or_else(|| anyhow::anyhow!("no node at {}", r.pos()))?;
+        let ni =
+            *self.layout.by_start.get(&r.pos()).ok_or_else(|| anyhow::anyhow!("no node at {}", r.pos()))?;
         let Some(end) = self.layout.nodes[ni].end else {
-            bail!("cannot skip node of class {:#010x} archived without chunks", self.layout.nodes[ni].class_id)
+            bail!(
+                "cannot skip node of class {:#010x} archived without chunks",
+                self.layout.nodes[ni].class_id
+            )
         };
         r.skip(end - r.pos())
     }
@@ -163,9 +171,7 @@ impl Ctx<'_> {
     pub fn model(&self, r: &mut Reader, class: u32) -> Result<Model> {
         match class {
             0x09145000 => Ok(Model::Prefab(Box::new(self.prefab(r)?))),
-            0x2f0ca000 => {
-                Ok(Model::Kinematic(crate::map_model::animation_node(r)?))
-            }
+            0x2f0ca000 => Ok(Model::Kinematic(crate::map_model::animation_node(r)?)),
             0x09159000 => Ok(Model::StaticObject(self.static_object(r)?)),
             0x09144000 => {
                 let d = self.dyna_object(r)?;

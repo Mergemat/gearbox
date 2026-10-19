@@ -51,7 +51,9 @@ impl Entry {
 
     pub fn parse(line: &str) -> Result<Self, String> {
         let f: Vec<&str> = line.split('\t').collect();
-        let [id, map, tmx, source, ticks] = f[..] else { return Err(format!("corpus line needs 5 fields: {line}")) };
+        let [id, map, tmx, source, ticks] = f[..] else {
+            return Err(format!("corpus line needs 5 fields: {line}"));
+        };
         Ok(Self {
             id: id.into(),
             map: map.into(),
@@ -64,7 +66,11 @@ impl Entry {
 
 pub fn read_corpus(path: &Path) -> Result<Vec<Entry>, Error> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("corpus {}: {e}", path.display()))?;
-    Ok(text.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')).map(Entry::parse).collect::<Result<_, _>>()?)
+    Ok(text
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .map(Entry::parse)
+        .collect::<Result<_, _>>()?)
 }
 
 pub fn timeline(source: &str, ticks: usize) -> Result<Timeline, Error> {
@@ -84,7 +90,8 @@ pub fn timeline(source: &str, ticks: usize) -> Result<Timeline, Error> {
 }
 
 pub fn trace_path(dir: &Path, id: &str) -> PathBuf {
-    let safe: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || "/_.-".contains(c) { c } else { '_' }).collect();
+    let safe: String =
+        id.chars().map(|c| if c.is_ascii_alphanumeric() || "/_.-".contains(c) { c } else { '_' }).collect();
     dir.join(format!("{safe}.trace.zst"))
 }
 
@@ -106,7 +113,11 @@ pub fn traces(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-pub fn record_case(factory: &dyn Factory, e: &Entry, packs: Option<PathBuf>) -> Result<(Trace, Option<String>), Error> {
+pub fn record_case(
+    factory: &dyn Factory,
+    e: &Entry,
+    packs: Option<PathBuf>,
+) -> Result<(Trace, Option<String>), Error> {
     let bytes = std::fs::read(&e.map).map_err(|err| format!("map {}: {err}", e.map.display()))?;
     let t = timeline(&e.source, e.ticks)?;
     let mut steps = steps(&t, e.ticks);
@@ -122,7 +133,11 @@ pub fn record_case(factory: &dyn Factory, e: &Entry, packs: Option<PathBuf>) -> 
         match r {
             Ok(s) => states.push(s),
             Err(p) => {
-                let msg = p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default();
+                let msg = p
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+                    .or_else(|| p.downcast_ref::<String>().cloned())
+                    .unwrap_or_default();
                 stopped = Some(format!("step {} panicked: {msg}", k + 1));
                 break;
             }
@@ -138,16 +153,31 @@ pub fn record_case(factory: &dyn Factory, e: &Entry, packs: Option<PathBuf>) -> 
         Some(p) => format!("file:{}", Path::new(p).file_name().map_or(p.into(), |n| n.to_string_lossy())),
         None => e.source.clone(),
     };
-    let map = MapRef { file, path: e.map.display().to_string(), hash: fnv64(&bytes), len: bytes.len() as u64, tmx: e.tmx };
+    let map = MapRef {
+        file,
+        path: e.map.display().to_string(),
+        hash: fnv64(&bytes),
+        len: bytes.len() as u64,
+        tmx: e.tmx,
+    };
     let case = Case { id: e.id.clone(), map, source, t0: t.t0, seed: t.seed, start_ms: start, steps };
     Ok((Trace { case, engine: factory.name(), states }, stopped))
 }
 
-pub fn check_case(factory: &dyn Factory, path: &Path, dir: &Path, maps: &[PathBuf], packs: Option<PathBuf>, perturb: Option<(usize, usize)>) -> Result<String, Error> {
+pub fn check_case(
+    factory: &dyn Factory,
+    path: &Path,
+    dir: &Path,
+    maps: &[PathBuf],
+    packs: Option<PathBuf>,
+    perturb: Option<(usize, usize)>,
+) -> Result<String, Error> {
     let trace = Trace::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let Some(map) = find_map(&trace, dir, maps) else {
         let m = &trace.case.map;
-        let hint = m.tmx.map_or(String::new(), |id| format!(" (fetch https://trackmania.exchange/mapgbx/{id} into {}/maps/{})", dir.display(), m.file));
+        let hint = m.tmx.map_or(String::new(), |id| {
+            format!(" (fetch https://trackmania.exchange/mapgbx/{id} into {}/maps/{})", dir.display(), m.file)
+        });
         return Ok(format!("MISSING map {} {:016x}{hint}", m.file, m.hash));
     };
     let setup = Setup { map, t0: trace.case.t0, seed: trace.case.seed, packs };
@@ -224,33 +254,42 @@ fn fan_out(prefix: &[String], jobs: Vec<(String, Vec<String>)>, o: &Opts) -> Vec
     let total = jobs.len();
     std::thread::scope(|s| {
         for _ in 0..o.jobs.min(total) {
-            s.spawn(|| loop {
-                let i = {
-                    let mut n = next.lock().unwrap();
-                    *n += 1;
-                    *n - 1
-                };
-                let Some((id, args)) = jobs.get(i) else { return };
-                let mut cmd = if nice {
-                    let mut c = Command::new("nice");
-                    c.args(["-n", "10"]).arg(&host);
-                    c
-                } else {
-                    Command::new(&host)
-                };
-                cmd.args(prefix).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-                if let Some(p) = &o.packs {
-                    cmd.arg("--packs").arg(p);
+            s.spawn(|| {
+                loop {
+                    let i = {
+                        let mut n = next.lock().unwrap();
+                        *n += 1;
+                        *n - 1
+                    };
+                    let Some((id, args)) = jobs.get(i) else { return };
+                    let mut cmd = if nice {
+                        let mut c = Command::new("nice");
+                        c.args(["-n", "10"]).arg(&host);
+                        c
+                    } else {
+                        Command::new(&host)
+                    };
+                    cmd.args(prefix)
+                        .args(args)
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped());
+                    if let Some(p) = &o.packs {
+                        cmd.arg("--packs").arg(p);
+                    }
+                    let line = run_child(cmd, o.timeout);
+                    let mut d = done.lock().unwrap();
+                    *d += 1;
+                    println!("[{}/{total}] {id}\t{line}", *d);
+                    results.lock().unwrap()[i] = Some(line);
                 }
-                let line = run_child(cmd, o.timeout);
-                let mut d = done.lock().unwrap();
-                *d += 1;
-                println!("[{}/{total}] {id}\t{line}", *d);
-                results.lock().unwrap()[i] = Some(line);
             });
         }
     });
-    jobs.into_iter().zip(results.into_inner().unwrap()).map(|((id, _), r)| (id, r.unwrap_or_default())).collect()
+    jobs.into_iter()
+        .zip(results.into_inner().unwrap())
+        .map(|((id, _), r)| (id, r.unwrap_or_default()))
+        .collect()
 }
 
 fn run_child(mut cmd: Command, timeout: Duration) -> String {
@@ -284,14 +323,27 @@ fn run_child(mut cmd: Command, timeout: Duration) -> String {
     if let Some(l) = out.lines().find_map(|l| l.strip_prefix(RESULT)) {
         return l.to_string();
     }
-    let why = err.lines().rev().find(|l| l.contains("panicked") || l.contains("Error") || l.contains("error")).or(err.lines().last()).unwrap_or("").chars().take(300).collect::<String>();
+    let why = err
+        .lines()
+        .rev()
+        .find(|l| l.contains("panicked") || l.contains("Error") || l.contains("error"))
+        .or(err.lines().last())
+        .unwrap_or("")
+        .chars()
+        .take(300)
+        .collect::<String>();
     match status {
         None => format!("ERROR timed out after {} s", timeout.as_secs()),
         Some(s) => format!("ERROR {s}: {why}"),
     }
 }
 
-pub fn main(args: Vec<String>, prefix: &[&str], factory: &dyn Factory, defaults: &Defaults) -> Result<(), Error> {
+pub fn main(
+    args: Vec<String>,
+    prefix: &[&str],
+    factory: &dyn Factory,
+    defaults: &Defaults,
+) -> Result<(), Error> {
     let prefix: Vec<String> = prefix.iter().map(|s| s.to_string()).collect();
     let Some(cmd) = args.first() else {
         println!("{USAGE}");
@@ -300,13 +352,22 @@ pub fn main(args: Vec<String>, prefix: &[&str], factory: &dyn Factory, defaults:
     let o = parse(&args[1..], defaults)?;
     match cmd.as_str() {
         "record" => {
-            let corpus: Vec<Entry> = read_corpus(&o.corpus)?.into_iter().filter(|e| wanted(&o, &e.id)).collect();
+            let corpus: Vec<Entry> =
+                read_corpus(&o.corpus)?.into_iter().filter(|e| wanted(&o, &e.id)).collect();
             let began = Instant::now();
             let jobs = corpus
                 .iter()
                 .map(|e| {
                     let tmx = e.tmx.map_or("-".into(), |t| t.to_string());
-                    let args = vec!["one-record".into(), o.dir.display().to_string(), e.id.clone(), e.map.display().to_string(), tmx, e.source.clone(), e.ticks.to_string()];
+                    let args = vec![
+                        "one-record".into(),
+                        o.dir.display().to_string(),
+                        e.id.clone(),
+                        e.map.display().to_string(),
+                        tmx,
+                        e.source.clone(),
+                        e.ticks.to_string(),
+                    ];
                     (e.id.clone(), args)
                 })
                 .collect();
@@ -325,11 +386,17 @@ pub fn main(args: Vec<String>, prefix: &[&str], factory: &dyn Factory, defaults:
             }
             std::fs::write(&log, lines.iter().map(|(a, b)| format!("{a}\t{b}\n")).collect::<String>())?;
             print!("{table}");
-            println!("recorded {ok} of {} in {:.0} s ({})", results.len(), began.elapsed().as_secs_f64(), o.dir.display());
+            println!(
+                "recorded {ok} of {} in {:.0} s ({})",
+                results.len(),
+                began.elapsed().as_secs_f64(),
+                o.dir.display()
+            );
             Ok(())
         }
         "check" => {
-            let files: Vec<PathBuf> = traces(&o.dir).into_iter().filter(|p| wanted(&o, &p.to_string_lossy())).collect();
+            let files: Vec<PathBuf> =
+                traces(&o.dir).into_iter().filter(|p| wanted(&o, &p.to_string_lossy())).collect();
             if files.is_empty() {
                 return Err(format!("no traces under {}", o.dir.display()).into());
             }
@@ -337,8 +404,18 @@ pub fn main(args: Vec<String>, prefix: &[&str], factory: &dyn Factory, defaults:
             let jobs = files
                 .iter()
                 .map(|p| {
-                    let id = p.strip_prefix(&o.dir).unwrap_or(p).to_string_lossy().trim_end_matches(".trace.zst").to_string();
-                    let mut args = vec!["one-check".to_string(), p.display().to_string(), "--dir".into(), o.dir.display().to_string()];
+                    let id = p
+                        .strip_prefix(&o.dir)
+                        .unwrap_or(p)
+                        .to_string_lossy()
+                        .trim_end_matches(".trace.zst")
+                        .to_string();
+                    let mut args = vec![
+                        "one-check".to_string(),
+                        p.display().to_string(),
+                        "--dir".into(),
+                        o.dir.display().to_string(),
+                    ];
                     for m in &o.maps {
                         args.extend(["--maps".to_string(), m.display().to_string()]);
                     }
@@ -353,14 +430,30 @@ pub fn main(args: Vec<String>, prefix: &[&str], factory: &dyn Factory, defaults:
             for (id, r) in &results {
                 println!("{id}\t{r}");
             }
-            println!("exact {exact} of {} in {:.0} s ({})", results.len(), began.elapsed().as_secs_f64(), factory.name());
-            if exact == results.len() { Ok(()) } else { Err(format!("{} cases not exact", results.len() - exact).into()) }
+            println!(
+                "exact {exact} of {} in {:.0} s ({})",
+                results.len(),
+                began.elapsed().as_secs_f64(),
+                factory.name()
+            );
+            if exact == results.len() {
+                Ok(())
+            } else {
+                Err(format!("{} cases not exact", results.len() - exact).into())
+            }
         }
         "list" => {
             for p in traces(&o.dir).into_iter().filter(|p| wanted(&o, &p.to_string_lossy())) {
                 let t = Trace::read(&p)?;
                 let tmx = t.case.map.tmx.map_or(String::new(), |id| format!(" tmx {id}"));
-                println!("{}\t{}{tmx}\t{}\t{} states\t{}", t.case.id, t.case.map.file, t.case.source, t.states.len(), t.engine);
+                println!(
+                    "{}\t{}{tmx}\t{}\t{} states\t{}",
+                    t.case.id,
+                    t.case.map.file,
+                    t.case.source,
+                    t.states.len(),
+                    t.engine
+                );
             }
             Ok(())
         }
@@ -368,7 +461,18 @@ pub fn main(args: Vec<String>, prefix: &[&str], factory: &dyn Factory, defaults:
             let [path, ticks @ ..] = &o.rest[..] else { return Err("show TRACE [TICK]...".into()) };
             let t = Trace::read(Path::new(path))?;
             let c = &t.case;
-            println!("{} on {} ({:016x}), {}: T0 {} seed {:?}, from race {} ms, {} steps, by {}", c.id, c.map.file, c.map.hash, c.source, c.t0, c.seed, c.start_ms, c.steps.len(), t.engine);
+            println!(
+                "{} on {} ({:016x}), {}: T0 {} seed {:?}, from race {} ms, {} steps, by {}",
+                c.id,
+                c.map.file,
+                c.map.hash,
+                c.source,
+                c.t0,
+                c.seed,
+                c.start_ms,
+                c.steps.len(),
+                t.engine
+            );
             for k in ticks {
                 let k: usize = k.parse()?;
                 let s = t.states.get(k).ok_or("tick out of range")?;
@@ -378,14 +482,21 @@ pub fn main(args: Vec<String>, prefix: &[&str], factory: &dyn Factory, defaults:
             Ok(())
         }
         "one-record" => {
-            let [dir, id, map, tmx, source, ticks] = &o.rest[..] else { return Err("one-record DIR ID MAP TMX SOURCE TICKS".into()) };
+            let [dir, id, map, tmx, source, ticks] = &o.rest[..] else {
+                return Err("one-record DIR ID MAP TMX SOURCE TICKS".into());
+            };
             let e = Entry::parse(&[id.as_str(), map, tmx, source, ticks].join("\t"))?;
             let began = Instant::now();
             let line = match record_case(factory, &e, o.packs.clone()) {
                 Ok((t, stopped)) => {
                     let bytes = t.write(&trace_path(Path::new(dir), id))?;
-                    let stopped = stopped.map_or(String::new(), |s| format!(", ended early: {}", s.replace('\n', " ")));
-                    format!("OK {} states, {bytes} bytes, {:.1} s{stopped}", t.states.len(), began.elapsed().as_secs_f64())
+                    let stopped =
+                        stopped.map_or(String::new(), |s| format!(", ended early: {}", s.replace('\n', " ")));
+                    format!(
+                        "OK {} states, {bytes} bytes, {:.1} s{stopped}",
+                        t.states.len(),
+                        began.elapsed().as_secs_f64()
+                    )
                 }
                 Err(e) => format!("ERROR {}", e.to_string().replace('\n', " ")),
             };
@@ -394,7 +505,8 @@ pub fn main(args: Vec<String>, prefix: &[&str], factory: &dyn Factory, defaults:
         }
         "one-check" => {
             let [path] = &o.rest[..] else { return Err("one-check TRACE".into()) };
-            let line = check_case(factory, Path::new(path), &o.dir, &o.maps, o.packs.clone(), o.perturb).unwrap_or_else(|e| format!("ERROR {}", e.to_string().replace('\n', " ")));
+            let line = check_case(factory, Path::new(path), &o.dir, &o.maps, o.packs.clone(), o.perturb)
+                .unwrap_or_else(|e| format!("ERROR {}", e.to_string().replace('\n', " ")));
             println!("{RESULT}{line}");
             Ok(())
         }

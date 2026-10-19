@@ -1,5 +1,7 @@
 use gpui::prelude::FluentBuilder;
-use gpui::{Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, px};
+use gpui::{
+    Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, px,
+};
 
 use crate::app::*;
 use crate::theme::{self, c};

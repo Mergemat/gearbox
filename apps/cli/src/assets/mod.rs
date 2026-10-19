@@ -75,9 +75,15 @@ pub fn main(args: Vec<String>) -> Result<()> {
         }
         "find" => {
             let set = crate::game()?.open()?;
-            let r = set.find(arg(&args, 1, "find <game path>")?).ok_or_else(|| anyhow::anyhow!("not found"))?;
+            let r =
+                set.find(arg(&args, 1, "find <game path>")?).ok_or_else(|| anyhow::anyhow!("not found"))?;
             let pak = &set.paks[r.pak];
-            println!("{} {} {}", pak.path.file_name().unwrap().to_string_lossy(), hex(&pak.key().unwrap()), r.file);
+            println!(
+                "{} {} {}",
+                pak.path.file_name().unwrap().to_string_lossy(),
+                hex(&pak.key().unwrap()),
+                r.file
+            );
         }
         "check" => {
             use std::collections::BTreeMap;
@@ -97,7 +103,11 @@ pub fn main(args: Vec<String>) -> Result<()> {
                     }
                     Err(e) => {
                         st[2] += 1;
-                        println!("ERR {pak} {} class {:08x}: {e:#}", set.paks[r.pak].file_path(r.file), f.class_id);
+                        println!(
+                            "ERR {pak} {} class {:08x}: {e:#}",
+                            set.paks[r.pak].file_path(r.file),
+                            f.class_id
+                        );
                     }
                 }
             }
@@ -121,7 +131,9 @@ pub fn main(args: Vec<String>) -> Result<()> {
         }
         "cat" => {
             let set = crate::game()?.open()?;
-            let r = set.find(arg(&args, 1, "cat <game path> <out>")?).ok_or_else(|| anyhow::anyhow!("not found"))?;
+            let r = set
+                .find(arg(&args, 1, "cat <game path> <out>")?)
+                .ok_or_else(|| anyhow::anyhow!("not found"))?;
             let b = set.read(r)?;
             let b = if b.starts_with(b"GBX") { gearbox_packs::embedded::plain_gbx(&b)? } else { b };
             std::fs::write(arg(&args, 2, "cat <game path> <out>")?, &b)?;
@@ -129,12 +141,25 @@ pub fn main(args: Vec<String>) -> Result<()> {
         }
         "embedded" => {
             let map = gearbox_gbx::Map::parse(&std::fs::read(&args[1])?)?;
-            let f = map.embedded.files.iter().find(|f| f.path.contains(args[2].as_str())).ok_or_else(|| anyhow::anyhow!("not found"))?;
-            let b = if f.data.starts_with(b"GBX") { gearbox_packs::embedded::plain_gbx(&f.data)? } else { f.data.clone() };
+            let f = map
+                .embedded
+                .files
+                .iter()
+                .find(|f| f.path.contains(args[2].as_str()))
+                .ok_or_else(|| anyhow::anyhow!("not found"))?;
+            let b = if f.data.starts_with(b"GBX") {
+                gearbox_packs::embedded::plain_gbx(&f.data)?
+            } else {
+                f.data.clone()
+            };
             std::fs::write(&args[3], &b)?;
             println!("{} {} bytes", f.path, b.len());
         }
-        "extract" => extract::extract(&crate::game()?.packs, Path::new(arg(&args, 1, "extract <out> [pak filter...]")?), &args[2..])?,
+        "extract" => extract::extract(
+            &crate::game()?.packs,
+            Path::new(arg(&args, 1, "extract <out> [pak filter...]")?),
+            &args[2..],
+        )?,
         "verify" => verify(&crate::game()?.packs, Path::new(arg(&args, 1, "verify <extract/GameData>")?))?,
         _ => bail!("unknown command {cmd}"),
     }

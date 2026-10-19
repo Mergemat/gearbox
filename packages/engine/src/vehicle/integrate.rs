@@ -1,5 +1,8 @@
-use crate::{Mat3, Vec3, dyna::{BodyHandle, BodyState, Dyna}};
-use super::{Vehicle, model::ForceGeometry, forces::common::TINY};
+use super::{Vehicle, forces::common::TINY, model::ForceGeometry};
+use crate::{
+    Mat3, Vec3,
+    dyna::{BodyHandle, BodyState, Dyna},
+};
 
 pub fn integrate_body(vehicle: &mut Vehicle, geometry: &ForceGeometry, dyna: &mut Dyna, dt: f32) {
     let handle = BodyHandle(vehicle.body);
@@ -31,7 +34,9 @@ pub fn integrate_body(vehicle: &mut Vehicle, geometry: &ForceGeometry, dyna: &mu
 
 fn rotate_about_center(state: &mut BodyState, center: Vec3, angular: Vec3, dt: f32) {
     let squared = (angular.y * angular.y + angular.x * angular.x) + angular.z * angular.z;
-    if !(squared > TINY) { return; }
+    if !(squared > TINY) {
+        return;
+    }
     let previous = state.rot.to_array();
     state.quat = state.quat.integrate(angular, dt);
     state.rot = Mat3::from_quat(state.quat);
@@ -55,8 +60,7 @@ pub fn premultiply(rotation: Mat3, value: Mat3) -> Mat3 {
     Mat3::from_array(std::array::from_fn(|index| {
         let (row, column) = (index / 3, index % 3);
         let term = |axis: usize| right[3 * axis + column] * left[3 * row + axis];
-        if row == 0 { (term(0) + term(1)) + term(2) }
-        else { (term(1) + term(0)) + term(2) }
+        if row == 0 { (term(0) + term(1)) + term(2) } else { (term(1) + term(0)) + term(2) }
     }))
 }
 

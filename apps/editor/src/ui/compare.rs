@@ -1,5 +1,8 @@
 use gpui::StatefulInteractiveElement;
-use gpui::{App, Bounds, Context, DispatchPhase, FontWeight, Hitbox, HitboxBehavior, IntoElement, MouseDownEvent, ParentElement, PathBuilder, Pixels, Styled, Window, canvas, div, fill, point, px, size};
+use gpui::{
+    App, Bounds, Context, DispatchPhase, FontWeight, Hitbox, HitboxBehavior, IntoElement, MouseDownEvent,
+    ParentElement, PathBuilder, Pixels, Styled, Window, canvas, div, fill, point, px, size,
+};
 
 use crate::engine::frame::Frame;
 use crate::replay::GhostTrack;
@@ -35,7 +38,11 @@ pub fn time_delta(a: &Track, b: &Track) -> Vec<Option<f32>> {
                 let (t0, p0, _) = b[i];
                 let (t1, p1, _) = b[i + 1];
                 let ab = p1 - p0;
-                let u = if ab.length_squared() > 0.0 { ((pa - p0).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
+                let u = if ab.length_squared() > 0.0 {
+                    ((pa - p0).dot(ab) / ab.length_squared()).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
                 let d = pa.distance(p0 + ab * u);
                 if best.is_none_or(|b| d < b.0) {
                     best = Some((d, t0 as f32 + (t1 - t0) as f32 * u, i));
@@ -63,14 +70,22 @@ pub fn ghost_reach(goals: &[Goal], g: &GhostTrack, race_ms0: i32) -> Vec<Option<
                 let p = Vec3::from(p);
                 match &goal.kind {
                     GoalKind::Point { pos, radius } => p.distance(Vec3::from(*pos)) <= *radius,
-                    GoalKind::Box { pos, size, ypr } => crate::doc::trigger_box(*pos, *size, *ypr).contains(p.into()),
+                    GoalKind::Box { pos, size, ypr } => {
+                        crate::doc::trigger_box(*pos, *size, *ypr).contains(p.into())
+                    }
                     GoalKind::Pose(s) => {
-                        let pose = gearbox_search::pose::Pose { position: p.into(), rotation: [q[3], q[0], q[1], q[2]], velocity: s.velocity };
+                        let pose = gearbox_search::pose::Pose {
+                            position: p.into(),
+                            rotation: [q[3], q[0], q[1], q[2]],
+                            velocity: s.velocity,
+                        };
                         let mut goal = s.goal();
                         goal.velocity_tolerance = None;
                         goal.contains(pose)
                     }
-                    GoalKind::Gate(gate) => gate.boxes.iter().any(|b| (0..3).all(|k| b.min[k] <= p[k] && p[k] <= b.max[k])),
+                    GoalKind::Gate(gate) => {
+                        gate.boxes.iter().any(|b| (0..3).all(|k| b.min[k] <= p[k] && p[k] <= b.max[k]))
+                    }
                 }
             });
             match hit {
@@ -103,7 +118,10 @@ impl Editor {
     }
 
     fn compare_choices(&self) -> Vec<(String, RunRef)> {
-        let mut v = vec![(format!("{} (current)", self.doc.run_name), RunRef::Current), ("Previous version".to_string(), RunRef::Previous)];
+        let mut v = vec![
+            (format!("{} (current)", self.doc.run_name), RunRef::Current),
+            ("Previous version".to_string(), RunRef::Previous),
+        ];
         for r in &self.doc.runs {
             v.push((r.name.clone(), RunRef::Run(r.id)));
         }
@@ -135,16 +153,44 @@ impl Editor {
             .gap(px(theme::SP2))
             .border_b_1()
             .border_color(c(theme::HAIRLINE))
-            .child(div().px(px(theme::SP1)).rounded(px(2.0)).bg(c(theme::TEXT)).text_color(c(theme::BG)).text_size(px(theme::FS_SMALL)).font_weight(FontWeight::SEMIBOLD).child("A"))
+            .child(
+                div()
+                    .px(px(theme::SP1))
+                    .rounded(px(2.0))
+                    .bg(c(theme::TEXT))
+                    .text_color(c(theme::BG))
+                    .text_size(px(theme::FS_SMALL))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("A"),
+            )
             .child(div().w(px(220.0)).child(sa))
-            .child(div().px(px(theme::SP1)).rounded(px(2.0)).bg(c(theme::GHOST)).text_color(c(theme::BG)).text_size(px(theme::FS_SMALL)).font_weight(FontWeight::SEMIBOLD).child("B"))
+            .child(
+                div()
+                    .px(px(theme::SP1))
+                    .rounded(px(2.0))
+                    .bg(c(theme::GHOST))
+                    .text_color(c(theme::BG))
+                    .text_size(px(theme::FS_SMALL))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("B"),
+            )
             .child(div().w(px(220.0)).child(sb))
             .child(btn("cmp-swap", "Swap", Btn::Quiet).on_click(cx.listener(|e, _, _, cx| {
                 e.compare = (e.compare.1, e.compare.0);
                 cx.notify();
             })));
         let (Some(ta), Some(tb)) = (ta, tb) else {
-            return div().size_full().flex().flex_col().child(header).child(div().p(px(theme::PAD)).child(muted("Simulating the runs to compare \u{2026} (or pick two runs)"))).into_any_element();
+            return div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(header)
+                .child(
+                    div()
+                        .p(px(theme::PAD))
+                        .child(muted("Simulating the runs to compare \u{2026} (or pick two runs)")),
+                )
+                .into_any_element();
         };
         let delta = time_delta(&ta, &tb);
         let fin = |t: &Track| t.last().map(|x| x.0);
@@ -177,15 +223,40 @@ impl Editor {
             .items_center()
             .gap(px(theme::SP3))
             .child(mono(format!("A finish {}", finish_a.map_or("\u{2014}".into(), fmt_ms)), 10.0))
-            .child(mono(format!("B finish {}", finish_b.map_or("\u{2014}".into(), fmt_ms)), 10.0).text_color(c(theme::GHOST)))
+            .child(
+                mono(format!("B finish {}", finish_b.map_or("\u{2014}".into(), fmt_ms)), 10.0)
+                    .text_color(c(theme::GHOST)),
+            )
             .children(match (finish_a, finish_b) {
-                (Some(x), Some(y)) => Some(mono(format!("A\u{2212}B {}", fmt_delta(x - y)), theme::FS_SMALL).text_color(c(if x <= y { theme::OK } else { theme::ERROR }))),
+                (Some(x), Some(y)) => Some(
+                    mono(format!("A\u{2212}B {}", fmt_delta(x - y)), theme::FS_SMALL)
+                        .text_color(c(if x <= y { theme::OK } else { theme::ERROR })),
+                ),
                 _ => None,
             })
-            .child(mono(format!("at cursor {}", at_cursor.map_or("\u{2014}".into(), |d| fmt_delta(d.round() as i32))), 10.0))
-            .child(mono(format!("most ahead {}  most behind {}", fmt_delta(gain.round() as i32), fmt_delta(loss.round() as i32)), 10.0).text_color(c(theme::MUTED)))
+            .child(mono(
+                format!("at cursor {}", at_cursor.map_or("\u{2014}".into(), |d| fmt_delta(d.round() as i32))),
+                10.0,
+            ))
+            .child(
+                mono(
+                    format!(
+                        "most ahead {}  most behind {}",
+                        fmt_delta(gain.round() as i32),
+                        fmt_delta(loss.round() as i32)
+                    ),
+                    10.0,
+                )
+                .text_color(c(theme::MUTED)),
+            )
             .child(div().flex_1())
-            .child(muted(format!("{} vs {} samples \u{00b7} ends {} / {}", ta.len(), tb.len(), fin(&ta).map_or("".into(), fmt_ms), fin(&tb).map_or("".into(), fmt_ms))));
+            .child(muted(format!(
+                "{} vs {} samples \u{00b7} ends {} / {}",
+                ta.len(),
+                tb.len(),
+                fin(&ta).map_or("".into(), fmt_ms),
+                fin(&tb).map_or("".into(), fmt_ms)
+            )));
         let g = Graph { a: ta, delta, speed_b, cursor_ms: cur };
         let this = cx.entity();
         let graph = canvas(
@@ -196,7 +267,9 @@ impl Editor {
                 let (t0, t1) = (g.a.first().map_or(0, |x| x.0), g.a.last().map_or(1, |x| x.0));
                 window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
                     if phase == DispatchPhase::Bubble && hb.is_hovered(window) {
-                        let f = ((f32::from(e.position.x) - f32::from(b.origin.x) - 40.0) / (f32::from(b.size.width) - 50.0)).clamp(0.0, 1.0);
+                        let f = ((f32::from(e.position.x) - f32::from(b.origin.x) - 40.0)
+                            / (f32::from(b.size.width) - 50.0))
+                            .clamp(0.0, 1.0);
                         let ms = t0 + ((t1 - t0) as f32 * f) as i32;
                         t.update(cx, |ed, cx| {
                             let k = ((ms - ed.race_ms0) / 10).max(0) as usize;
@@ -215,7 +288,16 @@ impl Editor {
             .flex_col()
             .child(header)
             .child(summary)
-            .child(div().flex_1().min_h_0().mx(px(theme::PAD)).mb(px(theme::SP2)).rounded(px(theme::R_CTL)).bg(c(theme::WELL)).child(graph))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .mx(px(theme::PAD))
+                    .mb(px(theme::SP2))
+                    .rounded(px(theme::R_CTL))
+                    .bg(c(theme::WELL))
+                    .child(graph),
+            )
             .into_any_element()
     }
 }
@@ -226,7 +308,10 @@ fn paint_graph(window: &mut Window, b: Bounds<Pixels>, g: &Graph) {
     if g.a.len() < 2 || w <= 0.0 {
         return;
     }
-    let rect = |x: f32, y: f32, ww: f32, hh: f32| Bounds { origin: point(px(x), px(y)), size: size(px(ww.max(0.0)), px(hh.max(0.0))) };
+    let rect = |x: f32, y: f32, ww: f32, hh: f32| Bounds {
+        origin: point(px(x), px(y)),
+        size: size(px(ww.max(0.0)), px(hh.max(0.0))),
+    };
     let (t0, t1) = (g.a[0].0 as f32, g.a.last().unwrap().0 as f32);
     let xt = |t: f32| x0 + (t - t0) / (t1 - t0).max(1.0) * w;
     let dmax = g.delta.iter().flatten().fold(20.0f32, |m, d| m.max(d.abs())) * 1.1;
@@ -249,7 +334,9 @@ fn paint_graph(window: &mut Window, b: Bounds<Pixels>, g: &Graph) {
         }
     }
     let bot_mid = y0 + h * 0.78;
-    let smax = g.a.iter().zip(&g.speed_b).filter_map(|(a, b)| b.map(|b| (a.2 - b).abs())).fold(10.0f32, f32::max) * 1.1;
+    let smax =
+        g.a.iter().zip(&g.speed_b).filter_map(|(a, b)| b.map(|b| (a.2 - b).abs())).fold(10.0f32, f32::max)
+            * 1.1;
     window.paint_quad(fill(rect(x0, bot_mid, w, 1.0), theme::alpha(theme::HAIRLINE, 1.0)));
     let mut p = PathBuilder::stroke(px(1.0));
     let mut started = false;

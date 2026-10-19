@@ -36,7 +36,11 @@ pub fn cvtt64(x: f32) -> i64 {
 
 #[inline]
 pub fn cvtt64d(x: f64) -> i64 {
-    if x.is_nan() || x >= 9.223372036854775808e18 || x < -9.223372036854775808e18 { i64::MIN } else { x as i64 }
+    if x.is_nan() || x >= 9.223372036854775808e18 || x < -9.223372036854775808e18 {
+        i64::MIN
+    } else {
+        x as i64
+    }
 }
 
 pub fn sincos(mut a: f32) -> (f32, f32) {
@@ -60,8 +64,13 @@ pub fn sincos(mut a: f32) -> (f32, f32) {
     }
     let x2 = a * a;
     let t = x2 * 2.6051615e-7;
-    let sin = (((((2.7525562e-6 - x2 * 2.3889859e-8) * x2 - 0.00019840874) * x2 + 0.008333331) * x2 - 0.16666667) * x2 + 1.0) * a;
-    let cos = (((((0.000024760495 - t) * x2 - 0.0013888378) * x2 + 0.041666638) * x2 - 0.5) * x2 + 1.0) * sign;
+    let sin = (((((2.7525562e-6 - x2 * 2.3889859e-8) * x2 - 0.00019840874) * x2 + 0.008333331) * x2
+        - 0.16666667)
+        * x2
+        + 1.0)
+        * a;
+    let cos =
+        (((((0.000024760495 - t) * x2 - 0.0013888378) * x2 + 0.041666638) * x2 - 0.5) * x2 + 1.0) * sign;
     (sin, cos)
 }
 
@@ -82,7 +91,8 @@ pub fn sincos_precise(x: f32) -> (f32, f32) {
     }
     let cos_neg = if j <= 1 { swapped } else { !swapped };
     let qd = q as f64;
-    let r = ax - qd * d(0x3fe9_21fb_4000_0000) - qd * d(0x3e64_442d_0000_0000) - qd * d(0x3ce8_4698_98cc_5170);
+    let r =
+        ax - qd * d(0x3fe9_21fb_4000_0000) - qd * d(0x3e64_442d_0000_0000) - qd * d(0x3ce8_4698_98cc_5170);
     let z = r * r;
     let zr = z * r;
     let mut s = z * d(0x3de5_d8fd_1fd1_9ccd) - d(0x3e5a_e5e5_a929_1f5d);
@@ -97,7 +107,8 @@ pub fn sincos_precise(x: f32) -> (f32, f32) {
     c = c * z + d(0x3efa_01a0_19c8_44f5);
     c = c * z - d(0x3f56_c16c_16c1_4f91);
     c = c * z;
-    let c = (c + d(0x3fa5_5555_5555_554b)) * (z * z) + (d(0x3ff0_0000_0000_0000) - z * d(0x3fe0_0000_0000_0000));
+    let c =
+        (c + d(0x3fa5_5555_5555_554b)) * (z * z) + (d(0x3ff0_0000_0000_0000) - z * d(0x3fe0_0000_0000_0000));
     let c = c as f32;
     let neg = |v: f32, n: bool| if n { -v } else { v };
     if (j as u32).wrapping_sub(1) > 1 {
@@ -111,7 +122,10 @@ fn asin_core(ax: f32) -> f32 {
     const HALF_PI: f32 = 1.5707963;
     let t = maxss(1.0 - ax, 0.0);
     t.sqrt()
-        * (((((((0.00667009 - ax * 0.0012624911) * ax - 0.017088126) * ax + 0.03089188) * ax - 0.050174303) * ax + 0.08897899) * ax
+        * (((((((0.00667009 - ax * 0.0012624911) * ax - 0.017088126) * ax + 0.03089188) * ax - 0.050174303)
+            * ax
+            + 0.08897899)
+            * ax
             - 0.2145988)
             * ax
             + HALF_PI)

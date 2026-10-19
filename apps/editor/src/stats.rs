@@ -80,5 +80,4 @@ impl Stats {
     pub fn clear(&mut self) {
         *self = Self::default();
     }
-
 }

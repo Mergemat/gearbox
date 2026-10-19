@@ -1,4 +1,7 @@
-use crate::{Aabb, Vec3, math::{maxss, minss}};
+use crate::{
+    Aabb, Vec3,
+    math::{maxss, minss},
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Bounds {
@@ -8,10 +11,7 @@ pub struct Bounds {
 
 impl Bounds {
     pub fn from_aabb(bounds: Aabb) -> Self {
-        Self {
-            min: bounds.center - bounds.half,
-            max: bounds.half + bounds.center,
-        }
+        Self { min: bounds.center - bounds.half, max: bounds.half + bounds.center }
     }
 }
 
@@ -44,18 +44,10 @@ impl RadixSorter {
         let mut hist = [[0u32; 256]; 4];
         let mut p = 0usize;
         let mut sorted = true;
-        let first = if invalid {
-            0
-        } else {
-            self.ranks[0] as usize
-        };
+        let first = if invalid { 0 } else { self.ranks[0] as usize };
         let mut prev = keys[first];
         while p < keys.len() {
-            let index = if invalid {
-                p
-            } else {
-                self.ranks[p] as usize
-            };
+            let index = if invalid { p } else { self.ranks[p] as usize };
             let v = keys[index];
             if prev > v {
                 sorted = false;
@@ -94,11 +86,7 @@ impl RadixSorter {
                 }
                 let invalid = self.size & 0x8000_0000 != 0;
                 for i in 0..keys.len() {
-                    let id = if invalid {
-                        i as u32
-                    } else {
-                        self.ranks[i]
-                    };
+                    let id = if invalid { i as u32 } else { self.ranks[i] };
                     let b = byte(id as usize, j);
                     self.spare[link[b] as usize] = id;
                     link[b] = link[b].wrapping_add(1);
@@ -122,11 +110,7 @@ impl RadixSorter {
                 }
                 let invalid = self.size & 0x8000_0000 != 0;
                 for i in 0..keys.len() {
-                    let id = if invalid {
-                        i as u32
-                    } else {
-                        self.ranks[i]
-                    };
+                    let id = if invalid { i as u32 } else { self.ranks[i] };
                     let b = byte(id as usize, 3);
                     if b < 128 {
                         self.spare[link[b] as usize] = id;
@@ -143,11 +127,8 @@ impl RadixSorter {
             } else if first >= 128 {
                 let invalid = (self.size as i32) < 0;
                 for i in 0..n {
-                    self.spare[i as usize] = if invalid {
-                        n - i - 1
-                    } else {
-                        self.ranks[(n - i - 1) as usize]
-                    };
+                    self.spare[i as usize] =
+                        if invalid { n - i - 1 } else { self.ranks[(n - i - 1) as usize] };
                 }
                 if invalid {
                     self.size &= 0x7fff_ffff;
@@ -227,11 +208,7 @@ fn bipartite(strict: bool, a: &Group, b: &Group, pairs: &mut Vec<(u32, u32)>) {
         let min = a.keys[i].0;
         loop {
             let k = b.keys[running].0;
-            let beyond_min = if strict {
-                k >= min
-            } else {
-                k > min
-            };
+            let beyond_min = if strict { k >= min } else { k > min };
             if beyond_min {
                 break;
             }
@@ -271,8 +248,10 @@ pub fn box_pruning(sorter: &mut RadixSorter, boxes: &[Bounds]) -> Vec<(u32, u32)
     let cz = (lo[1] + hi[1]) * 0.5;
     let mut group_ids = Vec::with_capacity(boxes.len());
     for b in boxes {
-        let code = ((cz > b.max.z) as usize) << 3 | ((b.min.z > cz) as usize) << 2
-            | ((cy > b.max.y) as usize) << 1 | (b.min.y > cy) as usize;
+        let code = ((cz > b.max.z) as usize) << 3
+            | ((b.min.z > cz) as usize) << 2
+            | ((cy > b.max.y) as usize) << 1
+            | (b.min.y > cy) as usize;
         group_ids.push(SPLIT_GROUP[code] as usize);
     }
     let mut groups: [Group; 5] = std::array::from_fn(|_| Group::default());

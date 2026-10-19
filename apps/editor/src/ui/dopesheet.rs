@@ -4,8 +4,10 @@ use std::sync::Arc;
 use gearbox_engine::Controls;
 
 use gpui::{
-    App, Bounds, Context, CursorStyle, DispatchPhase, Font, FontWeight, Hitbox, HitboxBehavior, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement, PathBuilder, PinchEvent, Pixels, Point, ScrollWheelEvent, SharedString, StatefulInteractiveElement, Styled, TextAlign, TextRun, Window, canvas, div, fill, point, px, size,
+    App, Bounds, Context, CursorStyle, DispatchPhase, Font, FontWeight, Hitbox, HitboxBehavior,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, PathBuilder, PinchEvent, Pixels, Point, ScrollWheelEvent, SharedString,
+    StatefulInteractiveElement, Styled, TextAlign, TextRun, Window, canvas, div, fill, point, px, size,
 };
 
 use crate::app::*;
@@ -92,12 +94,13 @@ fn lanes(h: f32, extra: (bool, bool), split: f32) -> Vec<(Lane, f32, f32)> {
         .iter()
         .map(|(l, hh)| {
             let r = (*l, y, *hh);
-            y += hh + match l {
-                _ if *hh == 0.0 => 0.0,
-                Lane::Ruler => 0.0,
-                Lane::Brake => 3.0 * GAP,
-                _ => GAP,
-            };
+            y += hh
+                + match l {
+                    _ if *hh == 0.0 => 0.0,
+                    Lane::Ruler => 0.0,
+                    Lane::Brake => 3.0 * GAP,
+                    _ => GAP,
+                };
             r
         })
         .collect()
@@ -157,19 +160,50 @@ struct Paint {
 }
 
 fn shape(window: &mut Window, s: &str, sz: f32, color: u32, alpha: f32, mono: bool) -> gpui::ShapedLine {
-    let font = Font { family: SharedString::from(if mono { theme::MONO } else { theme::SANS }), weight: FontWeight::NORMAL, ..Default::default() };
-    let run = TextRun { len: s.len(), font, color: theme::alpha(color, alpha), background_color: None, underline: None, strikethrough: None };
+    let font = Font {
+        family: SharedString::from(if mono { theme::MONO } else { theme::SANS }),
+        weight: FontWeight::NORMAL,
+        ..Default::default()
+    };
+    let run = TextRun {
+        len: s.len(),
+        font,
+        color: theme::alpha(color, alpha),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
     window.text_system().shape_line(SharedString::from(s.to_string()), px(sz), &[run], None)
 }
 
-fn text(window: &mut Window, cx: &mut App, s: &str, x: f32, y: f32, sz: f32, color: u32, alpha: f32, mono: bool) -> f32 {
+fn text(
+    window: &mut Window,
+    cx: &mut App,
+    s: &str,
+    x: f32,
+    y: f32,
+    sz: f32,
+    color: u32,
+    alpha: f32,
+    mono: bool,
+) -> f32 {
     let line = shape(window, s, sz, color, alpha, mono);
     let w = f32::from(line.width);
     let _ = line.paint(point(px(x), px(y)), px(sz * 1.3), TextAlign::Left, None, window, cx);
     w
 }
 
-fn text_r(window: &mut Window, cx: &mut App, s: &str, x: f32, y: f32, sz: f32, color: u32, alpha: f32, mono: bool) {
+fn text_r(
+    window: &mut Window,
+    cx: &mut App,
+    s: &str,
+    x: f32,
+    y: f32,
+    sz: f32,
+    color: u32,
+    alpha: f32,
+    mono: bool,
+) {
     let line = shape(window, s, sz, color, alpha, mono);
     let w = f32::from(line.width);
     let _ = line.paint(point(px(x - w), px(y)), px(sz * 1.3), TextAlign::Left, None, window, cx);
@@ -203,7 +237,10 @@ impl Editor {
 
     pub fn tl_lanes(&self) -> Vec<(Lane, f32, f32)> {
         let b = self.tl.bounds;
-        lanes(f32::from(b.size.height), self.tl_extra(), self.tl.split()).into_iter().map(|(l, y, h)| (l, y + f32::from(b.origin.y), h)).collect()
+        lanes(f32::from(b.size.height), self.tl_extra(), self.tl.split())
+            .into_iter()
+            .map(|(l, y, h)| (l, y + f32::from(b.origin.y), h))
+            .collect()
     }
 
     fn tl_lane_at(&self, y: f32) -> Option<(Lane, f32, f32)> {
@@ -211,18 +248,28 @@ impl Editor {
     }
 
     fn tl_on_split(&self, y: f32) -> bool {
-        self.tl_lanes().into_iter().find(|l| l.0 == Lane::Steer).is_some_and(|(_, y0, _)| (y - (y0 - GAP * 0.5)).abs() <= 3.0)
+        self.tl_lanes()
+            .into_iter()
+            .find(|l| l.0 == Lane::Steer)
+            .is_some_and(|(_, y0, _)| (y - (y0 - GAP * 0.5)).abs() <= 3.0)
     }
 
     fn tl_extra(&self) -> (bool, bool) {
-        let plan = !self.setup_clips().is_empty() || ((self.sel == Sel::Route || self.job.starts_with("Route")) && self.route_ticks().is_some());
+        let plan = !self.setup_clips().is_empty()
+            || ((self.sel == Sel::Route || self.job.starts_with("Route")) && self.route_ticks().is_some());
         (plan, !self.trick_spans.is_empty())
     }
 
     fn tl_fit_end(&self) -> usize {
         let len = self.doc.len.max(1);
         let finish = self.sim.frames.iter().position(|f| f.finish.is_some()).map(|k| k + 100);
-        let last_input = self.doc.inputs.controls.iter().rposition(|c| *c != gearbox_engine::Controls::default()).map(|i| ((self.doc.inputs.t0 - self.race_ms0) / 10).max(0) as usize + i + 200);
+        let last_input = self
+            .doc
+            .inputs
+            .controls
+            .iter()
+            .rposition(|c| *c != gearbox_engine::Controls::default())
+            .map(|i| ((self.doc.inputs.t0 - self.race_ms0) / 10).max(0) as usize + i + 200);
         finish.or(last_input).unwrap_or(len).max(self.spec.window.end + 50).clamp(100, len.max(100))
     }
 
@@ -243,7 +290,11 @@ impl Editor {
             return k;
         }
         let reach = (NEAR as f64 / self.tl.ppt.max(1e-6)).ceil() as i64;
-        self.markers().into_iter().filter(|m| (*m as i64 - k as i64).abs() <= reach).min_by_key(|m| (*m as i64 - k as i64).unsigned_abs()).unwrap_or(k)
+        self.markers()
+            .into_iter()
+            .filter(|m| (*m as i64 - k as i64).abs() <= reach)
+            .min_by_key(|m| (*m as i64 - k as i64).unsigned_abs())
+            .unwrap_or(k)
     }
 
     pub fn fit_timeline(&mut self) {
@@ -270,25 +321,43 @@ impl Editor {
         let speed: Arc<Vec<f32>> = Arc::new(self.sim.frames.iter().map(|f| f.speed_kmh()).collect());
         let controls: Vec<Controls> = (0..len).map(|k| self.control(k)).collect();
         let preview = self.preview.and_then(|id| {
-            let c = self.search.live.lock().unwrap().candidates.iter().find(|c| c.id == id).map(|c| c.inputs.clone())?;
+            let c = self
+                .search
+                .live
+                .lock()
+                .unwrap()
+                .candidates
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| c.inputs.clone())?;
             let diff = doc::diff_ranges(&self.doc.inputs, &c, self.race_ms0, len);
             Some(((0..len).map(|k| doc::control_at(&c, self.race_ms0, k)).collect::<Vec<_>>(), diff))
         });
         let b_frames = match self.compare.1 {
             RunRef::Run(id) => self.runs_frames.get(&crate::background::Key::Run(id)),
             RunRef::Candidate(id) => self.runs_frames.get(&crate::background::Key::Candidate(id)),
-            RunRef::Previous => self.doc.history.last().and_then(|h| self.runs_frames.get(&crate::background::Key::Run(h.id))),
+            RunRef::Previous => {
+                self.doc.history.last().and_then(|h| self.runs_frames.get(&crate::background::Key::Run(h.id)))
+            }
             _ => None,
         };
         let (b_speed, b_splits): (Option<Vec<(i32, f32)>>, Option<Vec<i32>>) = match self.compare.1 {
             RunRef::Ghost(i) => match self.ghosts.get(i) {
-                Some(g) => (Some(g.track.samples.iter().map(|s| (s.time_ms, s.speed * 3.6)).collect()), Some(g.track.checkpoints_ms.clone())),
+                Some(g) => (
+                    Some(g.track.samples.iter().map(|s| (s.time_ms, s.speed * 3.6)).collect()),
+                    Some(g.track.checkpoints_ms.clone()),
+                ),
                 None => (None, None),
             },
             _ => match b_frames {
                 Some(f) => (
                     Some(f.iter().map(|f| (f.race_ms, f.speed_kmh())).collect()),
-                    Some(f.windows(2).filter(|w| w[1].waypoints > w[0].waypoints).map(|w| w[1].last_crossing.map_or(w[1].race_ms, |c| c.1 as i32)).collect()),
+                    Some(
+                        f.windows(2)
+                            .filter(|w| w[1].waypoints > w[0].waypoints)
+                            .map(|w| w[1].last_crossing.map_or(w[1].race_ms, |c| c.1 as i32))
+                            .collect(),
+                    ),
                 ),
                 None => (None, None),
             },
@@ -304,7 +373,13 @@ impl Editor {
             if let Some(k) = r.tick {
                 marks.push(Mark { k, name: g.name.clone(), color: theme::PIN, solid: true, delta: None });
             } else if let Some((k, _)) = r.closest {
-                marks.push(Mark { k, name: format!("{} (closest)", g.name), color: theme::PIN, solid: false, delta: None });
+                marks.push(Mark {
+                    k,
+                    name: format!("{} (closest)", g.name),
+                    color: theme::PIN,
+                    solid: false,
+                    delta: None,
+                });
             }
         }
         let mut crossing = 0;
@@ -315,10 +390,21 @@ impl Editor {
                 let at = b.last_crossing.map_or(b.race_ms, |c| c.1 as i32);
                 let delta = b_splits.as_ref().and_then(|s| s.get(crossing)).map(|t| at - t);
                 crossing += 1;
-                marks.push(Mark { k, name, color: if b.finish.is_some() && a.finish.is_none() { theme::WARN } else { theme::TEXT }, solid: true, delta });
+                marks.push(Mark {
+                    k,
+                    name,
+                    color: if b.finish.is_some() && a.finish.is_none() { theme::WARN } else { theme::TEXT },
+                    solid: true,
+                    delta,
+                });
             }
         }
-        let ghost_ticks = self.ghosts.iter().filter(|g| g.visible).flat_map(|g| g.track.checkpoints_ms.iter().map(|t| ((t - self.race_ms0) / 10).max(0) as usize)).collect();
+        let ghost_ticks = self
+            .ghosts
+            .iter()
+            .filter(|g| g.visible)
+            .flat_map(|g| g.track.checkpoints_ms.iter().map(|t| ((t - self.race_ms0) / 10).max(0) as usize))
+            .collect();
         if self.tl.ppt <= 0.0 || self.tl.fit {
             let k0 = self.race_start_tick();
             let span = self.tl_fit_end().saturating_sub(k0).max(100);
@@ -326,7 +412,8 @@ impl Editor {
             self.tl.start = k0 as f64;
             self.tl.fit = false;
         }
-        let dragging_view = matches!(self.drag, Some(Drag::Timeline(TlDrag::Pan { .. } | TlDrag::Overview { .. })));
+        let dragging_view =
+            matches!(self.drag, Some(Drag::Timeline(TlDrag::Pan { .. } | TlDrag::Overview { .. })));
         if self.playing && !dragging_view && self.tl.ppt > 0.0 {
             let vis = self.tl.width() as f64 / self.tl.ppt;
             let k = self.cursor as f64;
@@ -358,8 +445,15 @@ impl Editor {
             paint_tool: self.paint_tool,
             channel: self.tl.channel,
             hover: self.tl.hover,
-            route: (self.sel == Sel::Route || self.job.starts_with("Route")).then(|| self.route_ticks()).flatten().map(|(a, b)| (a, b, crate::ui::route::route_title(self))),
-            clips: self.setup_clips().into_iter().map(|(id, a, b, name)| (a, b, name, self.sel == Sel::Setup(id))).collect(),
+            route: (self.sel == Sel::Route || self.job.starts_with("Route"))
+                .then(|| self.route_ticks())
+                .flatten()
+                .map(|(a, b)| (a, b, crate::ui::route::route_title(self))),
+            clips: self
+                .setup_clips()
+                .into_iter()
+                .map(|(id, a, b, name)| (a, b, name, self.sel == Sel::Setup(id)))
+                .collect(),
             tricks: self.trick_spans.clone(),
             extra: self.tl_extra(),
         };
@@ -406,7 +500,8 @@ impl Editor {
                         let h = inside
                             .then(|| {
                                 let lane = e.tl_lane_at(f32::from(ev.position.y)).map(|l| l.0)?;
-                                (f32::from(ev.position.x) >= f32::from(e.tl.bounds.origin.x) + GUTTER).then(|| (e.tl_tick_at(f32::from(ev.position.x)).min(e.doc.len), lane))
+                                (f32::from(ev.position.x) >= f32::from(e.tl.bounds.origin.x) + GUTTER)
+                                    .then(|| (e.tl_tick_at(f32::from(ev.position.x)).min(e.doc.len), lane))
                             })
                             .flatten();
                         if h != e.tl.hover {
@@ -422,53 +517,114 @@ impl Editor {
         .size_full();
         let playing = self.playing;
         let sel = self.tick_sel.clone();
-        let locked_sel = sel.as_ref().is_some_and(|r| self.doc.locks.iter().any(|l| l.start < r.end && r.start < l.end));
+        let locked_sel =
+            sel.as_ref().is_some_and(|r| self.doc.locks.iter().any(|l| l.start < r.end && r.start < l.end));
         let ms0 = self.race_ms0;
-        let tick_f = self.num("tl.tick", f64::from(ms0 + 10 * self.cursor as i32) / 1000.0, Num { decimals: 2, ..SEC }.w(84.0), move |e, x, _| {
-            e.playing = false;
-            e.set_cursor((((x * 1000.0).round() as i32 - ms0) / 10).max(0) as usize)
-        }, cx);
-        let len_f = self.num("tl.len", self.doc.len as f64 / 100.0, Num::new(1, "s", 0.1).w(56.0).range(1.0, 600.0), |e, x, _| {
-            let n = (x * 100.0).round() as usize;
-            e.edit("run length", Some("run.len"), |d| d.len = n)
-        }, cx);
-        let sp = self.choice("tl.speed", (self.play_speed * 100.0).round() as u32, vec![("\u{00bc}\u{00d7}", 25u32), ("\u{00bd}\u{00d7}", 50), ("1\u{00d7}", 100), ("2\u{00d7}", 200)], |e, v, _| e.play_speed = v as f32 / 100.0, cx);
+        let tick_f = self.num(
+            "tl.tick",
+            f64::from(ms0 + 10 * self.cursor as i32) / 1000.0,
+            Num { decimals: 2, ..SEC }.w(84.0),
+            move |e, x, _| {
+                e.playing = false;
+                e.set_cursor((((x * 1000.0).round() as i32 - ms0) / 10).max(0) as usize)
+            },
+            cx,
+        );
+        let len_f = self.num(
+            "tl.len",
+            self.doc.len as f64 / 100.0,
+            Num::new(1, "s", 0.1).w(56.0).range(1.0, 600.0),
+            |e, x, _| {
+                let n = (x * 100.0).round() as usize;
+                e.edit("run length", Some("run.len"), |d| d.len = n)
+            },
+            cx,
+        );
+        let sp = self.choice(
+            "tl.speed",
+            (self.play_speed * 100.0).round() as u32,
+            vec![
+                ("\u{00bc}\u{00d7}", 25u32),
+                ("\u{00bd}\u{00d7}", 50),
+                ("1\u{00d7}", 100),
+                ("2\u{00d7}", 200),
+            ],
+            |e, v, _| e.play_speed = v as f32 / 100.0,
+            cx,
+        );
         let chan_names = ["@icons/gas.svg|Gas", "@icons/brake.svg|Brake", "@icons/steer.svg|Steer"];
         let ch = self.tl.channel;
-        let chan = self.choice("tl.channel", ch, (0..3).map(|i| (chan_names[i], i)).collect(), |e, v, _| e.tl.channel = v, cx);
+        let chan = self.choice(
+            "tl.channel",
+            ch,
+            (0..3).map(|i| (chan_names[i], i)).collect(),
+            |e, v, _| e.tl.channel = v,
+            cx,
+        );
         let (vmin, vmax) = if ch == 2 { (-1.0, 1.0) } else { (0.0, 1.0) };
-        let val = self.num("tl.value", self.set_value as f64, PLAIN.w(54.0).range(vmin, vmax), |e, x, _| {
-            e.set_value = x as f32;
-            e.set_selection_value(x as f32);
-        }, cx);
+        let val = self.num(
+            "tl.value",
+            self.set_value as f64,
+            PLAIN.w(54.0).range(vmin, vmax),
+            |e, x, _| {
+                e.set_value = x as f32;
+                e.set_selection_value(x as f32);
+            },
+            cx,
+        );
         let sep = || div().w(px(1.0)).h(px(16.0)).mx(px(theme::SP1)).bg(c(theme::HAIRLINE));
         let transport = div()
             .flex()
             .items_center()
             .gap(px(2.0))
-            .child(icon_square("tl-start", "icons/tostart.svg", false).tooltip(tip("To the start", None)).on_click(cx.listener(|e, _, _, cx| {
-                e.playing = false;
-                e.set_cursor(0);
-                cx.notify();
-            })))
-            .child(icon_square("tl-back", "icons/stepback.svg", false).tooltip(tip("Back one tick (\u{2190}, \u{21e7}: ten)", None)).on_click(cx.listener(|e, _, _, cx| {
-                e.step(-1);
-                cx.notify();
-            })))
-            .child(icon_square("tl-play", if playing { "icons/pause.svg" } else { "icons/play.svg" }, true).tooltip(tip("Play / pause (Space)", None)).on_click(cx.listener(|e, _, _, cx| {
-                e.toggle_play();
-                cx.notify();
-            })))
-            .child(icon_square("tl-fwd", "icons/stepfwd.svg", false).tooltip(tip("Forward one tick (\u{2192}, \u{21e7}: ten)", None)).on_click(cx.listener(|e, _, _, cx| {
-                e.step(1);
-                cx.notify();
-            })));
+            .child(
+                icon_square("tl-start", "icons/tostart.svg", false)
+                    .tooltip(tip("To the start", None))
+                    .on_click(cx.listener(|e, _, _, cx| {
+                        e.playing = false;
+                        e.set_cursor(0);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                icon_square("tl-back", "icons/stepback.svg", false)
+                    .tooltip(tip("Back one tick (\u{2190}, \u{21e7}: ten)", None))
+                    .on_click(cx.listener(|e, _, _, cx| {
+                        e.step(-1);
+                        cx.notify();
+                    })),
+            )
+            .child(
+                icon_square("tl-play", if playing { "icons/pause.svg" } else { "icons/play.svg" }, true)
+                    .tooltip(tip("Play / pause (Space)", None))
+                    .on_click(cx.listener(|e, _, _, cx| {
+                        e.toggle_play();
+                        cx.notify();
+                    })),
+            )
+            .child(
+                icon_square("tl-fwd", "icons/stepfwd.svg", false)
+                    .tooltip(tip("Forward one tick (\u{2192}, \u{21e7}: ten)", None))
+                    .on_click(cx.listener(|e, _, _, cx| {
+                        e.step(1);
+                        cx.notify();
+                    })),
+            );
         let time = div()
             .flex()
             .items_center()
             .gap(px(theme::SP2))
-            .child(div().id("tl-time").child(tick_f).tooltip(tip("Playhead", Some("Race time in seconds; type one to jump there."))))
-            .child(mono(format!("tick {}", self.cursor), theme::FS_SMALL).text_color(c(theme::FAINT)).whitespace_nowrap());
+            .child(
+                div()
+                    .id("tl-time")
+                    .child(tick_f)
+                    .tooltip(tip("Playhead", Some("Race time in seconds; type one to jump there."))),
+            )
+            .child(
+                mono(format!("tick {}", self.cursor), theme::FS_SMALL)
+                    .text_color(c(theme::FAINT))
+                    .whitespace_nowrap(),
+            );
         let selection = sel.map(|r| {
             div()
                 .flex()
@@ -565,7 +721,8 @@ impl Editor {
         if e.button == MouseButton::Right {
             let mut target = None;
             if lane == Lane::Plan {
-                target = self.setup_clips().into_iter().find(|c| (c.1..c.2).contains(&k)).map(|c| Sel::Setup(c.0));
+                target =
+                    self.setup_clips().into_iter().find(|c| (c.1..c.2).contains(&k)).map(|c| Sel::Setup(c.0));
                 if target.is_none() && self.route_ticks().is_some_and(|(a, b)| (a..b).contains(&k)) {
                     target = Some(Sel::Route);
                 }
@@ -591,7 +748,15 @@ impl Editor {
         let d = match lane {
             Lane::Ruler if y >= y0 + STRIP_Y - 2.0 => {
                 let w = self.spec.window.clone();
-                let edge = if near(w.start) { 0 } else if near(w.end) { 1 } else if w.contains(&k) { 2 } else { 3 };
+                let edge = if near(w.start) {
+                    0
+                } else if near(w.end) {
+                    1
+                } else if w.contains(&k) {
+                    2
+                } else {
+                    3
+                };
                 TlDrag::Window { edge, anchor: k, w0: w }
             }
             Lane::Ruler => {
@@ -600,7 +765,11 @@ impl Editor {
                 TlDrag::Scrub
             }
             Lane::Track => {
-                let m = self.markers().into_iter().filter(|m| near(*m)).min_by_key(|m| (*m as i64 - k as i64).unsigned_abs());
+                let m = self
+                    .markers()
+                    .into_iter()
+                    .filter(|m| near(*m))
+                    .min_by_key(|m| (*m as i64 - k as i64).unsigned_abs());
                 self.playing = false;
                 self.set_cursor(m.unwrap_or(k));
                 if let Some(m) = m
@@ -615,7 +784,11 @@ impl Editor {
                 let vis = self.tl.width() as f64 / self.tl.ppt.max(1e-6);
                 let (start, end) = (self.tl.start, self.tl.start + vis);
                 let (k0, k1) = self.tl_overview_span();
-                let ox = |t: f64| f32::from(self.tl.bounds.origin.x) + GUTTER + ((t - k0) / (k1 - k0)) as f32 * self.tl.width();
+                let ox = |t: f64| {
+                    f32::from(self.tl.bounds.origin.x)
+                        + GUTTER
+                        + ((t - k0) / (k1 - k0)) as f32 * self.tl.width()
+                };
                 let at = self.tl_overview_tick(x);
                 let (edge, grab) = if (x - ox(start)).abs() < NEAR {
                     (0, 0.0)
@@ -653,8 +826,20 @@ impl Editor {
                 let cur = self.control(k);
                 let value = match lane {
                     Lane::Steer => steer_at(y, y0, h, e.modifiers.shift),
-                    Lane::Gas => if cur.gas > 0.5 { 0.0 } else { 1.0 },
-                    _ => if cur.brake > 0.5 { 0.0 } else { 1.0 },
+                    Lane::Gas => {
+                        if cur.gas > 0.5 {
+                            0.0
+                        } else {
+                            1.0
+                        }
+                    }
+                    _ => {
+                        if cur.brake > 0.5 {
+                            0.0
+                        } else {
+                            1.0
+                        }
+                    }
                 };
                 self.tl.strokes += 1;
                 let stroke = self.tl.strokes;
@@ -670,7 +855,13 @@ impl Editor {
                     _ => {}
                 }
                 let anchor = match (&self.tick_sel, e.modifiers.shift) {
-                    (Some(r), true) => if k >= r.start { r.start } else { r.end },
+                    (Some(r), true) => {
+                        if k >= r.start {
+                            r.start
+                        } else {
+                            r.end
+                        }
+                    }
                     _ => k,
                 };
                 self.tick_sel = Some(anchor.min(k)..anchor.max(k) + 1);
@@ -688,7 +879,13 @@ impl Editor {
         let v = if lane == Lane::Steer {
             let mut v = steer_at(y, y0, h, fine);
             if self.spec.digital_steer {
-                v = if v > 0.5 { 1.0 } else if v < -0.5 { -1.0 } else { 0.0 };
+                v = if v > 0.5 {
+                    1.0
+                } else if v < -0.5 {
+                    -1.0
+                } else {
+                    0.0
+                };
             }
             v
         } else {
@@ -748,7 +945,9 @@ impl Editor {
             }
             TlDrag::Split => {
                 let ls = self.tl_lanes();
-                if let (Some(s), Some(t)) = (ls.iter().find(|l| l.0 == Lane::Speed), ls.iter().find(|l| l.0 == Lane::Steer)) {
+                if let (Some(s), Some(t)) =
+                    (ls.iter().find(|l| l.0 == Lane::Speed), ls.iter().find(|l| l.0 == Lane::Steer))
+                {
                     let total = s.2 + t.2;
                     self.tl.split = ((y - s.1) / total.max(1.0)).clamp(0.2, 0.8);
                 }
@@ -793,7 +992,10 @@ impl Editor {
                     self.set_cursor(anchor);
                 } else {
                     let w = self.spec.window.clone();
-                    self.info("search", format!("window: ticks {}\u{2013}{} ({} ticks)", w.start, w.end, w.len()));
+                    self.info(
+                        "search",
+                        format!("window: ticks {}\u{2013}{} ({} ticks)", w.start, w.end, w.len()),
+                    );
                 }
             }
             _ => {}
@@ -822,7 +1024,8 @@ impl Editor {
     fn tl_zoom_at(&mut self, x: f32, f: f32) {
         let at = self.tl.start + (x - f32::from(self.tl.bounds.origin.x) - GUTTER) as f64 / self.tl.ppt;
         self.tl.ppt = (self.tl.ppt * f as f64).clamp(0.02, 40.0);
-        self.tl.start = (at - (x - f32::from(self.tl.bounds.origin.x) - GUTTER) as f64 / self.tl.ppt).max(self.race_start_tick() as f64);
+        self.tl.start = (at - (x - f32::from(self.tl.bounds.origin.x) - GUTTER) as f64 / self.tl.ppt)
+            .max(self.race_start_tick() as f64);
     }
 
     pub fn copy_inputs(&mut self) {
@@ -847,7 +1050,9 @@ impl Editor {
 
     pub fn lock_selection(&mut self, on: bool) {
         if let Some(r) = self.tick_sel.clone() {
-            self.edit(if on { "lock ticks" } else { "unlock ticks" }, None, |d| if on { d.lock(r) } else { d.unlock(r) });
+            self.edit(if on { "lock ticks" } else { "unlock ticks" }, None, |d| {
+                if on { d.lock(r) } else { d.unlock(r) }
+            });
         }
     }
 
@@ -912,7 +1117,9 @@ fn cursor_at(p: &Paint, b: Bounds<Pixels>, m: Point<Pixels>, alt: bool) -> Curso
     if ls.iter().find(|l| l.0 == Lane::Steer).is_some_and(|(_, y0, _)| (ly - (y0 - GAP * 0.5)).abs() <= 3.0) {
         return CursorStyle::ResizeUpDown;
     }
-    let Some(&(lane, y0, _)) = ls.iter().find(|(_, y0, h)| *h > 0.0 && ly >= *y0 && ly < y0 + h + GAP) else { return CursorStyle::Arrow };
+    let Some(&(lane, y0, _)) = ls.iter().find(|(_, y0, h)| *h > 0.0 && ly >= *y0 && ly < y0 + h + GAP) else {
+        return CursorStyle::Arrow;
+    };
     if lx < GUTTER {
         return CursorStyle::Arrow;
     }
@@ -921,7 +1128,9 @@ fn cursor_at(p: &Paint, b: Bounds<Pixels>, m: Point<Pixels>, alt: bool) -> Curso
     let k = p.start + (lx - GUTTER) as f64 / p.ppt.max(1e-6);
     match lane {
         Lane::Ruler if ly >= y0 + STRIP_Y - 2.0 => {
-            if (lx - x_of(p.window.start as f64)).abs() < NEAR || (lx - x_of(p.window.end as f64)).abs() < NEAR {
+            if (lx - x_of(p.window.start as f64)).abs() < NEAR
+                || (lx - x_of(p.window.end as f64)).abs() < NEAR
+            {
                 CursorStyle::ResizeLeftRight
             } else if (p.window.start as f64..p.window.end as f64).contains(&k) {
                 CursorStyle::OpenHand
@@ -953,7 +1162,10 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
     let w = (bw - GUTTER - 8.0).max(1.0);
     let ppt = p.ppt as f32;
     let x_of = |k: f32| x0 + (k - p.start as f32) * ppt;
-    let rect = |x: f32, y: f32, ww: f32, hh: f32| Bounds { origin: point(px(x), px(y)), size: size(px(ww.max(0.0)), px(hh.max(0.0))) };
+    let rect = |x: f32, y: f32, ww: f32, hh: f32| Bounds {
+        origin: point(px(x), px(y)),
+        size: size(px(ww.max(0.0)), px(hh.max(0.0))),
+    };
     let ls = lanes(bh, p.extra, p.split);
     let lane = |l: Lane| ls.iter().find(|x| x.0 == l).map(|x| (by + x.1, x.2)).unwrap();
     let first = p.start.floor().max(0.0) as usize;
@@ -995,9 +1207,28 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
             if x >= x0 && ms >= p.race_ms0 {
                 if ms.rem_euclid(step) == 0 {
                     window.paint_quad(fill(rect(x, ry + 11.0, 1.0, 6.0), theme::alpha(theme::MUTED, 0.8)));
-                    window.paint_quad(fill(rect(x, top, 1.0, bottom - top), theme::alpha(theme::HAIRLINE, 0.55)));
-                    let label = if step % 1000 == 0 { format!("{}s", ms / 1000) } else if step % 100 == 0 { format!("{:.1}s", ms as f64 / 1000.0) } else { format!("{:.2}", ms as f64 / 1000.0) };
-                    text(window, cx, &label, x + 4.0, ry + 2.0, 9.5, if ms == 0 { theme::TEXT } else { theme::MUTED }, 1.0, true);
+                    window.paint_quad(fill(
+                        rect(x, top, 1.0, bottom - top),
+                        theme::alpha(theme::HAIRLINE, 0.55),
+                    ));
+                    let label = if step % 1000 == 0 {
+                        format!("{}s", ms / 1000)
+                    } else if step % 100 == 0 {
+                        format!("{:.1}s", ms as f64 / 1000.0)
+                    } else {
+                        format!("{:.2}", ms as f64 / 1000.0)
+                    };
+                    text(
+                        window,
+                        cx,
+                        &label,
+                        x + 4.0,
+                        ry + 2.0,
+                        9.5,
+                        if ms == 0 { theme::TEXT } else { theme::MUTED },
+                        1.0,
+                        true,
+                    );
                 } else {
                     window.paint_quad(fill(rect(x, ry + 14.0, 1.0, 3.0), theme::alpha(theme::FAINT, 0.7)));
                 }
@@ -1015,21 +1246,33 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
         let col_a: Vec<Option<f32>> = (0..cols)
             .map(|col| {
                 let (a, e) = col_ticks(col);
-                (a < p.speed.len()).then(|| p.speed[a..e.min(p.speed.len())].iter().copied().fold(0.0f32, f32::max))
+                (a < p.speed.len())
+                    .then(|| p.speed[a..e.min(p.speed.len())].iter().copied().fold(0.0f32, f32::max))
             })
             .collect();
         let col_b: Vec<Option<f32>> = match &p.b_speed {
-            Some(bs) => (0..cols).map(|col| sample_at(bs, p.race_ms0 as f32 + 10.0 * (p.start + (col as f64 + 0.5) / p.ppt) as f32)).collect(),
+            Some(bs) => (0..cols)
+                .map(|col| {
+                    sample_at(bs, p.race_ms0 as f32 + 10.0 * (p.start + (col as f64 + 0.5) / p.ppt) as f32)
+                })
+                .collect(),
             None => vec![None; cols],
         };
-        let (mut lo, mut hi) = col_a.iter().chain(&col_b).flatten().fold((f32::MAX, f32::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
+        let (mut lo, mut hi) = col_a
+            .iter()
+            .chain(&col_b)
+            .flatten()
+            .fold((f32::MAX, f32::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
         if lo > hi {
             (lo, hi) = (0.0, 100.0);
         }
         let pad = ((hi - lo) * 0.12).max((10.0 - (hi - lo)).max(0.0) * 0.5) + 2.0;
         let (lo, hi) = ((lo - pad).max(0.0), hi + pad);
         let y_of_v = |v: f32| spy + sph - 4.0 - (v - lo) / (hi - lo) * (sph - 10.0);
-        let gstep = [1.0f32, 2.0, 5.0, 10.0, 20.0, 25.0, 50.0, 100.0, 200.0].into_iter().find(|s| s / (hi - lo) * (sph - 10.0) >= 18.0).unwrap_or(500.0);
+        let gstep = [1.0f32, 2.0, 5.0, 10.0, 20.0, 25.0, 50.0, 100.0, 200.0]
+            .into_iter()
+            .find(|s| s / (hi - lo) * (sph - 10.0) >= 18.0)
+            .unwrap_or(500.0);
         let mut g = (lo / gstep).ceil() * gstep;
         while g < hi && sph > 24.0 {
             let y = y_of_v(g);
@@ -1042,7 +1285,10 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
         for col in 0..cols {
             if let (Some(a), Some(bv)) = (col_a[col], col_b[col]) {
                 let (ya, yb) = (y_of_v(a), y_of_v(bv));
-                window.paint_quad(fill(rect(x0 + col as f32, ya.min(yb), 1.0, (ya - yb).abs()), theme::alpha(if a >= bv { theme::OK } else { theme::ERROR }, 0.22)));
+                window.paint_quad(fill(
+                    rect(x0 + col as f32, ya.min(yb), 1.0, (ya - yb).abs()),
+                    theme::alpha(if a >= bv { theme::OK } else { theme::ERROR }, 0.22),
+                ));
             }
         }
         let curve = |window: &mut Window, vals: &[Option<f32>], width: f32, color: gpui::Hsla| {
@@ -1082,7 +1328,10 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
             window.paint_quad(fill(rect(x0, mid - g * amp, w, 1.0), theme::alpha(theme::HAIRLINE, 0.35)));
         }
         let per_tick = ppt >= 2.0;
-        let draw_inputs = |window: &mut Window, ctrl: &[Controls], colors: [u32; 3], only: Option<&[Range<usize>]>| {
+        let draw_inputs = |window: &mut Window,
+                           ctrl: &[Controls],
+                           colors: [u32; 3],
+                           only: Option<&[Range<usize>]>| {
             let inside = |k: usize| only.is_none_or(|rs| rs.iter().any(|r| r.contains(&k)));
             let [sc, gc, bc] = colors;
             let mut edge = PathBuilder::stroke(px(1.2));
@@ -1110,15 +1359,22 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
                     let ww = ppt - gap;
                     let sv = c.steer * amp;
                     if c.steer != 0.0 {
-                        window.paint_quad(fill(rect(x, if sv > 0.0 { mid - sv } else { mid }, ww, sv.abs().max(1.0)), theme::alpha(sc, 0.38)));
+                        window.paint_quad(fill(
+                            rect(x, if sv > 0.0 { mid - sv } else { mid }, ww, sv.abs().max(1.0)),
+                            theme::alpha(sc, 0.38),
+                        ));
                     }
                     edge_to(x, c.steer, true);
                     edge_to(x + ppt, c.steer, true);
                     if c.gas > 0.0 {
-                        window.paint_quad(fill(rect(x, gy + 4.0, ww, gh - 8.0), theme::alpha(gc, 0.5 * c.gas)));
+                        window
+                            .paint_quad(fill(rect(x, gy + 4.0, ww, gh - 8.0), theme::alpha(gc, 0.5 * c.gas)));
                     }
                     if c.brake > 0.0 {
-                        window.paint_quad(fill(rect(x, bry + 3.0, ww, brh - 6.0), theme::alpha(bc, 0.95 * c.brake)));
+                        window.paint_quad(fill(
+                            rect(x, bry + 3.0, ww, brh - 6.0),
+                            theme::alpha(bc, 0.95 * c.brake),
+                        ));
                     }
                 }
             } else {
@@ -1146,10 +1402,14 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
                     }
                     edge_to(x + 0.5, ctrl[a].steer, true);
                     if gas > 0.0 {
-                        window.paint_quad(fill(rect(x, gy + 4.0, 1.0, gh - 8.0), theme::alpha(gc, 0.5 * gas)));
+                        window
+                            .paint_quad(fill(rect(x, gy + 4.0, 1.0, gh - 8.0), theme::alpha(gc, 0.5 * gas)));
                     }
                     if brk > 0.0 {
-                        window.paint_quad(fill(rect(x, bry + 3.0, 1.0, brh - 6.0), theme::alpha(bc, 0.95 * brk)));
+                        window.paint_quad(fill(
+                            rect(x, bry + 3.0, 1.0, brh - 6.0),
+                            theme::alpha(bc, 0.95 * brk),
+                        ));
                     }
                 }
             }
@@ -1166,7 +1426,17 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
                 (true, Some(a)) => {
                     let (xa, xb) = span(a, k);
                     if xb - xa > 30.0 {
-                        text(window, cx, "off", xa + (xb - xa) * 0.5 - 7.0, gy + 2.0, 8.5, theme::FAINT, 1.0, false);
+                        text(
+                            window,
+                            cx,
+                            "off",
+                            xa + (xb - xa) * 0.5 - 7.0,
+                            gy + 2.0,
+                            8.5,
+                            theme::FAINT,
+                            1.0,
+                            false,
+                        );
                     }
                     off = None;
                 }
@@ -1177,7 +1447,10 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
             for r in diff {
                 let (a, bb) = span(r.start, r.end);
                 if bb > a {
-                    window.paint_quad(fill(rect(a, sty, bb - a, bottom - sty), theme::alpha(theme::GHOST, 0.10)));
+                    window.paint_quad(fill(
+                        rect(a, sty, bb - a, bottom - sty),
+                        theme::alpha(theme::GHOST, 0.10),
+                    ));
                     window.paint_quad(fill(rect(a, sty, bb - a, 1.0), theme::alpha(theme::GHOST, 0.9)));
                 }
             }
@@ -1211,18 +1484,35 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
             shade(window, st, "before the placed car");
         }
         let (wa, wb) = span(p.window.start, p.window.end);
-        window.paint_quad(fill(rect(x0, top, (wa - x0).max(0.0), bottom - top), theme::alpha(theme::BG, 0.4)));
-        window.paint_quad(fill(rect(wb.max(x0), top, (x0 + w - wb.max(x0)).max(0.0), bottom - top), theme::alpha(theme::BG, 0.4)));
+        window
+            .paint_quad(fill(rect(x0, top, (wa - x0).max(0.0), bottom - top), theme::alpha(theme::BG, 0.4)));
+        window.paint_quad(fill(
+            rect(wb.max(x0), top, (x0 + w - wb.max(x0)).max(0.0), bottom - top),
+            theme::alpha(theme::BG, 0.4),
+        ));
         if wb > wa {
             window.paint_quad(fill(rect(wa, sy0, wb - wa, sh), theme::alpha(theme::PIN, 0.3)));
             if wb - wa > 110.0 {
-                text(window, cx, &format!("Search  {:.2} s", p.window.len() as f32 / 100.0), wa + 8.0, sy0 - 1.0, 9.0, theme::TEXT, 0.95, false);
+                text(
+                    window,
+                    cx,
+                    &format!("Search  {:.2} s", p.window.len() as f32 / 100.0),
+                    wa + 8.0,
+                    sy0 - 1.0,
+                    9.0,
+                    theme::TEXT,
+                    0.95,
+                    false,
+                );
             }
         }
         for (k, right) in [(p.window.start, false), (p.window.end, true)] {
             let x = x_of(k as f32);
             if x >= x0 - 1.0 && x <= x0 + w + 1.0 {
-                window.paint_quad(fill(rect(if right { x - 3.0 } else { x }, sy0 - 1.0, 3.0, sh + 2.0), theme::alpha(theme::PIN, 1.0)));
+                window.paint_quad(fill(
+                    rect(if right { x - 3.0 } else { x }, sy0 - 1.0, 3.0, sh + 2.0),
+                    theme::alpha(theme::PIN, 1.0),
+                ));
                 window.paint_quad(fill(rect(x - 0.5, top, 1.0, bottom - top), theme::alpha(theme::PIN, 0.4)));
             }
         }
@@ -1230,9 +1520,11 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
         if let Some((a, e, name)) = &p.route {
             let (xa, xb) = span(*a, *e);
             if xb > xa {
-                window.paint_quad(fill(rect(xa, py + 2.0, xb - xa, ph - 4.0), theme::alpha(theme::PIN, 0.16)));
+                window
+                    .paint_quad(fill(rect(xa, py + 2.0, xb - xa, ph - 4.0), theme::alpha(theme::PIN, 0.16)));
                 window.paint_quad(fill(rect(xa, py + 2.0, 1.5, ph - 4.0), theme::alpha(theme::PIN, 0.9)));
-                window.paint_quad(fill(rect(xb - 1.5, py + 2.0, 1.5, ph - 4.0), theme::alpha(theme::PIN, 0.9)));
+                window
+                    .paint_quad(fill(rect(xb - 1.5, py + 2.0, 1.5, ph - 4.0), theme::alpha(theme::PIN, 0.9)));
                 if xb - xa > 60.0 {
                     text(window, cx, name, xa + 8.0, py + 4.0, 9.5, theme::PIN, 1.0, false);
                 }
@@ -1241,7 +1533,10 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
         for (a, e, name, sel) in &p.clips {
             let (xa, xb) = span(*a, *e);
             if xb > xa {
-                window.paint_quad(fill(rect(xa, py + 2.0, xb - xa, ph - 4.0), theme::alpha(theme::SETUP, if *sel { 0.55 } else { 0.32 })));
+                window.paint_quad(fill(
+                    rect(xa, py + 2.0, xb - xa, ph - 4.0),
+                    theme::alpha(theme::SETUP, if *sel { 0.55 } else { 0.32 }),
+                ));
                 if xb - xa > 40.0 {
                     text(window, cx, name, xa + 6.0, py + 4.0, 9.5, theme::TEXT, 1.0, false);
                 }
@@ -1251,7 +1546,10 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
         for t in &p.tricks {
             let (xa, xb) = span(t.from, t.to);
             if xb > xa - 1.0 {
-                window.paint_quad(fill(rect(xa, tky + 3.0, (xb - xa).max(2.0), tkh - 6.0), theme::alpha(crate::lab::trick_color(t.kind), 0.95)));
+                window.paint_quad(fill(
+                    rect(xa, tky + 3.0, (xb - xa).max(2.0), tkh - 6.0),
+                    theme::alpha(crate::lab::trick_color(t.kind), 0.95),
+                ));
             }
         }
         if let Some(r) = &p.sel {
@@ -1259,7 +1557,10 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
             if bb > a {
                 window.paint_quad(fill(rect(a, top, bb - a, bottom - top), theme::alpha(theme::TEXT, 0.07)));
                 for x in [a, bb] {
-                    window.paint_quad(fill(rect(x - 0.5, top, 1.0, bottom - top), theme::alpha(theme::TEXT, 0.5)));
+                    window.paint_quad(fill(
+                        rect(x - 0.5, top, 1.0, bottom - top),
+                        theme::alpha(theme::TEXT, 0.5),
+                    ));
                 }
             }
         }
@@ -1297,12 +1598,37 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
             }
             window.paint_quad(fill(rect(x - 0.5, top, 1.0, bottom - top), theme::alpha(m.color, 0.2)));
             let delta = m.delta.map(|d| {
-                let sign = if d.abs() < 5 { "\u{00b1}" } else if d < 0 { "\u{2212}" } else { "+" };
-                (format!("{sign}{:.2}", d.abs() as f32 / 1000.0), if d.abs() < 5 { theme::MUTED } else if d < 0 { theme::OK } else { theme::ERROR })
+                let sign = if d.abs() < 5 {
+                    "\u{00b1}"
+                } else if d < 0 {
+                    "\u{2212}"
+                } else {
+                    "+"
+                };
+                (
+                    format!("{sign}{:.2}", d.abs() as f32 / 1000.0),
+                    if d.abs() < 5 {
+                        theme::MUTED
+                    } else if d < 0 {
+                        theme::OK
+                    } else {
+                        theme::ERROR
+                    },
+                )
             });
             let lw = m.name.len() as f32 * 5.8 + delta.as_ref().map_or(0.0, |d| d.0.len() as f32 * 6.0 + 6.0);
             if x + 9.0 > last_label_end + 8.0 && x + 9.0 + lw < x0 + w {
-                let nw = text(window, cx, &m.name, x + 9.0, cy - 7.0, 10.5, m.color, if m.solid { 0.95 } else { 0.6 }, false);
+                let nw = text(
+                    window,
+                    cx,
+                    &m.name,
+                    x + 9.0,
+                    cy - 7.0,
+                    10.5,
+                    m.color,
+                    if m.solid { 0.95 } else { 0.6 },
+                    false,
+                );
                 if let Some((s, col)) = &delta {
                     text(window, cx, s, x + 9.0 + nw + 6.0, cy - 6.0, 9.5, *col, 1.0, true);
                 }
@@ -1333,35 +1659,110 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
             let active = matches!((l, p.channel), (Lane::Gas, 0) | (Lane::Brake, 1) | (Lane::Steer, 2));
             let ny = if h > 30.0 { y + 6.0 } else { y + (h - 14.0) * 0.5 };
             let nx = if let Some(col) = dot {
-                window.paint_quad(fill(rect(bx + 13.0, ny + 4.5, 6.0, 6.0), theme::alpha(col, 1.0)).corner_radii(px(3.0)));
+                window.paint_quad(
+                    fill(rect(bx + 13.0, ny + 4.5, 6.0, 6.0), theme::alpha(col, 1.0)).corner_radii(px(3.0)),
+                );
                 bx + 25.0
             } else {
                 bx + 13.0
             };
             let faint = matches!(l, Lane::Overview);
-            text(window, cx, name, nx, ny, 11.0, if active { theme::TEXT } else if faint { theme::FAINT } else { theme::MUTED }, 1.0, false);
+            text(
+                window,
+                cx,
+                name,
+                nx,
+                ny,
+                11.0,
+                if active {
+                    theme::TEXT
+                } else if faint {
+                    theme::FAINT
+                } else {
+                    theme::MUTED
+                },
+                1.0,
+                false,
+            );
             let vx = bx + GUTTER - 12.0;
             match l {
                 Lane::Speed => {
                     if let Some(v) = p.speed.get(at) {
                         text_r(window, cx, &format!("{v:.0} km/h"), vx, ny + 1.0, 9.5, value_col, 1.0, true);
-                        let bv = p.b_speed.as_ref().and_then(|bs| sample_at(bs, (p.race_ms0 + 10 * at as i32) as f32));
+                        let bv = p
+                            .b_speed
+                            .as_ref()
+                            .and_then(|bs| sample_at(bs, (p.race_ms0 + 10 * at as i32) as f32));
                         if let (Some(bv), true) = (bv, h > 48.0) {
-                            text_r(window, cx, &format!("B {bv:.0}"), vx, ny + 16.0, 9.0, theme::GHOST, 0.85, true);
+                            text_r(
+                                window,
+                                cx,
+                                &format!("B {bv:.0}"),
+                                vx,
+                                ny + 16.0,
+                                9.0,
+                                theme::GHOST,
+                                0.85,
+                                true,
+                            );
                             let d = v - bv;
-                            text_r(window, cx, &format!("{d:+.0}"), vx, ny + 30.0, 9.0, if d >= 0.0 { theme::OK } else { theme::ERROR }, 1.0, true);
+                            text_r(
+                                window,
+                                cx,
+                                &format!("{d:+.0}"),
+                                vx,
+                                ny + 30.0,
+                                9.0,
+                                if d >= 0.0 { theme::OK } else { theme::ERROR },
+                                1.0,
+                                true,
+                            );
                         }
                     }
                 }
                 Lane::Steer => {
-                    text_r(window, cx, &format!("{:+.2}", ctl.steer), vx, ny + 1.0, 9.5, if ctl.steer == 0.0 { theme::FAINT } else { value_col }, 1.0, true);
+                    text_r(
+                        window,
+                        cx,
+                        &format!("{:+.2}", ctl.steer),
+                        vx,
+                        ny + 1.0,
+                        9.5,
+                        if ctl.steer == 0.0 { theme::FAINT } else { value_col },
+                        1.0,
+                        true,
+                    );
                     if h > 46.0 {
                         text(window, cx, "\u{2191} right", nx, ny + 16.0, 9.0, theme::FAINT, 1.0, false);
                         text(window, cx, "\u{2193} left", nx, y + h - 16.0, 9.0, theme::FAINT, 1.0, false);
                     }
                 }
-                Lane::Gas => text_r(window, cx, if ctl.gas > 0.0 { "on" } else { "off" }, vx, ny + 1.0, 9.5, if ctl.gas > 0.0 { value_col } else { theme::FAINT }, 1.0, true),
-                Lane::Brake => text_r(window, cx, if ctl.brake > 0.0 { "on" } else { "off" }, vx, ny + 1.0, 9.5, if ctl.brake > 0.0 { if hovering { theme::GHOST } else { theme::ERROR } } else { theme::FAINT }, 1.0, true),
+                Lane::Gas => text_r(
+                    window,
+                    cx,
+                    if ctl.gas > 0.0 { "on" } else { "off" },
+                    vx,
+                    ny + 1.0,
+                    9.5,
+                    if ctl.gas > 0.0 { value_col } else { theme::FAINT },
+                    1.0,
+                    true,
+                ),
+                Lane::Brake => text_r(
+                    window,
+                    cx,
+                    if ctl.brake > 0.0 { "on" } else { "off" },
+                    vx,
+                    ny + 1.0,
+                    9.5,
+                    if ctl.brake > 0.0 {
+                        if hovering { theme::GHOST } else { theme::ERROR }
+                    } else {
+                        theme::FAINT
+                    },
+                    1.0,
+                    true,
+                ),
                 Lane::Track => {
                     if let Some(bl) = p.b_label {
                         text_r(window, cx, &format!("vs {bl}"), vx, ny + 1.0, 9.5, theme::GHOST, 1.0, false);
@@ -1380,21 +1781,32 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
         {
             let hx = x_of(k as f32);
             if hx >= x0 && hx <= x0 + w {
-                window.paint_quad(fill(rect(hx - 0.5, ry, 1.0, bottom - ry), theme::alpha(theme::GHOST, 0.55)));
+                window
+                    .paint_quad(fill(rect(hx - 0.5, ry, 1.0, bottom - ry), theme::alpha(theme::GHOST, 0.55)));
                 let s = fmt_ms(p.race_ms0 + 10 * k as i32);
                 let lw = tag_w(&s);
                 let lx = (hx - lw * 0.5).clamp(x0, x0 + w - lw);
-                window.paint_quad(fill(rect(lx, ry + 1.5, lw, 15.0), theme::alpha(theme::PANEL, 1.0)).border_widths(px(1.0)).border_color(theme::alpha(theme::GHOST, 1.0)).corner_radii(px(3.0)));
+                window.paint_quad(
+                    fill(rect(lx, ry + 1.5, lw, 15.0), theme::alpha(theme::PANEL, 1.0))
+                        .border_widths(px(1.0))
+                        .border_color(theme::alpha(theme::GHOST, 1.0))
+                        .corner_radii(px(3.0)),
+                );
                 text(window, cx, &s, lx + 6.0, ry + 3.0, 9.5, theme::GHOST, 1.0, true);
             }
         }
         let cxp = x_of(p.cursor as f32);
         if cxp >= x0 && cxp <= x0 + w {
-            window.paint_quad(fill(rect(cxp - 0.75, ry + 16.0, 1.5, bottom - ry - 16.0), theme::alpha(theme::TEXT, 0.95)));
+            window.paint_quad(fill(
+                rect(cxp - 0.75, ry + 16.0, 1.5, bottom - ry - 16.0),
+                theme::alpha(theme::TEXT, 0.95),
+            ));
             let label = fmt_ms(p.race_ms0 + 10 * p.cursor as i32);
             let lw = tag_w(&label);
             let lx = (cxp - lw * 0.5).clamp(x0, x0 + w - lw);
-            window.paint_quad(fill(rect(lx, ry + 1.5, lw, 15.0), theme::alpha(theme::TEXT, 1.0)).corner_radii(px(3.0)));
+            window.paint_quad(
+                fill(rect(lx, ry + 1.5, lw, 15.0), theme::alpha(theme::TEXT, 1.0)).corner_radii(px(3.0)),
+            );
             let mut n = PathBuilder::fill();
             n.move_to(point(px(cxp - 4.0), px(ry + 16.0)));
             n.line_to(point(px(cxp + 4.0), px(ry + 16.0)));
@@ -1429,7 +1841,8 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
             window.paint_path(path, theme::alpha(theme::MUTED, 0.6));
         }
         for m in p.marks.iter().filter(|m| (m.k as f32) <= ok1) {
-            window.paint_quad(fill(rect(ox(m.k as f32), oy + 2.0, 1.0, oh - 4.0), theme::alpha(m.color, 0.6)));
+            window
+                .paint_quad(fill(rect(ox(m.k as f32), oy + 2.0, 1.0, oh - 4.0), theme::alpha(m.color, 0.6)));
         }
         let n = p.controls.len().min(ok1 as usize);
         let mut k = 0;
@@ -1440,7 +1853,10 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
                     k += 1;
                 }
                 let (xa, xb) = (ox(a as f32), ox(k as f32));
-                window.paint_quad(fill(rect(xa, oy + oh - 6.0, (xb - xa).max(2.0), 3.0), theme::alpha(theme::ERROR, 0.95)));
+                window.paint_quad(fill(
+                    rect(xa, oy + oh - 6.0, (xb - xa).max(2.0), 3.0),
+                    theme::alpha(theme::ERROR, 0.95),
+                ));
             } else {
                 k += 1;
             }
@@ -1448,12 +1864,18 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
         let (owa, owb) = (ox(p.window.start as f32).max(x0), ox(p.window.end as f32).min(x0 + w));
         window.paint_quad(fill(rect(owa, oy + oh - 3.0, owb - owa, 3.0), theme::alpha(theme::PIN, 0.8)));
         let (va, vb) = (ox(p.start as f32).max(x0), ox((p.start + w as f64 / p.ppt) as f32).min(x0 + w));
-        window.paint_quad(fill(rect(va, oy, vb - va, oh), theme::alpha(theme::TEXT, 0.08)).border_widths(px(1.0)).border_color(theme::alpha(theme::TEXT, 0.55)).corner_radii(px(3.0)));
+        window.paint_quad(
+            fill(rect(va, oy, vb - va, oh), theme::alpha(theme::TEXT, 0.08))
+                .border_widths(px(1.0))
+                .border_color(theme::alpha(theme::TEXT, 0.55))
+                .corner_radii(px(3.0)),
+        );
         if vb - va > 14.0 {
             for x in [va + 3.0, vb - 5.0] {
                 window.paint_quad(fill(rect(x, oy + 4.0, 2.0, oh - 8.0), theme::alpha(theme::TEXT, 0.6)));
             }
         }
-        window.paint_quad(fill(rect(ox(p.cursor as f32) - 0.75, oy, 1.5, oh), theme::alpha(theme::TEXT, 0.95)));
+        window
+            .paint_quad(fill(rect(ox(p.cursor as f32) - 0.75, oy, 1.5, oh), theme::alpha(theme::TEXT, 0.95)));
     });
 }

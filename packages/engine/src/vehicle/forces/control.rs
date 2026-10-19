@@ -1,27 +1,22 @@
-use crate::math::maxss;
-use super::{ForceCtx, common::{clamp01, PedalMode}};
 use super::super::Vehicle;
+use super::{
+    ForceCtx,
+    common::{PedalMode, clamp01},
+};
+use crate::math::maxss;
 
 const SAMPLE_SCALE: f32 = 100.0;
 
 fn forced_value(v: &Vehicle) -> f32 {
     let a = v.forced_speed_integer as i16 as i32 as f32;
-    if a == 0.0 {
-        v.forced_speed
-    } else {
-        a
-    }
+    if a == 0.0 { v.forced_speed } else { a }
 }
 
 fn forced_gas(v: &Vehicle) -> f32 {
     let velocity = v.vel;
     let q = crate::Quat::new(v.quat.w, -v.quat.x, -v.quat.y, -v.quat.z);
     let z = q.rotate(velocity).z;
-    if z >= forced_value(v) {
-        0.0
-    } else {
-        1.0
-    }
+    if z >= forced_value(v) { 0.0 } else { 1.0 }
 }
 
 pub fn input_overrides(ctx: &mut ForceCtx<'_>) {

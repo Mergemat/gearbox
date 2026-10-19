@@ -84,7 +84,8 @@ fn thumbnail(jpeg: &[u8], side: u32) -> Option<Arc<gpui::RenderImage>> {
 pub fn card(path: &Path) -> MapCard {
     let modified = std::fs::metadata(path).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
     let stem = crate::catalog::map_stem(path).unwrap_or_default();
-    let h = header_bytes(path).ok().and_then(|b| gearbox_gbx::map::MapHeader::read(&b).ok()).unwrap_or_default();
+    let h =
+        header_bytes(path).ok().and_then(|b| gearbox_gbx::map::MapHeader::read(&b).ok()).unwrap_or_default();
     MapCard {
         path: path.to_path_buf(),
         name: h.name.as_deref().map(clean_name).unwrap_or(stem),

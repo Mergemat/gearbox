@@ -1,6 +1,9 @@
-use crate::Vec3;
-use super::{ForceCtx, common::{KMH, PEDAL_THRESHOLD, PedalMode}};
 use super::super::Vehicle;
+use super::{
+    ForceCtx,
+    common::{KMH, PEDAL_THRESHOLD, PedalMode},
+};
+use crate::Vec3;
 
 const DRIVE_ANCHOR_RISE: f32 = 0.085;
 
@@ -26,11 +29,12 @@ pub fn start_boost(ctx: &mut ForceCtx<'_>) -> f32 {
     let velocity = ctx.local_velocity;
     let speed = (velocity.x * velocity.x + velocity.y * velocity.y + velocity.z * velocity.z).sqrt() * KMH;
     let limit = tuning.slow_start_speed_limit;
-    let start = limit > speed && if !gas {
-        brake && forward > vehicle.slow_start_forward_threshold && braking_armed
-    } else {
-        !brake && accelerating_armed
-    };
+    let start = limit > speed
+        && if !gas {
+            brake && forward > vehicle.slow_start_forward_threshold && braking_armed
+        } else {
+            !brake && accelerating_armed
+        };
     if start {
         if vehicle.slow_start_begin == u32::MAX {
             vehicle.slow_start_begin = ctx.tick;
@@ -80,11 +84,8 @@ pub fn level_drive(ctx: &mut ForceCtx<'_>, scale: f32) {
     }
     let push = multiplier * thrust * scale;
     for definition in &ctx.geometry.wheels {
-        let point = Vec3::new(
-            definition.anchor.x,
-            definition.anchor.y + DRIVE_ANCHOR_RISE,
-            definition.anchor.z,
-        );
+        let point =
+            Vec3::new(definition.anchor.x, definition.anchor.y + DRIVE_ANCHOR_RISE, definition.anchor.z);
         ctx.body.add_local_force_at(Vec3::new(0.0, 0.0, push), point);
         if ctx.tick < until {
             let extra = thrust * tuning.level_start_push * scale;
@@ -99,11 +100,7 @@ pub fn level_models(ctx: &mut ForceCtx<'_>) {
     if level == 0 || maximum == 0 {
         return;
     }
-    let scale = if maximum == 2 {
-        ctx.tuning.level_two_model_scale
-    } else {
-        1.0
-    };
+    let scale = if maximum == 2 { ctx.tuning.level_two_model_scale } else { 1.0 };
     level_drive(ctx, scale);
     match level {
         1 => {
@@ -121,11 +118,8 @@ pub fn level_models(ctx: &mut ForceCtx<'_>) {
 pub fn level2_model(ctx: &mut ForceCtx<'_>, scale: f32) {
     for definition in &ctx.geometry.wheels {
         let contact = ctx.vehicle.any_wheel_contact();
-        let coefficient = if contact {
-            ctx.tuning.level_two_ground_force
-        } else {
-            ctx.tuning.level_two_air_force
-        };
+        let coefficient =
+            if contact { ctx.tuning.level_two_ground_force } else { ctx.tuning.level_two_air_force };
         let mut force = -scale * coefficient;
         let rotation = ctx.vehicle.quat;
         let inverse = crate::Quat::new(rotation.w, -rotation.x, -rotation.y, -rotation.z);

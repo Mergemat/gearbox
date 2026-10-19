@@ -1,7 +1,11 @@
 use gearbox_engine::arena::Scene;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EntityKind { Node, Vehicle, Character }
+pub enum EntityKind {
+    Node,
+    Vehicle,
+    Character,
+}
 impl EntityKind {
     pub fn is_kind(self, expected: Self) -> bool {
         self == expected || self == Self::Character && expected == Self::Node
@@ -16,8 +20,5 @@ pub struct EntityBinding {
 }
 
 pub(super) fn build(now: u32) -> Scene {
-    Scene {
-        updates_collision: true,
-        time: now, ..Scene::default()
-    }
+    Scene { updates_collision: true, time: now, ..Scene::default() }
 }

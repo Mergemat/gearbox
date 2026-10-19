@@ -54,11 +54,7 @@ impl Replay {
             replay.ghosts.push(g);
             return Ok(replay);
         }
-        ensure!(
-            c.class_id == CLASS_REPLAY,
-            "not a replay or ghost (class 0x{:08X})",
-            c.class_id
-        );
+        ensure!(c.class_id == CLASS_REPLAY, "not a replay or ghost (class 0x{:08X})", c.class_id);
         if let Some(h) = c.header_chunk(0x0309_3000) {
             replay.map_uid = parse_header_basic(h).ok().flatten();
         }
@@ -194,12 +190,7 @@ pub(crate) fn ghost(r: &mut Reader) -> Result<Ghost> {
                     let start_offset_ms = if version >= 4 { r.opt_i32()? } else { None };
                     let ticks = r.len()?;
                     let data = r.data()?.to_vec();
-                    g.inputs.push(PlayerInputs {
-                        version: input_version,
-                        start_offset_ms,
-                        ticks,
-                        data,
-                    });
+                    g.inputs.push(PlayerInputs { version: input_version, start_offset_ms, ticks, data });
                 }
             }
             0x0309_2025 => {

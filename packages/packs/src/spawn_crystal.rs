@@ -83,11 +83,7 @@ fn geometry(r: &mut Reader, materials: usize) -> Result<()> {
         optimized(r, 1)?;
     }
     for _ in 0..faces {
-        let n = if v >= 35 {
-            r.u8()? as usize + 3
-        } else {
-            count(r)?
-        };
+        let n = if v >= 35 { r.u8()? as usize + 3 } else { count(r)? };
         r.skip(
             n * if v >= 34 {
                 if positions < 0xff {
@@ -104,11 +100,7 @@ fn geometry(r: &mut Reader, materials: usize) -> Result<()> {
         if v < 37 {
             r.skip(n * 8)?;
         }
-        r.skip(if v >= 33 && materials != 0 {
-            width(materials)
-        } else {
-            4
-        })?;
+        r.skip(if v >= 33 && materials != 0 { width(materials) } else { 4 })?;
         r.skip(if v >= 33 { width(groups) } else { 4 })?;
     }
     if v < 30 {
@@ -223,11 +215,7 @@ pub(super) fn spawn(ctx: &Ctx, start: usize) -> Result<Option<[u32; 12]>> {
                         15 => {
                             ensure!(version <= 1, "spawn layer version {version}");
                             let p = r.vec3()?;
-                            let a = [
-                                r.f32()?,
-                                r.f32()?,
-                                if version >= 1 { r.f32()? } else { 0.0 },
-                            ];
+                            let a = [r.f32()?, r.f32()?, if version >= 1 { r.f32()? } else { 0.0 }];
                             let a = a.map(|a| a * std::f32::consts::PI / 180.0);
                             let rot = crate::reader_math::quat_matrix(crate::reader_math::angles_quat(
                                 a[0], a[1], a[2],

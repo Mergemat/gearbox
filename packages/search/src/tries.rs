@@ -11,7 +11,14 @@ pub struct Tried {
     pub speed_at_end: f64,
 }
 
-pub fn drive_on(origin: &dyn Origin, line: &Timeline, from: usize, to: usize, until: usize, follow: &[[f32; 3]]) -> Result<Tried> {
+pub fn drive_on(
+    origin: &dyn Origin,
+    line: &Timeline,
+    from: usize,
+    to: usize,
+    until: usize,
+    follow: &[[f32; 3]],
+) -> Result<Tried> {
     let mut n = origin.native()?;
     n.seed = line.seed;
     let mut line = line.clone();
@@ -32,7 +39,8 @@ pub fn drive_on(origin: &dyn Origin, line: &Timeline, from: usize, to: usize, un
                 trail.push(body.position());
             }
             if k == to {
-                speed_at_end = body.local_velocity().iter().map(|v| f64::from(*v).powi(2)).sum::<f64>().sqrt();
+                speed_at_end =
+                    body.local_velocity().iter().map(|v| f64::from(*v).powi(2)).sum::<f64>().sqrt();
             }
         }
         n.step(line.controls[k]);

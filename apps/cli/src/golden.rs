@@ -9,7 +9,10 @@ pub fn golden_dir() -> PathBuf {
         return source.canonicalize().unwrap_or(source);
     }
     let cwd = std::env::current_dir().unwrap_or_default();
-    cwd.ancestors().map(|d| d.join("tests/golden")).find(|d| d.join("search.tsv").is_file()).unwrap_or_else(|| PathBuf::from("tests/golden"))
+    cwd.ancestors()
+        .map(|d| d.join("tests/golden"))
+        .find(|d| d.join("search.tsv").is_file())
+        .unwrap_or_else(|| PathBuf::from("tests/golden"))
 }
 
 struct SearchCase {
@@ -21,8 +24,20 @@ struct SearchCase {
 }
 
 const SEARCHES: [SearchCase; 2] = [
-    SearchCase { name: "improve", trace: "pf-364816/rec-pf364816", range: 150..230, until: 300, improve: true },
-    SearchCase { name: "population", trace: "pf-364816/rec-pf364816", range: 150..230, until: 300, improve: false },
+    SearchCase {
+        name: "improve",
+        trace: "pf-364816/rec-pf364816",
+        range: 150..230,
+        until: 300,
+        improve: true,
+    },
+    SearchCase {
+        name: "population",
+        trace: "pf-364816/rec-pf364816",
+        range: 150..230,
+        until: 300,
+        improve: false,
+    },
 ];
 
 fn hash_text(s: &str) -> String {
@@ -37,29 +52,59 @@ fn bits(t: &gearbox_search::input::Timeline) -> String {
     s
 }
 
-fn run_search(c: &SearchCase, dir: &Path, maps: &[PathBuf], factory: &gearbox_trace::typed::TypedFactory) -> Result<(String, String)> {
-    let trace = gearbox_trace::Trace::read(&gearbox_trace::driver::trace_path(dir, c.trace)).with_context(|| format!("trace {}", c.trace))?;
-    let map = gearbox_trace::engine::find_map(&trace, dir, maps).with_context(|| format!("map {} not found", trace.case.map.file))?;
-    let origin = factory.session(&map, trace.case.t0, trace.case.seed, None)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+fn run_search(
+    c: &SearchCase,
+    dir: &Path,
+    maps: &[PathBuf],
+    factory: &gearbox_trace::typed::TypedFactory,
+) -> Result<(String, String)> {
+    let trace = gearbox_trace::Trace::read(&gearbox_trace::driver::trace_path(dir, c.trace))
+        .with_context(|| format!("trace {}", c.trace))?;
+    let map = gearbox_trace::engine::find_map(&trace, dir, maps)
+        .with_context(|| format!("map {} not found", trace.case.map.file))?;
+    let origin =
+        factory.session(&map, trace.case.t0, trace.case.seed, None).map_err(|e| anyhow::anyhow!("{e}"))?;
     let timeline = gearbox_search::input::Timeline {
         t0: trace.case.start_ms,
         seed: trace.case.seed,
-        controls: trace.case.steps.iter().map(|s| gearbox_engine::Controls { gas: s.gas, brake: s.brake, steer: s.steer }).collect(),
+        controls: trace
+            .case
+            .steps
+            .iter()
+            .map(|s| gearbox_engine::Controls { gas: s.gas, brake: s.brake, steer: s.steer })
+            .collect(),
     };
     let t0 = timeline.t0;
     let until_ms = t0 + 10 * c.until as i32;
-    let p = trace.states.get(c.until).context("trace shorter than the search")?.body.position.map(|x| x.get());
-    let objective = gearbox_search::objective::Objective::Position { at_ms: until_ms, point: [p[0] + 6.0, p[1], p[2] + 3.0] };
+    let p =
+        trace.states.get(c.until).context("trace shorter than the search")?.body.position.map(|x| x.get());
+    let objective = gearbox_search::objective::Objective::Position {
+        at_ms: until_ms,
+        point: [p[0] + 6.0, p[1], p[2] + 3.0],
+    };
     let mut text = String::new();
     let summary;
     if c.improve {
-        let settings = gearbox_search::improve::Settings { threads: 4, seed: 11, constraints: Default::default(), eval: Default::default(), placement: None };
+        let settings = gearbox_search::improve::Settings {
+            threads: 4,
+            seed: 11,
+            constraints: Default::default(),
+            eval: Default::default(),
+            placement: None,
+        };
         let mut rounds = 0;
-        let lines = gearbox_search::improve::improve(&origin, &objective, timeline, c.range.clone(), c.until, &settings, |_| {
-            rounds += 1;
-            rounds < 4
-        })?;
+        let lines = gearbox_search::improve::improve(
+            &origin,
+            &objective,
+            timeline,
+            c.range.clone(),
+            c.until,
+            &settings,
+            |_| {
+                rounds += 1;
+                rounds < 4
+            },
+        )?;
         for l in &lines {
             text += &format!("{} {:?} {:?} {}\n", l.id, l.change, l.score, bits(&l.inputs));
             for p in &l.trail {
@@ -83,7 +128,15 @@ fn run_search(c: &SearchCase, dir: &Path, maps: &[PathBuf], factory: &gearbox_tr
             evaluation: Default::default(),
         };
         let r = gearbox_search::search::search_from(&origin, timeline, &config, |_| {})?;
-        text += &format!("{}\n{:?}\n{:?}\n{} {} {}\n", bits(&r.inputs), r.before, r.after, r.iterations, r.improvements, r.evaluated_ticks);
+        text += &format!(
+            "{}\n{:?}\n{:?}\n{} {} {}\n",
+            bits(&r.inputs),
+            r.before,
+            r.after,
+            r.iterations,
+            r.improvements,
+            r.evaluated_ticks
+        );
         for s in &r.survivors {
             text += &format!("{}\n", bits(s));
         }
@@ -118,11 +171,15 @@ fn search(args: &[String], dir: &Path) -> Result<()> {
             Ok(())
         }
         Some("check") => {
-            let text = std::fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
+            let text =
+                std::fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
             let mut bad = 0;
             for line in text.lines() {
                 let f: Vec<&str> = line.split('\t').collect();
-                let c = SEARCHES.iter().find(|c| f.first() == Some(&c.name)).with_context(|| format!("unknown search case: {line}"))?;
+                let c = SEARCHES
+                    .iter()
+                    .find(|c| f.first() == Some(&c.name))
+                    .with_context(|| format!("unknown search case: {line}"))?;
                 let (h, s) = run_search(c, &dir, &maps, &factory)?;
                 if f.get(2) == Some(&h.as_str()) {
                     println!("{}\tEXACT {h}", c.name);
@@ -149,9 +206,13 @@ pub fn typed_factory() -> Result<gearbox_trace::typed::TypedFactory> {
     Ok(gearbox_trace::typed::TypedFactory::new(crate::packs()?))
 }
 
-pub fn drive(args: Vec<String>, command: &[&str], factory: &dyn gearbox_trace::Factory, defaults: &Defaults) -> Result<()> {
-    gearbox_trace::driver::main(args, command, factory, defaults)
-        .map_err(|e| anyhow::anyhow!("{e}"))
+pub fn drive(
+    args: Vec<String>,
+    command: &[&str],
+    factory: &dyn gearbox_trace::Factory,
+    defaults: &Defaults,
+) -> Result<()> {
+    gearbox_trace::driver::main(args, command, factory, defaults).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 pub fn defaults() -> Defaults {
@@ -170,7 +231,9 @@ pub fn main(args: Vec<String>) -> Result<()> {
             Ok(())
         }
         Some("search") => search(&args[1..], &defaults().dir),
-        Some("list" | "show") => drive(args, &["golden"], &gearbox_trace::typed::TypedFactory::new(PathBuf::new()), &defaults()),
+        Some("list" | "show") => {
+            drive(args, &["golden"], &gearbox_trace::typed::TypedFactory::new(PathBuf::new()), &defaults())
+        }
         _ => {
             let factory = typed_factory()?;
             let packs = factory.packs.display().to_string();

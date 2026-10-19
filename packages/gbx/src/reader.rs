@@ -21,13 +21,7 @@ pub enum NodeRef {
 
 impl<'a> Reader<'a> {
     pub fn new(buf: &'a [u8]) -> Self {
-        Self {
-            buf,
-            pos: 0,
-            id_version: None,
-            ids: Vec::new(),
-            nodes: Default::default(),
-        }
+        Self { buf, pos: 0, id_version: None, ids: Vec::new(), nodes: Default::default() }
     }
 
     pub fn buf(&self) -> &'a [u8] {
@@ -113,11 +107,7 @@ impl<'a> Reader<'a> {
 
     pub fn len(&mut self) -> Result<usize> {
         let n = self.i32()?;
-        ensure!(
-            n >= 0 && (n as usize) < MAX_LEN,
-            "invalid length {n} at offset {}",
-            self.pos - 4
-        );
+        ensure!(n >= 0 && (n as usize) < MAX_LEN, "invalid length {n} at offset {}", self.pos - 4);
         Ok(n as usize)
     }
 
@@ -156,12 +146,11 @@ impl<'a> Reader<'a> {
             self.ids.push(s.clone());
             return Ok(Some(s));
         }
-        self.ids.get(slot - 1).cloned().map(Some).with_context(|| {
-            format!(
-                "id lookback index {slot} out of range ({} known)",
-                self.ids.len()
-            )
-        })
+        self.ids
+            .get(slot - 1)
+            .cloned()
+            .map(Some)
+            .with_context(|| format!("id lookback index {slot} out of range ({} known)", self.ids.len()))
     }
 
     pub fn ident(&mut self) -> Result<[Option<String>; 3]> {
@@ -196,12 +185,8 @@ impl<'a> Reader<'a> {
                 let size = self.len()?;
                 let start = self.pos;
                 let end = start + size;
-                ensure!(
-                    end <= self.buf.len(),
-                    "skippable chunk 0x{id:08X} overruns buffer"
-                );
-                let handled =
-                    handle(self, id, true).with_context(|| format!("{class} chunk 0x{id:08X}"))?;
+                ensure!(end <= self.buf.len(), "skippable chunk 0x{id:08X} overruns buffer");
+                let handled = handle(self, id, true).with_context(|| format!("{class} chunk 0x{id:08X}"))?;
                 if handled {
                     ensure!(
                         self.pos <= end,
@@ -212,13 +197,9 @@ impl<'a> Reader<'a> {
                 self.pos = end;
             } else {
                 let start = self.pos;
-                let handled =
-                    handle(self, id, false).with_context(|| format!("{class} chunk 0x{id:08X}"))?;
+                let handled = handle(self, id, false).with_context(|| format!("{class} chunk 0x{id:08X}"))?;
                 if !handled {
-                    bail!(
-                        "unknown non-skippable {class} chunk 0x{id:08X} at offset {}",
-                        start - 4
-                    );
+                    bail!("unknown non-skippable {class} chunk 0x{id:08X} at offset {}", start - 4);
                 }
             }
         }
@@ -236,8 +217,6 @@ impl<'a> Reader<'a> {
     }
 
     pub fn peek_u32(&self) -> Option<u32> {
-        self.buf
-            .get(self.pos..self.pos + 4)
-            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+        self.buf.get(self.pos..self.pos + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()))
     }
 }

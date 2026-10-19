@@ -17,6 +17,8 @@ impl ByteGrid {
         if x < nx && y < ny && z < nz {
             let index = x.wrapping_mul(ny).wrapping_add(y).wrapping_mul(nz).wrapping_add(z);
             self.data[index as usize] as u32
-        } else { self.default }
+        } else {
+            self.default
+        }
     }
 }

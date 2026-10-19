@@ -83,7 +83,18 @@ pub struct Camera {
 impl Default for Camera {
     fn default() -> Self {
         let v = View { pivot: Vec3::ZERO, yaw: 0.6, pitch: 0.55, distance: 400.0 };
-        Self { mode: Mode::Free, goal: v, cur: v, fov_y: 50f32.to_radians(), rate: RATE, follow: None, fly_speed: 12.0, fly_vel: Vec3::ZERO, fly_held: 0.0, car: None }
+        Self {
+            mode: Mode::Free,
+            goal: v,
+            cur: v,
+            fov_y: 50f32.to_radians(),
+            rate: RATE,
+            follow: None,
+            fly_speed: 12.0,
+            fly_vel: Vec3::ZERO,
+            fly_held: 0.0,
+            car: None,
+        }
     }
 }
 
@@ -139,7 +150,10 @@ impl Camera {
                 c.yaw += wrap(g.yaw - c.yaw) * a;
                 c.pitch += (g.pitch - c.pitch) * a;
                 c.distance = (c.distance.ln() + (g.distance.ln() - c.distance.ln()) * a).exp();
-                let settled = c.pivot.distance(g.pivot) < 1e-3 * g.distance.max(1.0) && wrap(g.yaw - c.yaw).abs() < 1e-4 && (g.pitch - c.pitch).abs() < 1e-4 && (c.distance / g.distance - 1.0).abs() < 1e-4;
+                let settled = c.pivot.distance(g.pivot) < 1e-3 * g.distance.max(1.0)
+                    && wrap(g.yaw - c.yaw).abs() < 1e-4
+                    && (g.pitch - c.pitch).abs() < 1e-4
+                    && (c.distance / g.distance - 1.0).abs() < 1e-4;
                 if settled {
                     *c = g;
                     self.rate = RATE;
@@ -260,7 +274,11 @@ impl Camera {
         if self.mode == Mode::Follow {
             self.leave_follow();
         }
-        self.goal = View { pitch: v.pitch.clamp(-PITCH_LIMIT, PITCH_LIMIT), distance: v.distance.clamp(MIN_DIST, MAX_DIST), ..v };
+        self.goal = View {
+            pitch: v.pitch.clamp(-PITCH_LIMIT, PITCH_LIMIT),
+            distance: v.distance.clamp(MIN_DIST, MAX_DIST),
+            ..v
+        };
         self.goal.yaw = self.cur.yaw + wrap(self.goal.yaw - self.cur.yaw);
         self.rate = RATE_JUMP;
     }
@@ -272,7 +290,12 @@ impl Camera {
 
     pub fn frame(&mut self, min: Vec3, max: Vec3) {
         let r = (max - min).length() * 0.5;
-        self.go(View { pivot: (min + max) * 0.5, distance: (r / (self.fov_y * 0.5).tan()).clamp(20.0, MAX_DIST) * 0.95, pitch: 0.75, yaw: self.goal.yaw });
+        self.go(View {
+            pivot: (min + max) * 0.5,
+            distance: (r / (self.fov_y * 0.5).tan()).clamp(20.0, MAX_DIST) * 0.95,
+            pitch: 0.75,
+            yaw: self.goal.yaw,
+        });
     }
 
     pub fn axis_view(&mut self, yaw: f32, pitch: f32) {
@@ -284,7 +307,12 @@ impl Camera {
         let d = target - eye;
         let distance = d.length().max(MIN_DIST);
         let d = d / distance;
-        self.snap_to(View { pivot: target, yaw: d.x.atan2(d.z), pitch: (-d.y).clamp(-1.0, 1.0).asin(), distance });
+        self.snap_to(View {
+            pivot: target,
+            yaw: d.x.atan2(d.z),
+            pitch: (-d.y).clamp(-1.0, 1.0).asin(),
+            distance,
+        });
     }
 
     pub fn snap_to(&mut self, v: View) {
@@ -347,11 +375,19 @@ impl Follow {
         self.cur.0 += wrap(self.goal.0 - self.cur.0) * k;
         self.cur.1 += (self.goal.1 - self.cur.1) * k;
         self.cur.2 += (self.goal.2 - self.cur.2) * k;
-        self.err.length() > 1e-3 || self.heading_v.abs() > 1e-4 || (self.goal.2 - self.cur.2).abs() > 1e-3 || wrap(self.goal.0 - self.cur.0).abs() > 1e-4
+        self.err.length() > 1e-3
+            || self.heading_v.abs() > 1e-4
+            || (self.goal.2 - self.cur.2).abs() > 1e-3
+            || wrap(self.goal.0 - self.cur.0).abs() > 1e-4
     }
 
     fn view(&self, c: Car) -> View {
-        View { pivot: c.pos + Vec3::Y * 1.0 + self.err, yaw: self.heading + self.cur.0, pitch: self.cur.1, distance: self.cur.2 }
+        View {
+            pivot: c.pos + Vec3::Y * 1.0 + self.err,
+            yaw: self.heading + self.cur.0,
+            pitch: self.cur.1,
+            distance: self.cur.2,
+        }
     }
 }
 
@@ -433,7 +469,11 @@ mod tests {
         let (eye1, dir1) = (c.goal.eye(), (p - c.goal.eye()).normalize());
         assert!(eye1.distance(p) < eye0.distance(p) * 0.8);
         assert!(dir0.dot(dir1) > 0.99999, "the point stays on the same ray");
-        assert!((c.goal.dir() - View { pivot: Vec3::ZERO, yaw: 0.0, pitch: 0.4, distance: 1.0 }.dir()).length() < 1e-6, "no rotation");
+        assert!(
+            (c.goal.dir() - View { pivot: Vec3::ZERO, yaw: 0.0, pitch: 0.4, distance: 1.0 }.dir()).length()
+                < 1e-6,
+            "no rotation"
+        );
     }
 
     #[test]

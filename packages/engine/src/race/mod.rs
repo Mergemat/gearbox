@@ -1,14 +1,14 @@
-mod types;
+pub mod countdown;
+pub mod replay;
 pub mod store;
 pub mod trigger;
-pub mod replay;
-pub mod countdown;
-pub use types::*;
-pub use store::{Store, Chunk, Entry, IdSequence};
+mod types;
+pub use store::{Chunk, Entry, IdSequence, Store};
 pub use trigger::{Contact, Contacts, Phase};
+pub use types::*;
 
-use crate::{Iso, static_world::StaticWorld, vehicle::Vehicle};
 use crate::vehicle::race_flags::RaceFlags;
+use crate::{Iso, static_world::StaticWorld, vehicle::Vehicle};
 
 pub const EPOCH_MS: u32 = 60_000;
 pub const NO_RUN: u32 = u32::MAX;
@@ -38,7 +38,12 @@ impl WaypointFlags {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mode { Free, Race, Laps, Disabled }
+pub enum Mode {
+    Free,
+    Race,
+    Laps,
+    Disabled,
+}
 impl Mode {
     const KIND_MASK: u8 = 0x38;
     const RACE: u8 = 0x08;
@@ -54,7 +59,12 @@ impl Mode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WaypointKind { Ignored, Checkpoint, Lap, Finish }
+pub enum WaypointKind {
+    Ignored,
+    Checkpoint,
+    Lap,
+    Finish,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RaceWaypoint {
@@ -95,20 +105,24 @@ pub struct Racer {
 impl Racer {
     pub fn controlled_entity(&self) -> u32 {
         for handle in [self.player.override_entity, self.player.seat_entity] {
-            if handle != NO_ENTITY { return handle; }
+            if handle != NO_ENTITY {
+                return handle;
+            }
         }
         if let Some(controller) = &self.controller {
             if let Some(&slot) = crate::race::SEAT_SLOTS.get(controller.seat as usize) {
-                if slot != 6 { return self.player.seats[slot as usize]; }
+                if slot != 6 {
+                    return self.player.seats[slot as usize];
+                }
             }
         }
         self.player.entity
     }
 
     pub fn has_entity(&self, handle: u32) -> bool {
-        handle != NO_ENTITY && ([self.player.override_entity, self.player.seat_entity, self.player.entity]
-            .contains(&handle) || crate::race::SEAT_SLOTS.iter()
-            .any(|&slot| self.player.seats[slot as usize] == handle))
+        handle != NO_ENTITY
+            && ([self.player.override_entity, self.player.seat_entity, self.player.entity].contains(&handle)
+                || crate::race::SEAT_SLOTS.iter().any(|&slot| self.player.seats[slot as usize] == handle))
     }
 
     pub fn save_waypoints(&mut self) {
@@ -136,15 +150,25 @@ impl Race {
         }
         let mark = &self.rules.waypoints[waypoint as usize];
         if !mark.flags.contains(WaypointFlags::GOAL) {
-            return if self.store.entries(player.player.lap_run).any(|entry| {
-                self.rules.waypoints[entry.waypoint as usize].group == mark.group
-            }) { WaypointKind::Ignored } else { WaypointKind::Checkpoint };
+            return if self
+                .store
+                .entries(player.player.lap_run)
+                .any(|entry| self.rules.waypoints[entry.waypoint as usize].group == mark.group)
+            {
+                WaypointKind::Ignored
+            } else {
+                WaypointKind::Checkpoint
+            };
         }
         if self.store.entry_count(player.player.lap_run) < self.rules.checkpoints_per_lap {
             return WaypointKind::Ignored;
         }
-        if !self.rules.lap_race || self.rules.laps == 0 { return WaypointKind::Finish; }
-        if self.rules.mode == Mode::Laps { return WaypointKind::Lap; }
+        if !self.rules.lap_race || self.rules.laps == 0 {
+            return WaypointKind::Finish;
+        }
+        if self.rules.mode == Mode::Laps {
+            return WaypointKind::Lap;
+        }
         let count = self.store.entry_count(player.player.race_run);
         let per_lap = self.rules.checkpoints_per_lap.wrapping_add(1);
         let done = (count / per_lap).min(self.rules.laps - 1);
@@ -166,15 +190,27 @@ impl Race {
     }
 
     pub fn waypoint(&mut self, index: usize, mut vehicle: Option<&mut Vehicle>, waypoint: u32, time: u32) {
-        let Some(mark) = self.rules.waypoints.get(waypoint as usize) else { return; };
-        if !mark.linked { return; }
-        if let Some(vehicle) = &mut vehicle { vehicle.reactor_ready = 1; }
+        let Some(mark) = self.rules.waypoints.get(waypoint as usize) else {
+            return;
+        };
+        if !mark.linked {
+            return;
+        }
+        if let Some(vehicle) = &mut vehicle {
+            vehicle.reactor_ready = 1;
+        }
         let kind = self.waypoint_kind(&self.players[index], waypoint);
-        if kind == WaypointKind::Ignored { return; }
+        if kind == WaypointKind::Ignored {
+            return;
+        }
         let racer = &mut self.players[index];
         if self.rules.mode != Mode::Free {
-            self.store.record(racer.player.tag, [racer.player.race_run, racer.player.lap_run],
-                Entry { time, waypoint: waypoint as u16 }, kind == WaypointKind::Finish);
+            self.store.record(
+                racer.player.tag,
+                [racer.player.race_run, racer.player.lap_run],
+                Entry { time, waypoint: waypoint as u16 },
+                kind == WaypointKind::Finish,
+            );
             if kind == WaypointKind::Lap {
                 racer.close_lap(&self.store);
                 racer.open_lap(&mut self.store, time / 10 * 10);
@@ -187,15 +223,25 @@ impl Race {
     }
 }
 
-pub fn on_events(race: &mut Race, statics: &StaticWorld, vehicles: &mut [Vehicle],
-    now: u32, contacts: &[Contact]) {
+pub fn on_events(
+    race: &mut Race,
+    statics: &StaticWorld,
+    vehicles: &mut [Vehicle],
+    now: u32,
+    contacts: &[Contact],
+) {
     let events = trigger::events(race, statics, vehicles, now, contacts);
     for event in events {
-        if !trigger::dispatch(race, vehicles, event) { break; }
+        if !trigger::dispatch(race, vehicles, event) {
+            break;
+        }
     }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TimedEvent { pub time: u32, pub enabled: bool }
+pub struct TimedEvent {
+    pub time: u32,
+    pub enabled: bool,
+}
 
 pub const SEAT_SLOTS: [u8; 4] = [0, 3, 4, 5];

@@ -57,7 +57,6 @@ const REGISTRATIONS: &[(usize, usize, u8, u8, u8)] = &[
     (23, 9, 1, 1, 1),
     (23, 2, 1, 1, 1),
     (23, 6, 1, 1, 1),
-
 ];
 
 const fn tables() -> ([u32; 24], [[u8; 24]; 24]) {

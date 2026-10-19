@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
+use gearbox_engine::static_world::{Entity, LAYER_GATE};
 use gearbox_packs::assets::{Assets, ModifierRef, PlacedSurface, Role};
 use gearbox_packs::surface::Surf;
-use gearbox_engine::static_world::{Entity, LAYER_GATE};
 
 use crate::statics::model::{BlockKey, BlockModel, Catalog, Geometry, ModelSource, Part};
 use crate::statics::place::Iso;
@@ -21,23 +21,21 @@ pub fn environment(map: &gearbox_gbx::Map) -> Result<&'static str, String> {
 
 pub fn map_cell(assets: &Assets, map: &gearbox_gbx::Map) -> [f32; 3] {
     let [x, h, y0] = crate::statics::place::CELL;
-    let level0 = environment(map).ok()
-        .and_then(|env| assets.decoration(map.decoration.as_deref()?, env)?.level0);
+    let level0 =
+        environment(map).ok().and_then(|env| assets.decoration(map.decoration.as_deref()?, env)?.level0);
     [x, h, level0.map_or(y0, |n| -(n as f32) * h)]
 }
 
 pub fn add_map_items(
-    assets: &mut Assets, map: &gearbox_gbx::Map, packs: &gearbox_packs::packs::PackSet,
+    assets: &mut Assets,
+    map: &gearbox_gbx::Map,
+    packs: &gearbox_packs::packs::PackSet,
 ) -> Vec<String> {
     if let Err(error) = add_block_triggers(assets, map, packs) {
         return vec![format!("block triggers: {error:#}")];
     }
-    let items: Vec<(String, String)> = map
-        .embedded
-        .files
-        .iter()
-        .filter_map(|f| Some((f.model_path()?, f.path.clone())))
-        .collect();
+    let items: Vec<(String, String)> =
+        map.embedded.files.iter().filter_map(|f| Some((f.model_path()?, f.path.clone()))).collect();
     if items.is_empty() {
         return Vec::new();
     }
@@ -45,9 +43,8 @@ pub fn add_map_items(
         map.embedded.files.iter().map(|file| (file.path.as_str(), file.data.as_slice())),
         packs,
     );
-    let mut catalog = gearbox_packs::catalog::crawl_embedded(
-        &files, &items, &assets.index, assets.surface_count(),
-    );
+    let mut catalog =
+        gearbox_packs::catalog::crawl_embedded(&files, &items, &assets.index, assets.surface_count());
     custom_block_gates(&mut catalog, map);
     let errors = catalog.index.errors.clone();
     assets.add_catalog(catalog);
@@ -58,8 +55,9 @@ fn custom_block_gates(catalog: &mut gearbox_packs::catalog::Catalog, map: &gearb
     use gearbox_packs::catalog::{Ent, EntModel, Prefab};
     let mut prefabs = Vec::new();
     for (name, block) in &mut catalog.index.custom_blocks {
-        let Some(map_block) = map.blocks.iter().find(|block| block.name.eq_ignore_ascii_case(name))
-        else { continue };
+        let Some(map_block) = map.blocks.iter().find(|block| block.name.eq_ignore_ascii_case(name)) else {
+            continue;
+        };
         if map_block.waypoint.is_some() {
             continue;
         }
@@ -93,21 +91,30 @@ fn custom_block_gates(catalog: &mut gearbox_packs::catalog::Catalog, map: &gearb
 }
 
 fn add_block_triggers(
-    assets: &mut Assets, map: &gearbox_gbx::Map, packs: &gearbox_packs::packs::PackSet,
+    assets: &mut Assets,
+    map: &gearbox_gbx::Map,
+    packs: &gearbox_packs::packs::PackSet,
 ) -> anyhow::Result<()> {
     let env = environment(map).map_err(anyhow::Error::msg)?;
     let mut seen = std::collections::HashSet::new();
     let mut blocks = Vec::new();
     for block in map.blocks.iter().chain(&map.baked_blocks) {
         let Some(info) = assets.block_in(&block.name, env) else { continue };
-        if !seen.insert(info.path.clone()) { continue; }
-        let waypoint = block.waypoint.as_ref().and_then(|w| w.tag.as_deref()).map(|tag| match tag {
-            "Spawn" => Ok(0),
-            "Goal" => Ok(1),
-            "Checkpoint" | "LinkedCheckpoint" => Ok(2),
-            "StartFinish" => Ok(4),
-            _ => anyhow::bail!("legacy block waypoint {tag} on {}", block.name),
-        }).transpose()?;
+        if !seen.insert(info.path.clone()) {
+            continue;
+        }
+        let waypoint = block
+            .waypoint
+            .as_ref()
+            .and_then(|w| w.tag.as_deref())
+            .map(|tag| match tag {
+                "Spawn" => Ok(0),
+                "Goal" => Ok(1),
+                "Checkpoint" | "LinkedCheckpoint" => Ok(2),
+                "StartFinish" => Ok(4),
+                _ => anyhow::bail!("legacy block waypoint {tag} on {}", block.name),
+            })
+            .transpose()?;
         blocks.push((info, waypoint));
     }
     let catalog = gearbox_packs::block_triggers::load(packs, &blocks, assets.surface_count())?;
@@ -141,7 +148,8 @@ fn game_triangle(triangle: &gearbox_packs::surface::MeshTri, placed: &PlacedSurf
     bytes[12] = triangle.flags[0];
     bytes[13] = triangle.flags[1];
     if !matches!(placed.role, Role::BlockSpecialTrigger | Role::BlockTrigger(_))
-        && let Some(Some((_, ids))) = placed.materials.get(triangle.material as usize) {
+        && let Some(Some((_, ids))) = placed.materials.get(triangle.material as usize)
+    {
         bytes[12] = ids.surface;
         bytes[13] = ids.gameplay;
     }
@@ -175,7 +183,9 @@ impl<'a> PackSource<'a> {
     }
 
     pub fn for_map(
-        assets: &'a Assets, map: &gearbox_gbx::Map, packs: &gearbox_packs::packs::PackSet,
+        assets: &'a Assets,
+        map: &gearbox_gbx::Map,
+        packs: &gearbox_packs::packs::PackSet,
     ) -> Result<Self, String> {
         let mut source = Self::new(assets, environment(map)?);
         source.catalog.cell = map_cell(assets, map);
@@ -189,7 +199,9 @@ impl<'a> PackSource<'a> {
 
     fn shape_scaled(&mut self, placed: &PlacedSurface<'_>, scale: f32) -> Result<u32, String> {
         let node = placed.surface.surf.as_ref().ok_or("surface without surf")?;
-        let ids: Vec<u8> = placed.materials.iter()
+        let ids: Vec<u8> = placed
+            .materials
+            .iter()
             .flat_map(|material| {
                 material.as_ref().map_or([0xff, 0xff], |(_, ids)| [ids.surface, ids.gameplay])
             })
@@ -204,20 +216,31 @@ impl<'a> PackSource<'a> {
             if !matches!(node.surf, Surf::Mesh { .. }) {
                 return Err("scaled tree collision other than mesh".into());
             }
-            let gearbox_engine::static_world::Geometry::Mesh(mesh) = &mut self.shapes[shape as usize].geometry
-            else { unreachable!("Surf::Mesh builds Geometry::Mesh") };
-            for vertex in &mut mesh.vertices { *vertex = *vertex * scale; }
+            let gearbox_engine::static_world::Geometry::Mesh(mesh) =
+                &mut self.shapes[shape as usize].geometry
+            else {
+                unreachable!("Surf::Mesh builds Geometry::Mesh")
+            };
+            for vertex in &mut mesh.vertices {
+                *vertex = *vertex * scale;
+            }
         }
-        let gameplay = placed.materials.first()
+        let gameplay = placed
+            .materials
+            .first()
             .and_then(|material| material.as_ref().map(|(_, ids)| ids.gameplay))
             .or_else(|| placed.surface.material_ids.first().map(|id| (id >> 8) as u8));
-        if let Some(effect) = gameplay { self.gameplay.insert(shape, effect); }
+        if let Some(effect) = gameplay {
+            self.gameplay.insert(shape, effect);
+        }
         self.shape_cache.insert(key, shape);
         Ok(shape)
     }
 
     fn surf(
-        &mut self, node: &gearbox_packs::surface::SurfNode, placed: &PlacedSurface<'_>,
+        &mut self,
+        node: &gearbox_packs::surface::SurfNode,
+        placed: &PlacedSurface<'_>,
     ) -> Result<u32, String> {
         let dir = node.gameplay_main_dir.unwrap_or([0.0, 0.0, 1.0]);
         match &node.surf {
@@ -231,7 +254,10 @@ impl<'a> PackSource<'a> {
             }
             Surf::ConvexPolyhedron { raw, material, .. } => {
                 let slot = *material as u16 as usize;
-                let ids = placed.materials.get(slot).and_then(|m| m.as_ref())
+                let ids = placed
+                    .materials
+                    .get(slot)
+                    .and_then(|m| m.as_ref())
                     .map(|(_, ids)| u16::from_le_bytes([ids.surface, ids.gameplay]))
                     .or_else(|| placed.surface.material_ids.get(slot).copied())
                     .ok_or_else(|| format!("convex material slot {slot} absent"))?;
@@ -242,14 +268,20 @@ impl<'a> PackSource<'a> {
     }
 
     pub fn modifiers(
-        &self, map: &gearbox_gbx::Map, grid: &crate::statics::instancing::Grid,
-        block: &gearbox_gbx::map::Block, depth: usize,
+        &self,
+        map: &gearbox_gbx::Map,
+        grid: &crate::statics::instancing::Grid,
+        block: &gearbox_gbx::map::Block,
+        depth: usize,
     ) -> Result<Mods, String> {
         if depth > 256 {
             return Err("modifier parents nested too deep".into());
         }
         let memo = (
-            block.name.clone(), block.coord, block.dir, block.flags,
+            block.name.clone(),
+            block.coord,
+            block.dir,
+            block.flags,
             block.free.map(|(position, angles)| (position.map(f32::to_bits), angles.map(f32::to_bits))),
         );
         if let Some(modifier) = self.mods_cache.borrow().get(&memo) {
@@ -267,7 +299,9 @@ impl<'a> PackSource<'a> {
         };
         let inherited = if is_clip && info.clip_type != 0 && info.material_modifier.is_none() {
             clip_parent()?.map(|p| self.modifiers(map, grid, p, depth + 1)).transpose()?
-        } else { None };
+        } else {
+            None
+        };
         let [i1, i2] = inherited.unwrap_or([None, None]);
         let own = |modifier: &Option<String>| modifier.clone().map(|modifier| (modifier, None, false));
         let mut slots = [own(&info.material_modifier).or(i1), own(&info.material_modifier2).or(i2)];
@@ -291,17 +325,27 @@ impl<'a> PackSource<'a> {
         let assets = self.assets;
         let block = assets.block_in(&key.name, &self.env).ok_or("unknown block")?;
         let (ground, index) = (key.flags & 0x1000 != 0, ((key.flags >> 21) & 0x7f) as usize);
-        let variant = block.variants.iter()
+        let variant = block
+            .variants
+            .iter()
             .find(|variant| variant.ground == ground && variant.index == index)
             .ok_or("no such variant")?;
         let group = variant.mobils.get(key.variant as usize).ok_or("no such mobil group")?;
-        let mut mods: Vec<ModifierRef> = mods.iter().flatten().map(|(path, folder, keep)| ModifierRef {
-            path, folder: folder.as_deref(), keep_track_wall: *keep,
-        }).collect();
+        let mut mods: Vec<ModifierRef> = mods
+            .iter()
+            .flatten()
+            .map(|(path, folder, keep)| ModifierRef {
+                path,
+                folder: folder.as_deref(),
+                keep_track_wall: *keep,
+            })
+            .collect();
         if let Some(p) = assets.index.collection_modifiers.get(&self.env) {
             mods.push(ModifierRef { path: p, folder: None, keep_track_wall: false });
         }
-        let prefab = group.get(key.sub_variant as usize).or_else(|| group.first())
+        let prefab = group
+            .get(key.sub_variant as usize)
+            .or_else(|| group.first())
             .and_then(|mobil| mobil.prefab.as_ref());
         let mut out = match prefab {
             Some(prefab) => assets.prefab_surfaces_with(prefab, &mods).map_err(|e| e.to_string())?,
@@ -319,7 +363,9 @@ impl<'a> PackSource<'a> {
         let geometry = self.catalog.geometry(key).ok_or("no placement metadata")?;
         let mut parts = Vec::new();
         for mut placed in self.surfaces(key, mods)? {
-            if placed.role == Role::SpecialTrigger { placed.role = Role::BlockSpecialTrigger; }
+            if placed.role == Role::SpecialTrigger {
+                placed.role = Role::BlockSpecialTrigger;
+            }
             if self.assets.index.surfaces[placed.id].tree.is_some() {
                 return Err("block prefab tree instances".into());
             }
@@ -334,8 +380,11 @@ impl<'a> PackSource<'a> {
             };
             let shape = self.shape(&placed)?;
             parts.push(Part {
-                shape, local: chain_iso(&placed.chain),
-                block_location: matches!(placed.role, Role::BlockTrigger(_)), layer, entity,
+                shape,
+                local: chain_iso(&placed.chain),
+                block_location: matches!(placed.role, Role::BlockTrigger(_)),
+                layer,
+                entity,
             });
         }
         crate::sort_by_key(&mut parts, |p| match p.layer {
@@ -348,7 +397,11 @@ impl<'a> PackSource<'a> {
     }
 
     pub fn item_parts(
-        &mut self, name: &str, variant: usize, iso: Iso, location: ([f32; 9], [f32; 3]),
+        &mut self,
+        name: &str,
+        variant: usize,
+        iso: Iso,
+        location: ([f32; 9], [f32; 3]),
     ) -> Result<Vec<(Role, u32, gearbox_engine::Iso)>, String> {
         let assets = self.assets;
         let path = match assets.index.items.get_key_value(name) {
@@ -357,8 +410,13 @@ impl<'a> PackSource<'a> {
         };
         let item = &assets.index.items[path];
         if item.models.is_empty() && item.variants.is_empty() {
-            let why = assets.index.errors.iter().find(|error| error.starts_with(path))
-                .cloned().unwrap_or_else(|| "item physics model not extracted".into());
+            let why = assets
+                .index
+                .errors
+                .iter()
+                .find(|error| error.starts_with(path))
+                .cloned()
+                .unwrap_or_else(|| "item physics model not extracted".into());
             return Err(format!("{path}: {why}"));
         }
         let mut out = Vec::new();
@@ -369,7 +427,10 @@ impl<'a> PackSource<'a> {
                 Role::BlockSpecialTrigger | Role::BlockTrigger(_) => {
                     return Err("block trigger used as an anchored item".into());
                 }
-                Role::DynaShape => { dynamic = true; continue; },
+                Role::DynaShape => {
+                    dynamic = true;
+                    continue;
+                }
             }
             let local = (!placed.chain.is_empty()).then(|| chain_iso(&placed.chain));
             let pose = local.map_or(iso, |local| crate::statics::place::compose(iso, local));
@@ -382,8 +443,11 @@ impl<'a> PackSource<'a> {
                     if !(0..8).contains(&bin) {
                         return Err(format!("tree scale cache slot {bin}"));
                     }
-                    let scale = if bin == 7 { 1.0 }
-                        else { *self.tree_scales.entry((placed.id, bin)).or_insert(scale) };
+                    let scale = if bin == 7 {
+                        1.0
+                    } else {
+                        *self.tree_scales.entry((placed.id, bin)).or_insert(scale)
+                    };
                     (crate::statics::place::transform(pose), scale)
                 }
                 None => (
@@ -445,7 +509,10 @@ impl ModelSource for PackSource<'_> {
     }
 
     fn block_model_at(
-        &mut self, map: &gearbox_gbx::Map, grid: &crate::statics::instancing::Grid, b: &gearbox_gbx::map::Block,
+        &mut self,
+        map: &gearbox_gbx::Map,
+        grid: &crate::statics::instancing::Grid,
+        b: &gearbox_gbx::map::Block,
     ) -> Option<BlockModel> {
         let key = BlockKey::of(b);
         match self.modifiers(map, grid, b, 0) {

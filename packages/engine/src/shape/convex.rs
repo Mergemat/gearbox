@@ -1,5 +1,8 @@
-use crate::{Vec3, static_world::{Convex as Hull, Face}};
 use super::Geometry;
+use crate::{
+    Vec3,
+    static_world::{Convex as Hull, Face},
+};
 
 pub struct Convex<'a> {
     pub vertices: &'a [Vec3],

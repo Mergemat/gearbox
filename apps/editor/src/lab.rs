@@ -11,7 +11,12 @@ const TRY_SECONDS: f32 = 20.0;
 
 impl Editor {
     pub fn save_setup(&mut self) {
-        let Some(start) = self.doc.start.clone() else { return self.error("lab", "place the car first, or save a setup from the run (Properties of the car at the playhead)") };
+        let Some(start) = self.doc.start.clone() else {
+            return self.error(
+                "lab",
+                "place the car first, or save a setup from the run (Properties of the car at the playhead)",
+            );
+        };
         if self.cursor <= start.tick {
             return self.error("lab", "move the playhead past the start state: the setup is the inputs from the placement to the playhead");
         }
@@ -58,7 +63,8 @@ impl Editor {
         let Some(start) = self.start_from_cursor() else { return };
         let (from, to) = (self.cursor, self.cursor + ticks);
         if to >= self.sim.frames.len() {
-            return self.error("lab", "the run isn't simulated that far: extend it or move the playhead back");
+            return self
+                .error("lab", "the run isn't simulated that far: extend it or move the playhead back");
         }
         self.store_setup(start, from, to, false);
     }
@@ -67,38 +73,84 @@ impl Editor {
         let Some(f) = self.sim.frames.get(to) else { return };
         let controls = (from..to).map(|k| self.control(k)).map(|c| [c.gas, c.brake, c.steer]).collect();
         let (end_pos, end_ypr, end_velocity) = (f.position(), doc::rot_ypr(doc::frame_rot(f)), f.velocity());
-        let tricks = self.trick_ticks(from, to - from, placed).map(|e| [e.nosebug_ticks, e.bugslide_ticks, e.uberbug_ticks]);
+        let tricks = self
+            .trick_ticks(from, to - from, placed)
+            .map(|e| [e.nosebug_ticks, e.bugslide_ticks, e.uberbug_ticks]);
         let n = self.doc.setups.len() + 1;
         let mut id = 0;
         self.edit("save setup", None, |d| {
             id = d.id();
-            d.setups.push(Setup { id, name: format!("Setup {n}"), start, controls, end_pos, end_ypr, end_velocity, tricks });
+            d.setups.push(Setup {
+                id,
+                name: format!("Setup {n}"),
+                start,
+                controls,
+                end_pos,
+                end_ypr,
+                end_velocity,
+                tricks,
+            });
         });
         self.sel = Sel::Setup(id);
-        self.info("lab", format!("saved Setup {n}: {} ticks{}", to - from, if placed { " from the placed car" } else { " from the run" }));
+        self.info(
+            "lab",
+            format!(
+                "saved Setup {n}: {} ticks{}",
+                to - from,
+                if placed { " from the placed car" } else { " from the run" }
+            ),
+        );
     }
 
-    pub fn trick_ticks(&self, from: usize, ticks: usize, placed: bool) -> Option<gearbox_search::tricks::Events> {
+    pub fn trick_ticks(
+        &self,
+        from: usize,
+        ticks: usize,
+        placed: bool,
+    ) -> Option<gearbox_search::tricks::Events> {
         let origin = self.origin.as_ref()?;
         let start = if placed { self.doc.start.as_ref().map(|s| (s.tick, s.placement())) } else { None };
         let at = crate::background::reach(origin, &self.doc.inputs, from, start.as_ref()).ok()?;
         let mut n = at.fork();
-        let mut line = gearbox_search::input::Timeline { t0: self.doc.inputs.t0, seed: self.doc.inputs.seed, controls: self.doc.inputs.controls.clone() };
+        let mut line = gearbox_search::input::Timeline {
+            t0: self.doc.inputs.t0,
+            seed: self.doc.inputs.seed,
+            controls: self.doc.inputs.controls.clone(),
+        };
         let until = self.race_ms0 + 10 * (from + ticks) as i32;
         let need = ((until - line.t0).max(0) / 10) as usize;
         if line.controls.len() < need {
             let last = line.controls.last().copied().unwrap_or_default();
             line.controls.resize(need, last);
         }
-        let objective = gearbox_search::objective::Objective::Trick { at_ms: until, kind: gearbox_search::tricks::TrickKind::Any };
-        gearbox_search::objective::evaluate_with(&mut n, &line, &objective, until, gearbox_search::objective::EvalOptions::default()).ok().map(|e| e.events)
+        let objective = gearbox_search::objective::Objective::Trick {
+            at_ms: until,
+            kind: gearbox_search::tricks::TrickKind::Any,
+        };
+        gearbox_search::objective::evaluate_with(
+            &mut n,
+            &line,
+            &objective,
+            until,
+            gearbox_search::objective::EvalOptions::default(),
+        )
+        .ok()
+        .map(|e| e.events)
     }
 
     pub fn check_setup_tricks(&mut self, id: Id) {
         let Some(s) = self.doc.setup(id).cloned() else { return };
         let name = format!("{} start", s.name);
-        let tick = self.doc.goals.iter().position(|g| g.name == name).and_then(|i| self.reach.get(i)).and_then(|r| r.tick);
-        let Some(tick) = tick else { return self.error("lab", format!("the run doesn't reach {name}: Reach and Join first")) };
+        let tick = self
+            .doc
+            .goals
+            .iter()
+            .position(|g| g.name == name)
+            .and_then(|i| self.reach.get(i))
+            .and_then(|r| r.tick);
+        let Some(tick) = tick else {
+            return self.error("lab", format!("the run doesn't reach {name}: Reach and Join first"));
+        };
         match self.trick_ticks(tick, s.controls.len(), false) {
             Some(e) => {
                 self.trick_checks.insert(id, [e.nosebug_ticks, e.bugslide_ticks, e.uberbug_ticks]);
@@ -128,7 +180,8 @@ impl Editor {
         s.window = k..end;
         if !s.kind.goals() || s.goals.is_empty() {
             (s.kind, s.at_tick) = (ObjKind::Moment, Some(end));
-            if s.aim.measure.quantity != gearbox_search::aim::Quantity::Speed || !s.aim.conditions.is_empty() {
+            if s.aim.measure.quantity != gearbox_search::aim::Quantity::Speed || !s.aim.conditions.is_empty()
+            {
                 s.aim = gearbox_search::aim::Aim::fastest();
             }
         }
@@ -148,8 +201,15 @@ impl Editor {
             d.len = d.len.max(need);
             d.start = Some(doc::StartState { tick, ..s.start.clone() });
         });
-        self.set_ticks("try setup", Some("try setup"), s.controls().into_iter().enumerate().map(|(i, c)| (tick + i, c)));
-        self.info("lab", format!("{}: placed at tick {tick}, {} ticks of its inputs", s.name, s.controls.len()));
+        self.set_ticks(
+            "try setup",
+            Some("try setup"),
+            s.controls().into_iter().enumerate().map(|(i, c)| (tick + i, c)),
+        );
+        self.info(
+            "lab",
+            format!("{}: placed at tick {tick}, {} ticks of its inputs", s.name, s.controls.len()),
+        );
     }
 
     pub fn reach_setup(&mut self, id: Id) {
@@ -171,7 +231,11 @@ impl Editor {
     }
 
     pub fn reach_pose(&mut self, goal: Id) {
-        let Some(name) = self.doc.goal(goal).filter(|g| matches!(g.kind, GoalKind::Pose(_))).map(|g| g.name.clone()) else { return self.error("lab", "Reach needs a car pose goal") };
+        let Some(name) =
+            self.doc.goal(goal).filter(|g| matches!(g.kind, GoalKind::Pose(_))).map(|g| g.name.clone())
+        else {
+            return self.error("lab", "Reach needs a car pose goal");
+        };
         if self.doc.start.is_some() {
             self.edit("reach: remove placement", None, |d| d.start = None);
         }
@@ -188,14 +252,26 @@ impl Editor {
     pub fn join_setup(&mut self, id: Id) {
         let Some(s) = self.doc.setup(id).cloned() else { return };
         let name = format!("{} start", s.name);
-        let reached = self.doc.goals.iter().position(|g| g.name == name).and_then(|i| self.reach.get(i)).and_then(|r| r.tick);
-        let Some(tick) = reached else { return self.error("lab", format!("the run doesn't reach {name} yet: Reach it first")) };
+        let reached = self
+            .doc
+            .goals
+            .iter()
+            .position(|g| g.name == name)
+            .and_then(|i| self.reach.get(i))
+            .and_then(|r| r.tick);
+        let Some(tick) = reached else {
+            return self.error("lab", format!("the run doesn't reach {name} yet: Reach it first"));
+        };
         let need = tick + s.controls.len() + 100;
         self.edit("join setup", None, |d| {
             d.remember("joining a setup");
             d.len = d.len.max(need);
         });
-        self.set_ticks("join setup", Some("join setup"), s.controls().into_iter().enumerate().map(|(i, c)| (tick + i, c)));
+        self.set_ticks(
+            "join setup",
+            Some("join setup"),
+            s.controls().into_iter().enumerate().map(|(i, c)| (tick + i, c)),
+        );
         let goal = self.add_goal(GoalKind::Pose(s.end_pose()));
         let end = format!("{} end", s.name);
         self.edit("name goal", None, |d| {
@@ -219,9 +295,28 @@ impl Editor {
                 first.entry(w).or_insert(k);
             }
         }
-        let mut cps: Vec<(bool, usize, u32, u32)> = self.gates.iter().filter(|g| g.gate.kind != 1).map(|g| (!first.contains_key(&g.gate.waypoint), first.get(&g.gate.waypoint).copied().unwrap_or(0), g.order.unwrap_or(u32::MAX), g.gate.waypoint)).collect();
+        let mut cps: Vec<(bool, usize, u32, u32)> = self
+            .gates
+            .iter()
+            .filter(|g| g.gate.kind != 1)
+            .map(|g| {
+                (
+                    !first.contains_key(&g.gate.waypoint),
+                    first.get(&g.gate.waypoint).copied().unwrap_or(0),
+                    g.order.unwrap_or(u32::MAX),
+                    g.gate.waypoint,
+                )
+            })
+            .collect();
         cps.sort();
-        let mut stops: Vec<RouteStop> = cps.into_iter().map(|c| RouteStop { name: self.gate_name(c.3), at: RouteAt::Gate(c.3), tick: (!c.0).then_some(c.1) }).collect();
+        let mut stops: Vec<RouteStop> = cps
+            .into_iter()
+            .map(|c| RouteStop {
+                name: self.gate_name(c.3),
+                at: RouteAt::Gate(c.3),
+                tick: (!c.0).then_some(c.1),
+            })
+            .collect();
         for (i, g) in self.doc.goals.iter().enumerate() {
             if g.is_gate() {
                 continue;
@@ -230,9 +325,18 @@ impl Editor {
             let at = stops.iter().position(|s| s.tick.is_none_or(|k| k > t)).unwrap_or(stops.len());
             stops.insert(at, RouteStop { name: g.name.clone(), at: RouteAt::Goal(g.id), tick: Some(t) });
         }
-        if let Some(fin) = self.gates.iter().filter(|g| g.gate.kind == 1).min_by_key(|g| (!first.contains_key(&g.gate.waypoint), g.gate.waypoint)) {
+        if let Some(fin) = self
+            .gates
+            .iter()
+            .filter(|g| g.gate.kind == 1)
+            .min_by_key(|g| (!first.contains_key(&g.gate.waypoint), g.gate.waypoint))
+        {
             let w = fin.gate.waypoint;
-            stops.push(RouteStop { name: "Finish".into(), at: RouteAt::Gate(w), tick: first.get(&w).copied() });
+            stops.push(RouteStop {
+                name: "Finish".into(),
+                at: RouteAt::Gate(w),
+                tick: first.get(&w).copied(),
+            });
         }
         stops
     }
@@ -248,10 +352,15 @@ impl Editor {
             },
             RouteFrom::Stop(i) => match stops.get(i).and_then(|s| s.tick) {
                 Some(t) => (t, i + 1),
-                None => return self.error("route", "the run doesn't get to that stop: route from an earlier one"),
+                None => {
+                    return self
+                        .error("route", "the run doesn't get to that stop: route from an earlier one");
+                }
             },
         };
-        let Some(last) = stops.iter().position(|s| s.at == r.to) else { return self.error("route", "pick where the route goes") };
+        let Some(last) = stops.iter().position(|s| s.at == r.to) else {
+            return self.error("route", "pick where the route goes");
+        };
         if last < first {
             return self.error("route", "the route goes to a stop before where it starts");
         }
@@ -262,10 +371,12 @@ impl Editor {
         for s in &stops[first..=last] {
             let id = match s.at {
                 RouteAt::Goal(id) => Some(id),
-                RouteAt::Gate(w) => match self.doc.goals.iter().find(|g| matches!(&g.kind, GoalKind::Gate(x) if x.has(w))) {
-                    Some(g) => Some(g.id),
-                    None => self.gate_goal(w).map(|gg| self.add_goal(GoalKind::Gate(gg))),
-                },
+                RouteAt::Gate(w) => {
+                    match self.doc.goals.iter().find(|g| matches!(&g.kind, GoalKind::Gate(x) if x.has(w))) {
+                        Some(g) => Some(g.id),
+                        None => self.gate_goal(w).map(|gg| self.add_goal(GoalKind::Gate(gg))),
+                    }
+                }
             };
             if let Some(id) = id.filter(|id| !ids.contains(id)) {
                 ids.push(id);
@@ -329,11 +440,16 @@ impl Editor {
             self.spec.at_tick = Some(end);
         }
         self.layout.right_tab = 1;
-        self.info("search", format!("range from the car at {} s", crate::fmt::fmt_ms(self.race_ms0 + 10 * start.tick as i32)));
+        self.info(
+            "search",
+            format!("range from the car at {} s", crate::fmt::fmt_ms(self.race_ms0 + 10 * start.tick as i32)),
+        );
     }
 
     pub fn run_experiment(&mut self) {
-        let Some(start) = self.doc.start.clone() else { return self.error("lab", "place the car first: experiments start from a placed car") };
+        let Some(start) = self.doc.start.clone() else {
+            return self.error("lab", "place the car first: experiments start from a placed car");
+        };
         let x = self.experiment.clone();
         let end = start.tick + x.ticks.max(10);
         let need = end + 100;
@@ -343,22 +459,34 @@ impl Editor {
         self.spec.kind = ObjKind::Moment;
         self.spec.aim = match x.kind {
             ExperimentKind::Fastest => gearbox_search::aim::Aim::fastest(),
-            ExperimentKind::Bugslide => gearbox_search::aim::Aim::longest_trick(gearbox_search::tricks::TrickKind::Bugslide),
-            ExperimentKind::Uberbug => gearbox_search::aim::Aim::longest_trick(gearbox_search::tricks::TrickKind::Uberbug),
-            ExperimentKind::Nosebug => gearbox_search::aim::Aim::longest_trick(gearbox_search::tricks::TrickKind::Nosebug),
+            ExperimentKind::Bugslide => {
+                gearbox_search::aim::Aim::longest_trick(gearbox_search::tricks::TrickKind::Bugslide)
+            }
+            ExperimentKind::Uberbug => {
+                gearbox_search::aim::Aim::longest_trick(gearbox_search::tricks::TrickKind::Uberbug)
+            }
+            ExperimentKind::Nosebug => {
+                gearbox_search::aim::Aim::longest_trick(gearbox_search::tricks::TrickKind::Nosebug)
+            }
         };
         self.sel = Sel::Start;
         self.spec.window = start.tick..end;
         self.spec.until = Some(end);
         self.spec.at_tick = Some(end);
         (self.spec.by_time, self.spec.seconds) = (true, x.seconds);
-        self.info("lab", format!("solve: {} for {:.2} s after the car", x.kind.label(), x.ticks as f32 / 100.0));
-        self.job = format!("Solve {}", match x.kind {
-            ExperimentKind::Nosebug => "nosebug",
-            ExperimentKind::Bugslide => "bugslide",
-            ExperimentKind::Uberbug => "uberbugs",
-            ExperimentKind::Fastest => "top speed",
-        });
+        self.info(
+            "lab",
+            format!("solve: {} for {:.2} s after the car", x.kind.label(), x.ticks as f32 / 100.0),
+        );
+        self.job = format!(
+            "Solve {}",
+            match x.kind {
+                ExperimentKind::Nosebug => "nosebug",
+                ExperimentKind::Bugslide => "bugslide",
+                ExperimentKind::Uberbug => "uberbugs",
+                ExperimentKind::Fastest => "top speed",
+            }
+        );
         self.start_search();
     }
 }
@@ -415,7 +543,10 @@ impl Editor {
         };
         let f = self.sim.frames.get(tick)?;
         let (d, a, v) = pose_miss(spec, f);
-        Some(format!("{word} {} s \u{00b7} {d:.2} m, {a:.1}\u{00b0}, {v:+.1} km/h", crate::fmt::fmt_ms(self.race_ms0 + 10 * tick as i32)))
+        Some(format!(
+            "{word} {} s \u{00b7} {d:.2} m, {a:.1}\u{00b0}, {v:+.1} km/h",
+            crate::fmt::fmt_ms(self.race_ms0 + 10 * tick as i32)
+        ))
     }
 }
 
@@ -437,7 +568,14 @@ pub fn trick_spans(frames: &[crate::engine::frame::Frame]) -> Vec<TrickSpan> {
         let travel = f64::from(v.x).atan2(f64::from(v.z));
         let slip = (travel - heading).sin().atan2((travel - heading).cos()).abs();
         let before = d.events;
-        d.observe(Observation { speed: f64::from(v.length()), slip, pitch: fwd[1].clamp(-1.0, 1.0).asin(), wheels: f.wheels.map(|w| w.contact), body_contact: false, wall_contact: false });
+        d.observe(Observation {
+            speed: f64::from(v.length()),
+            slip,
+            pitch: fwd[1].clamp(-1.0, 1.0).asin(),
+            wheels: f.wheels.map(|w| w.contact),
+            body_contact: false,
+            wall_contact: false,
+        });
         let e = d.events;
         let kind = if e.nosebug_ticks > before.nosebug_ticks {
             TrickKind::Nosebug

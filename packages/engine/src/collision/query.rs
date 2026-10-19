@@ -1,8 +1,10 @@
-use crate::{Aabb, ContinuousEntryId, DynamicItemId, EntryId, ItemId, Iso, ShapeEntryId, ShapeId,
-    SharedShapeId, StaticItemId, SurfaceId};
+use super::{CollisionWorld, ContactList, ContactPool, ItemFlags, Lists, ShapeEntry, SkipMaterial, Surface};
 use crate::shape::Geometry;
 use crate::tree::{AabbQuery, overlap};
-use super::{Lists, ItemFlags, SkipMaterial, CollisionWorld, ContactList, ContactPool, ShapeEntry, Surface};
+use crate::{
+    Aabb, ContinuousEntryId, DynamicItemId, EntryId, Iso, ItemId, ShapeEntryId, ShapeId, SharedShapeId,
+    StaticItemId, SurfaceId,
+};
 
 pub const QUERY_CAPACITY: usize = 1000;
 const CLOSE_MERGE_LIMIT: usize = 40;
@@ -22,18 +24,25 @@ pub struct QueryFilter {
 impl Default for QueryFilter {
     fn default() -> Self {
         Self {
-            skip_material: SkipMaterial::NONE, two_sided: false, lists: Lists::ALL,
-            layers: u32::MAX, excluded_flags: ItemFlags::NONE, ignored: [None; 2],
+            skip_material: SkipMaterial::NONE,
+            two_sided: false,
+            lists: Lists::ALL,
+            layers: u32::MAX,
+            excluded_flags: ItemFlags::NONE,
+            ignored: [None; 2],
         }
     }
 }
 
 impl QueryFilter {
     pub fn accepts(self, geometry: Geometry<'_>, item: Option<ItemId>) -> bool {
-        let Some(id) = item else { return false; };
+        let Some(id) = item else {
+            return false;
+        };
         let item_view = geometry.item(id);
         let bit = if item_view.layer == 0 { 0 } else { 1u32 << ((item_view.layer - 1) & 31) };
-        self.layers & bit != 0 && !self.excluded_flags.intersects(item_view.flags)
+        self.layers & bit != 0
+            && !self.excluded_flags.intersects(item_view.flags)
             && !self.ignored.contains(&item)
     }
 }
@@ -77,15 +86,23 @@ impl<'a> Geometry<'a> {
             ItemId::Static(id) => {
                 let item = &self.world.statics.items[id.index()];
                 ItemView {
-                    layer: item.layer, flags: item.query_flags, id: item.id, iso: item.iso,
-                    body: u32::MAX, dynamic: false,
+                    layer: item.layer,
+                    flags: item.query_flags,
+                    id: item.id,
+                    iso: item.iso,
+                    body: u32::MAX,
+                    dynamic: false,
                 }
             }
             ItemId::Dynamic(id) => {
                 let item = &self.state.dynamic_item[id.index()];
                 ItemView {
-                    layer: item.layer, flags: item.flags, id: item.id, iso: item.iso,
-                    body: item.body, dynamic: item.kind != 0,
+                    layer: item.layer,
+                    flags: item.flags,
+                    id: item.id,
+                    iso: item.iso,
+                    body: item.body,
+                    dynamic: item.kind != 0,
                 }
             }
         }
@@ -96,8 +113,10 @@ impl<'a> Geometry<'a> {
             EntryId::Surface(id) => {
                 let surface = &self.world.statics.surfaces[id.index()];
                 Surface {
-                    shape: ShapeId::Shared(SharedShapeId(surface.shape)), iso: surface.iso,
-                    item: Some(StaticItemId(surface.item).into()), tag: surface.tag,
+                    shape: ShapeId::Shared(SharedShapeId(surface.shape)),
+                    iso: surface.iso,
+                    item: Some(StaticItemId(surface.item).into()),
+                    tag: surface.tag,
                 }
             }
             EntryId::Discrete(id) => {
@@ -115,16 +134,17 @@ impl<'a> Geometry<'a> {
         self.item(self.entry(id).item.expect("entry without item"))
     }
 
-    pub(crate) fn placed_entries(self, range: std::ops::Range<u32>)
-        -> impl Iterator<Item = (EntryId, &'a ShapeEntry)> {
+    pub(crate) fn placed_entries(
+        self,
+        range: std::ops::Range<u32>,
+    ) -> impl Iterator<Item = (EntryId, &'a ShapeEntry)> {
         let entries = &self.state.shape_entry;
         range.map(move |index| (EntryId::Discrete(ShapeEntryId(index)), &entries[index as usize]))
     }
 }
 
 impl CollisionWorld {
-    pub fn query_all(&self, geometry: Geometry<'_>, bounds: Aabb, filter: QueryFilter)
-        -> Vec<EntryId> {
+    pub fn query_all(&self, geometry: Geometry<'_>, bounds: Aabb, filter: QueryFilter) -> Vec<EntryId> {
         let mut out = Vec::new();
         self.collect_warp(geometry, bounds, filter, &mut out);
         for (range, nodes) in self.surface_trees(geometry) {
@@ -134,7 +154,9 @@ impl CollisionWorld {
                 assert!(id < count, "tree leaf index outside surface list");
                 let r = EntryId::Surface(SurfaceId(start + id));
                 if filter.accepts(geometry, geometry.entry(r).item) {
-                    if out.len() >= QUERY_CAPACITY { break; }
+                    if out.len() >= QUERY_CAPACITY {
+                        break;
+                    }
                     out.push(r);
                 }
             }
@@ -145,13 +167,17 @@ impl CollisionWorld {
     pub fn query_box(&self, geometry: Geometry<'_>, bounds: Aabb, filter: QueryFilter) -> QueryResults {
         let surfaces = if filter.lists.contains(Lists::SURFACES) {
             self.query_all(geometry, bounds, filter)
-        } else { Vec::new() };
+        } else {
+            Vec::new()
+        };
         let mut continuous = Vec::new();
         if filter.lists.contains(Lists::CONTINUOUS) && !self.continuous_entries.is_empty() {
             for i in self.continuous_entries.clone() {
                 let entry = &geometry.state.continuous_entry[i as usize];
                 if filter.accepts(geometry, entry.item) && overlap(entry.bounds, bounds) {
-                    if continuous.len() >= QUERY_CAPACITY { break; }
+                    if continuous.len() >= QUERY_CAPACITY {
+                        break;
+                    }
                     continuous.push(EntryId::Continuous(ContinuousEntryId(i)));
                 }
             }
@@ -160,7 +186,9 @@ impl CollisionWorld {
         if filter.lists.contains(Lists::DISCRETE) {
             for (r, entry) in geometry.placed_entries(self.shape_entries.clone()) {
                 if filter.accepts(geometry, entry.item) && overlap(entry.bounds, bounds) {
-                    if discrete.len() >= QUERY_CAPACITY { break; }
+                    if discrete.len() >= QUERY_CAPACITY {
+                        break;
+                    }
                     discrete.push(r);
                 }
             }
@@ -169,8 +197,12 @@ impl CollisionWorld {
     }
 
     pub fn shape_contacts(
-        &self, geometry: Geometry<'_>, source: EntryId, shape: &Surface,
-        candidates: &QueryResults, out: &mut ContactList,
+        &self,
+        geometry: Geometry<'_>,
+        source: EntryId,
+        shape: &Surface,
+        candidates: &QueryResults,
+        out: &mut ContactList,
     ) {
         if self.post_filter != 0 {
             todo!("narrowphase post-filter");
@@ -187,18 +219,30 @@ impl CollisionWorld {
     }
 
     pub fn contacts(
-        &self, geometry: Geometry<'_>, shape: ContactShape, iso: Iso, filter: QueryFilter,
+        &self,
+        geometry: Geometry<'_>,
+        shape: ContactShape,
+        iso: Iso,
+        filter: QueryFilter,
     ) -> ContactList {
         let entries = geometry.entries(shape.shape, iso, None, u32::MAX as u64);
-        if entries.is_empty() { return ContactList::new(shape.capacity); }
+        if entries.is_empty() {
+            return ContactList::new(shape.capacity);
+        }
         let first = shape.first_entry.0;
-        let entries = entries.iter().enumerate()
+        let entries = entries
+            .iter()
+            .enumerate()
             .map(|(index, entry)| (EntryId::Discrete(ShapeEntryId(first + index as u32)), entry));
         self.contacts_from_entries(geometry, entries, filter, shape.capacity)
     }
 
     pub fn contacts_for_item(
-        &self, geometry: Geometry<'_>, item: DynamicItemId, filter: QueryFilter, capacity: usize,
+        &self,
+        geometry: Geometry<'_>,
+        item: DynamicItemId,
+        filter: QueryFilter,
+        capacity: usize,
     ) -> ContactList {
         let mut out = ContactList::new(capacity);
         self.append_contacts_for_item(geometry, item, filter, &mut out);
@@ -206,19 +250,25 @@ impl CollisionWorld {
     }
 
     pub fn append_contacts_for_item(
-        &self, geometry: Geometry<'_>, item: DynamicItemId, filter: QueryFilter, out: &mut ContactList,
+        &self,
+        geometry: Geometry<'_>,
+        item: DynamicItemId,
+        filter: QueryFilter,
+        out: &mut ContactList,
     ) {
         let item = &geometry.state.dynamic_item[item.index()];
-        let first = if item.entry_count == 0 { 0 } else {
-            self.shape_entries.start + item.entry_start as u32
-        };
+        let first =
+            if item.entry_count == 0 { 0 } else { self.shape_entries.start + item.entry_start as u32 };
         let entries = geometry.placed_entries(first..first + item.entry_count as u32);
         self.append_contacts_from_entries(geometry, entries, filter, out);
     }
 
     fn contacts_from_entries<'a>(
-        &self, geometry: Geometry<'_>, entries: impl Iterator<Item = (EntryId, &'a ShapeEntry)>,
-        filter: QueryFilter, capacity: usize,
+        &self,
+        geometry: Geometry<'_>,
+        entries: impl Iterator<Item = (EntryId, &'a ShapeEntry)>,
+        filter: QueryFilter,
+        capacity: usize,
     ) -> ContactList {
         let mut out = ContactList::new(capacity);
         self.append_contacts_from_entries(geometry, entries, filter, &mut out);
@@ -226,8 +276,11 @@ impl CollisionWorld {
     }
 
     fn append_contacts_from_entries<'a>(
-        &self, geometry: Geometry<'_>, entries: impl Iterator<Item = (EntryId, &'a ShapeEntry)>,
-        filter: QueryFilter, out: &mut ContactList,
+        &self,
+        geometry: Geometry<'_>,
+        entries: impl Iterator<Item = (EntryId, &'a ShapeEntry)>,
+        filter: QueryFilter,
+        out: &mut ContactList,
     ) {
         let before = out.len();
         let entries: Vec<_> = entries.collect();
@@ -246,26 +299,35 @@ impl CollisionWorld {
     }
 
     pub(crate) fn collect_warp(
-        &self, geometry: Geometry<'_>, bounds: Aabb, filter: QueryFilter,
+        &self,
+        geometry: Geometry<'_>,
+        bounds: Aabb,
+        filter: QueryFilter,
         out: &mut Vec<EntryId>,
     ) {
-        if !filter.accepts(geometry, self.warp_item)
-            || crate::tree::inside(bounds, self.warp_bounds) { return; }
+        if !filter.accepts(geometry, self.warp_item) || crate::tree::inside(bounds, self.warp_bounds) {
+            return;
+        }
         let first = self.warp_surfaces.start;
         let count = self.warp_surfaces.len();
         for (i, &warp) in self.warp_boxes[..count].iter().enumerate() {
             if overlap(warp, bounds) {
-                if out.len() >= QUERY_CAPACITY { break; }
+                if out.len() >= QUERY_CAPACITY {
+                    break;
+                }
                 out.push(EntryId::Surface(SurfaceId(first + i as u32)));
             }
         }
     }
 
     pub(crate) fn surface_trees<'a>(
-        &'a self, geometry: Geometry<'a>,
+        &'a self,
+        geometry: Geometry<'a>,
     ) -> [(std::ops::Range<u32>, &'a [crate::arrays::TreeNode]); 3] {
-        [(0..geometry.world.statics.surfaces.len() as u32, &geometry.world.statics.tree.nodes),
-         (self.dynamic_surfaces.clone(), &self.dynamic_tree_nodes),
-         (self.updated_surfaces.clone(), &self.updated_tree_nodes)]
+        [
+            (0..geometry.world.statics.surfaces.len() as u32, &geometry.world.statics.tree.nodes),
+            (self.dynamic_surfaces.clone(), &self.dynamic_tree_nodes),
+            (self.updated_surfaces.clone(), &self.updated_tree_nodes),
+        ]
     }
 }

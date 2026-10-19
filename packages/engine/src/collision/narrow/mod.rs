@@ -1,12 +1,19 @@
-pub mod sphere;
-pub mod ellipsoid;
 pub mod convex;
+pub mod ellipsoid;
+pub mod sphere;
 
-use crate::{EntryId, shape::{Geometry, Shape}};
 use super::{ContactSink, Surface};
+use crate::{
+    EntryId,
+    shape::{Geometry, Shape},
+};
 
 pub fn contacts(
-    geometry: Geometry<'_>, a_ref: EntryId, a: &Surface, b_ref: EntryId, b: &Surface,
+    geometry: Geometry<'_>,
+    a_ref: EntryId,
+    a: &Surface,
+    b_ref: EntryId,
+    b: &Surface,
     out: &mut impl ContactSink,
 ) {
     match (geometry.shape(a.shape), geometry.shape(b.shape)) {

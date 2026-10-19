@@ -9,11 +9,7 @@ struct Frame {
 const EPS: f32 = 0.00001;
 const TINY: f32 = 1.0e-10;
 fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
-    [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ]
+    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
 fn length(p: [f32; 3]) -> f32 {
     (p[1] * p[1] + p[0] * p[0] + p[2] * p[2]).sqrt()
@@ -45,9 +41,7 @@ fn basis(forward: [f32; 3], up: [f32; 3]) -> [f32; 9] {
     let right = normalize(right, true);
     let forward = normalize(forward, false);
     let up = cross(forward, right);
-    [
-        right[0], up[0], forward[0], right[1], up[1], forward[1], right[2], up[2], forward[2],
-    ]
+    [right[0], up[0], forward[0], right[1], up[1], forward[1], right[2], up[2], forward[2]]
 }
 fn column(r: [f32; 9], i: usize) -> [f32; 3] {
     [r[i], r[3 + i], r[6 + i]]
@@ -66,8 +60,7 @@ fn tangent(angle: f32) -> f32 {
     let z = x * x;
     if z > 1.0e-14 {
         let numerator = ((1153516.6 - z * 13093.694) * z - 17956526.0) * z;
-        let denominator =
-            (((z + 13681.296) * z - 1320892.4) * z + 25008380.0) * z - 53869576.0;
+        let denominator = (((z + 13681.296) * z - 1320892.4) * z + 25008380.0) * z - 53869576.0;
         x = (numerator / denominator) * x + x;
     }
     if n & 2 != 0 {
@@ -89,23 +82,11 @@ fn handles(a: Frame, b: Frame, limit: f32) -> ([f32; 3], [f32; 3]) {
         let d = difference(b.position, a.position);
         let delta = difference(u, v).map(f32::abs);
         let (det, n0, n1) = if delta[0] >= delta[2] && delta[1] >= delta[2] {
-            (
-                v[1] * u[0] - v[0] * u[1],
-                d[0] * v[1] - d[1] * v[0],
-                d[1] * u[0] - d[0] * u[1],
-            )
+            (v[1] * u[0] - v[0] * u[1], d[0] * v[1] - d[1] * v[0], d[1] * u[0] - d[0] * u[1])
         } else if delta[0] >= delta[1] && delta[2] >= delta[1] {
-            (
-                v[2] * u[0] - v[0] * u[2],
-                d[0] * v[2] - d[2] * v[0],
-                d[2] * u[0] - d[0] * u[2],
-            )
+            (v[2] * u[0] - v[0] * u[2], d[0] * v[2] - d[2] * v[0], d[2] * u[0] - d[0] * u[2])
         } else {
-            (
-                v[2] * u[1] - v[1] * u[2],
-                d[1] * v[2] - d[2] * v[1],
-                d[2] * u[1] - d[1] * u[2],
-            )
+            (v[2] * u[1] - v[1] * u[2], d[1] * v[2] - d[2] * v[1], d[2] * u[1] - d[1] * u[2])
         };
         if !(det.abs() * 100000.0 > n0.abs() && det.abs() * 100000.0 > n1.abs()) {
             todo!("singular crystal deformation handles");
@@ -119,26 +100,18 @@ fn handles(a: Frame, b: Frame, limit: f32) -> ([f32; 3], [f32; 3]) {
         let factor = tangent(angle_approx(c_len, dot) * 0.25) * 1.3333334;
         ((factor * h1).abs(), (factor * h0).abs())
     };
-    (
-        std::array::from_fn(|i| a.position[i] + f0[i] * h0),
-        std::array::from_fn(|i| b.position[i] - f1[i] * h1),
-    )
+    (std::array::from_fn(|i| a.position[i] + f0[i] * h0), std::array::from_fn(|i| b.position[i] - f1[i] * h1))
 }
 fn transform_frames(frames: &mut [Frame], guides: &[Frame], limit: f32) {
     if guides.is_empty() {
         return;
     }
     let first = frames[0];
-    let mut path = vec![Frame {
-        rotation: quat_matrix(matrix_to_quat_values(first.rotation)),
-        ..first
-    }];
+    let mut path = vec![Frame { rotation: quat_matrix(matrix_to_quat_values(first.rotation)), ..first }];
     path.extend_from_slice(guides);
     let mut distances = vec![0.0f32];
     for pair in path.windows(2) {
-        distances.push(
-            distances.last().unwrap() + length(difference(pair[1].position, pair[0].position)),
-        );
+        distances.push(distances.last().unwrap() + length(difference(pair[1].position, pair[0].position)));
     }
     let total = *distances.last().unwrap();
     let distances: Vec<_> = distances.iter().map(|v| v / total).collect();
@@ -148,13 +121,8 @@ fn transform_frames(frames: &mut [Frame], guides: &[Frame], limit: f32) {
         } else if f.parameter >= 1.0 {
             (path.len() - 1, 1.0)
         } else {
-            let i = distances
-                .partition_point(|&d| d <= f.parameter)
-                .min(path.len() - 1);
-            (
-                i,
-                (f.parameter - distances[i - 1]) / (distances[i] - distances[i - 1]),
-            )
+            let i = distances.partition_point(|&d| d <= f.parameter).min(path.len() - 1);
+            (i, (f.parameter - distances[i - 1]) / (distances[i] - distances[i - 1]))
         };
         let (a, b) = (path[segment - 1], path[segment]);
         let (h0, h1) = handles(a, b, limit);
@@ -184,10 +152,7 @@ fn transform_frames(frames: &mut [Frame], guides: &[Frame], limit: f32) {
         let tangent = normalize(tangent, false);
         let up0 = column(a.rotation, 1);
         let up1 = column(b.rotation, 1);
-        let up = normalize(
-            std::array::from_fn(|i| (up1[i] - up0[i]) * t + up0[i]),
-            true,
-        );
+        let up = normalize(std::array::from_fn(|i| (up1[i] - up0[i]) * t + up0[i]), true);
         f.rotation = basis(tangent, up);
     }
 }
@@ -239,35 +204,17 @@ fn source_frames(
     let mut points = Vec::new();
     for &p in positions {
         let t = (p[2] - start[2]) * coefficients[1] + (p[0] - start[0]) * coefficients[0];
-        let plane = [
-            delta[0] * t + origin[0],
-            t * 0.0 + origin[1],
-            t * delta[2] + origin[2],
-        ];
-        let index = frames
-            .iter()
-            .position(|f| (0..3).all(|i| near(f.position[i], plane[i])))
-            .unwrap_or_else(|| {
+        let plane = [delta[0] * t + origin[0], t * 0.0 + origin[1], t * delta[2] + origin[2]];
+        let index =
+            frames.iter().position(|f| (0..3).all(|i| near(f.position[i], plane[i]))).unwrap_or_else(|| {
                 let i = frames.len();
-                frames.push(Frame {
-                    rotation,
-                    position: plane,
-                    parameter: t,
-                });
+                frames.push(Frame { rotation, position: plane, parameter: t });
                 i
             });
-        points.push(LocalPoint {
-            position: point(transpose, difference(p, plane)),
-            frame: index,
-        });
+        points.push(LocalPoint { position: point(transpose, difference(p, plane)), frame: index });
     }
     let mut order: Vec<_> = (0..frames.len()).collect();
-    order.sort_by(|&a, &b| {
-        frames[a]
-            .parameter
-            .partial_cmp(&frames[b].parameter)
-            .unwrap()
-    });
+    order.sort_by(|&a, &b| frames[a].parameter.partial_cmp(&frames[b].parameter).unwrap());
     let mut remap = vec![0; frames.len()];
     for (new, &old) in order.iter().enumerate() {
         remap[old] = new;
@@ -289,9 +236,7 @@ fn source_frames(
     (frames, points, len)
 }
 fn arc_length(frames: &[Frame]) -> f32 {
-    frames.windows(2).fold(0.0, |sum, p| {
-        sum + length(difference(p[0].position, p[1].position))
-    })
+    frames.windows(2).fold(0.0, |sum, p| sum + length(difference(p[0].position, p[1].position)))
 }
 fn apply_frames(frames: &[Frame], points: &[LocalPoint]) -> Vec<[f32; 3]> {
     points
@@ -326,12 +271,7 @@ pub(crate) fn read(r: &mut gearbox_gbx::reader::Reader<'_>) -> anyhow::Result<De
         }
         guides.push(g);
     }
-    Ok(Deformation {
-        center,
-        half,
-        transform,
-        guides,
-    })
+    Ok(Deformation { center, half, transform, guides })
 }
 pub(crate) fn apply_layers(
     geometry: &mut [crate::crystal::Geometry],
@@ -344,13 +284,10 @@ pub(crate) fn apply_layers(
     for (group, id) in refs {
         if let Some((_, groups, _, index)) = layers.iter().find(|l| &l.0 == id && l.2 == trigger) {
             if let Some(group) = groups.iter().position(|g| g == group) {
-                let i = selected
-                    .iter()
-                    .position(|s| s.0 == *index)
-                    .unwrap_or_else(|| {
-                        selected.push((*index, Vec::new()));
-                        selected.len() - 1
-                    });
+                let i = selected.iter().position(|s| s.0 == *index).unwrap_or_else(|| {
+                    selected.push((*index, Vec::new()));
+                    selected.len() - 1
+                });
                 if !selected[i].1.contains(&group) {
                     selected[i].1.push(group);
                 }
@@ -413,17 +350,9 @@ fn apply(g: &mut crate::crystal::Geometry, groups: &[usize], modifier: &Deformat
             }
         }
     }
-    let axis = if forward[2].abs() > forward[0].abs() {
-        2
-    } else {
-        0
-    };
+    let axis = if forward[2].abs() > forward[0].abs() { 2 } else { 0 };
     let mut direction = [0.; 3];
-    direction[axis] = if forward[axis].is_sign_negative() {
-        -1.0
-    } else {
-        1.0
-    };
+    direction[axis] = if forward[axis].is_sign_negative() { -1.0 } else { 1.0 };
     let anchor = std::array::from_fn(|i| center[i] - half[i] * direction[i]);
     let width = ((half[1] + half[1]) * direction[1]
         + (half[0] + half[0]) * direction[0]
@@ -439,11 +368,7 @@ fn apply(g: &mut crate::crystal::Geometry, groups: &[usize], modifier: &Deformat
         .collect();
     let (mut frames, _, limit) = source_frames(&positions, anchor, direction, width);
     transform_frames(&mut frames, &guides, limit);
-    let copies = if width == 0.0 {
-        1
-    } else {
-        (arc_length(&frames) / width).round() as usize
-    };
+    let copies = if width == 0.0 { 1 } else { (arc_length(&frames) / width).round() as usize };
     if copies == 0 {
         todo!("zero-repeat crystal deformation");
     }
@@ -473,9 +398,7 @@ fn apply(g: &mut crate::crystal::Geometry, groups: &[usize], modifier: &Deformat
         let offset = step.map(|v| v * (copy as f32));
         let origin: [f32; 3] = std::array::from_fn(|i| export_center[i] + offset[i]);
         for p in &source {
-            repeated.push(std::array::from_fn(|i| {
-                (p[i] - export_center[i]) + origin[i]
-            }));
+            repeated.push(std::array::from_fn(|i| (p[i] - export_center[i]) + origin[i]));
         }
     }
     let (mut frames, points, limit) = source_frames(&repeated, anchor, direction, width);
@@ -566,19 +489,10 @@ fn on_edge(p: [f32; 3], a: [f32; 3], b: [f32; 3]) -> bool {
     projection >= -EPS && projection <= len + EPS && (length(v) - projection).abs() <= EPS
 }
 
-fn check_cleanup(
-    positions: &[[f32; 3]],
-    faces: &[(Vec<u32>, i32)],
-    face_groups: &[usize],
-    groups: &[usize],
-) {
+fn check_cleanup(positions: &[[f32; 3]], faces: &[(Vec<u32>, i32)], face_groups: &[usize], groups: &[usize]) {
     for &group in groups {
-        let part: Vec<_> = faces
-            .iter()
-            .zip(face_groups)
-            .filter(|(_, g)| **g == group)
-            .map(|(f, _)| &f.0)
-            .collect();
+        let part: Vec<_> =
+            faces.iter().zip(face_groups).filter(|(_, g)| **g == group).map(|(f, _)| &f.0).collect();
         if part.len() < 500 {
             let normals: Vec<_> = part.iter().map(|f| face_normal(positions, f)).collect();
             for (i, a) in part.iter().enumerate() {

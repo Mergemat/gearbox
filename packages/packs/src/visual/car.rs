@@ -51,11 +51,7 @@ pub(super) fn load(cache: &mut VisualCache, car: crate::assets::Car) -> Result<C
     };
     let path = format!("Skins/Models/CarSport/{folder}/MainBody.Mesh.gbx");
     let parts = cache.file_parts(&path, 0, 0)?;
-    let texture_folder = if car == crate::assets::Car::Sport {
-        "Stadium/Common"
-    } else {
-        folder
-    };
+    let texture_folder = if car == crate::assets::Car::Sport { "Stadium/Common" } else { folder };
     let skeleton_path = format!("Skins/Models/CarSport/{texture_folder}/MainBody.Skel.Gbx");
     let bytes = cache.read(&skeleton_path)?;
     let layout = crate::nodes::layout(&bytes)?;
@@ -70,11 +66,7 @@ pub(super) fn load(cache: &mut VisualCache, car: crate::assets::Car) -> Result<C
         for value in &mut bind_transform {
             *value = reader.f32()?;
         }
-        skeleton.push(Bone {
-            name,
-            parent,
-            bind_transform,
-        });
+        skeleton.push(Bone { name, parent, bind_transform });
     }
     for wheel in &mut wheels {
         let visual_name = format!("{}Wheel", wheel.name.strip_suffix("Surf").unwrap_or(&wheel.name));
@@ -133,9 +125,9 @@ pub(super) fn load(cache: &mut VisualCache, car: crate::assets::Car) -> Result<C
                 let j = mesh.joint_indices[tri[0] as usize][0];
                 if tri.iter().all(|&i| mesh.joint_indices[i as usize][0] == j) {
                     mesh.skin_bones.get(j as usize).and_then(|name| {
-                        wheels
-                            .iter()
-                            .position(|w| name == &format!("{}Wheel", w.name.strip_suffix("Surf").unwrap_or(&w.name)))
+                        wheels.iter().position(|w| {
+                            name == &format!("{}Wheel", w.name.strip_suffix("Surf").unwrap_or(&w.name))
+                        })
                     })
                 } else {
                     None
@@ -211,7 +203,8 @@ fn subset(source: &Mesh, indices: &[u32], t: Transform) -> Mesh {
         ..Default::default()
     };
     let mut remap = HashMap::new();
-    let rotate = |v: [f32; 3]| std::array::from_fn(|i| t[i * 3] * v[0] + t[i * 3 + 1] * v[1] + t[i * 3 + 2] * v[2]);
+    let rotate =
+        |v: [f32; 3]| std::array::from_fn(|i| t[i * 3] * v[0] + t[i * 3 + 1] * v[1] + t[i * 3 + 2] * v[2]);
     for &index in indices {
         let mapped = *remap.entry(index).or_insert_with(|| {
             let i = index as usize;

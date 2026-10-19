@@ -16,8 +16,7 @@ macro_rules! flags {
     };
 }
 
-flags!(
-    Lists, u8);
+flags!(Lists, u8);
 impl Lists {
     pub const SURFACES: Self = Self(1);
     pub const CONTINUOUS: Self = Self(2);
@@ -25,21 +24,18 @@ impl Lists {
     pub const ALL: Self = Self(7);
 }
 
-flags!(
-    ItemFlags, u32);
+flags!(ItemFlags, u32);
 impl ItemFlags {
     pub const NONE: Self = Self(0);
 }
 
-flags!(
-    ItemEvents, u8);
+flags!(ItemEvents, u8);
 impl ItemEvents {
     pub const NONE: Self = Self(0);
     pub const CONTACT_TIME: Self = Self(2);
 }
 
-flags!(
-    ContactFlags, u32);
+flags!(ContactFlags, u32);
 impl ContactFlags {
     pub const FACE: Self = Self(1);
     pub const OTHER_POINT: Self = Self(2);
@@ -50,7 +46,13 @@ impl ContactFlags {
 pub struct SkipMaterial(u8);
 impl SkipMaterial {
     pub const NONE: Self = Self(255);
-    pub const fn from_id(material: u8) -> Self { Self(material) }
-    pub const fn id(self) -> u8 { self.0 }
-    pub const fn skips(self, material: u8) -> bool { self.0 == material }
+    pub const fn from_id(material: u8) -> Self {
+        Self(material)
+    }
+    pub const fn id(self) -> u8 {
+        self.0
+    }
+    pub const fn skips(self, material: u8) -> bool {
+        self.0 == material
+    }
 }

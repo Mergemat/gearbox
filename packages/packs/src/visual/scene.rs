@@ -6,13 +6,13 @@ use placement::{Iso, VariantOffset};
 
 pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualCache) -> Result<Scene> {
     let begin = cache.diagnostics.len();
-    let embedded: HashMap<_, _> = map.embedded.files.iter().map(|f| (norm(&f.path), f.data.clone())).collect();
+    let embedded: HashMap<_, _> =
+        map.embedded.files.iter().map(|f| (norm(&f.path), f.data.clone())).collect();
     if cache.embedded != embedded {
-        let changed: std::collections::HashSet<_> = cache.embedded.keys().chain(embedded.keys()).cloned().collect();
+        let changed: std::collections::HashSet<_> =
+            cache.embedded.keys().chain(embedded.keys()).cloned().collect();
         let stale = |key: &str| {
-            changed
-                .iter()
-                .any(|p| key == p || key.strip_prefix(p).is_some_and(|tail| tail.starts_with('#')))
+            changed.iter().any(|p| key == p || key.strip_prefix(p).is_some_and(|tail| tail.starts_with('#')))
         };
         cache.files.retain(|key, _| !stale(key));
         cache.decoded.retain(|key, _| !stale(key));
@@ -24,9 +24,7 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
         for file in &map.embedded.files {
             if let Some(name) = file.item_model.as_ref().and_then(|m| m.ident[0].as_deref()) {
                 cache.embedded_models.insert(norm(name), file.path.clone());
-                cache
-                    .embedded_models
-                    .insert(norm(&format!("{name}_CustomBlock")), file.path.clone());
+                cache.embedded_models.insert(norm(&format!("{name}_CustomBlock")), file.path.clone());
             }
         }
     }
@@ -66,11 +64,7 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
             }
         }
     }
-    for (b, baked) in map
-        .blocks
-        .iter()
-        .map(|b| (b, false))
-        .chain(map.baked_blocks.iter().map(|b| (b, true)))
+    for (b, baked) in map.blocks.iter().map(|b| (b, false)).chain(map.baked_blocks.iter().map(|b| (b, true)))
     {
         if baked
             && b.free.is_none()
@@ -87,11 +81,7 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
             let (info, v, m, offset) = if let Some(path) = &embedded {
                 let bytes = cache.read(path)?;
                 let layout = crate::nodes::layout(&bytes)?;
-                let ctx = crate::prefab::Ctx {
-                    buf: &bytes,
-                    layout: &layout,
-                    path,
-                };
+                let ctx = crate::prefab::Ctx { buf: &bytes, layout: &layout, path };
                 let n = layout
                     .nodes
                     .iter()
@@ -170,7 +160,10 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
                             block: b.name.clone(),
                             visual,
                             collision,
-                            overlap: (0..3).all(|k| visual[0][k] <= collision[1][k] + 0.05 && collision[0][k] <= visual[1][k] + 0.05),
+                            overlap: (0..3).all(|k| {
+                                visual[0][k] <= collision[1][k] + 0.05
+                                    && collision[0][k] <= visual[1][k] + 0.05
+                            }),
                         });
                     }
                 }
@@ -196,10 +189,7 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
             let parts = cache.file_parts(&path, (it.flags >> 8) as usize, 0)?;
             let loc = placement::free_location_variant(it.position, it.yaw_pitch_roll, Default::default());
             let loc = placement::compose_iso(([1., 0., 0., 0., 1., 0., 0., 0., 1.], it.pivot), loc);
-            let iso = Iso {
-                q: placement::rotation_quat(loc.0),
-                p: loc.1,
-            };
+            let iso = Iso { q: placement::rotation_quat(loc.0), p: loc.1 };
             let mods = assets
                 .index
                 .items
@@ -235,8 +225,14 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
                                     (map.size[2] as f32 * 32. - d.size[2] as f32 * 256.) * 0.5,
                                 ],
                             );
-                            let iso =
-                                placement::grid_iso_in([256., 64., -64.], Some(location), b.coord, b.dir as u32, size(&v.units), offset);
+                            let iso = placement::grid_iso_in(
+                                [256., 64., -64.],
+                                Some(location),
+                                b.coord,
+                                b.dir as u32,
+                                size(&v.units),
+                                offset,
+                            );
                             append(
                                 &mut scene,
                                 cache,
@@ -278,12 +274,8 @@ fn selection<'a>(
     assets: &'a Assets,
     b: &gearbox_gbx::map::Block,
     env: &str,
-) -> Result<(
-    &'a crate::catalog::Block,
-    &'a crate::catalog::Variant,
-    &'a crate::catalog::Mobil,
-    VariantOffset,
-)> {
+) -> Result<(&'a crate::catalog::Block, &'a crate::catalog::Variant, &'a crate::catalog::Mobil, VariantOffset)>
+{
     let info = assets.block_in(&b.name, env).with_context(|| format!("block {} absent", b.name))?;
     let v = info
         .variants
@@ -291,10 +283,7 @@ fn selection<'a>(
         .find(|v| v.ground == b.is_ground() && v.index == ((b.flags >> 21) & 127) as usize)
         .context("block variant absent")?;
     let group = v.mobils.get(b.variant as usize).context("mobil group absent")?;
-    let m = group
-        .get(b.sub_variant as usize)
-        .or_else(|| group.first())
-        .context("mobil absent")?;
+    let m = group.get(b.sub_variant as usize).or_else(|| group.first()).context("mobil absent")?;
     let offset = if crate::blockinfo::is_clip(info.class_id) && info.clip_type == 0 {
         VariantOffset::default()
     } else {
@@ -307,19 +296,21 @@ fn selection<'a>(
 }
 pub(super) fn loc_iso(l: Loc) -> Iso {
     let [x, y, z, w] = l.rotation;
-    Iso {
-        q: [w, x, y, z],
-        p: l.position,
-    }
+    Iso { q: [w, x, y, z], p: l.position }
 }
 pub(super) fn iso_loc(l: Iso) -> Loc {
     let [w, x, y, z] = l.q;
-    Loc {
-        rotation: [x, y, z, w],
-        position: l.p,
-    }
+    Loc { rotation: [x, y, z, w], position: l.p }
 }
-fn append(scene: &mut Scene, cache: &VisualCache, name: &str, parts: &[Part], iso: Iso, overrides: &BTreeMap<usize, usize>, scale: f32) {
+fn append(
+    scene: &mut Scene,
+    cache: &VisualCache,
+    name: &str,
+    parts: &[Part],
+    iso: Iso,
+    overrides: &BTreeMap<usize, usize>,
+    scale: f32,
+) {
     for p in parts {
         let mut local = loc_iso(chain(&p.chain));
         local.p = local.p.map(|x| x * scale);
@@ -357,11 +348,14 @@ fn surf_points(s: &Option<crate::surface::SurfNode>, t: Transform, out: &mut Vec
     }
 }
 impl VisualCache {
-    fn overrides(&mut self, parts: &[Part], mods: &[(String, Option<String>, bool)], assets: &Assets) -> Result<BTreeMap<usize, usize>> {
-        let ids: std::collections::BTreeSet<_> = parts
-            .iter()
-            .flat_map(|p| self.meshes[p.mesh].submeshes.iter().map(|s| s.material))
-            .collect();
+    fn overrides(
+        &mut self,
+        parts: &[Part],
+        mods: &[(String, Option<String>, bool)],
+        assets: &Assets,
+    ) -> Result<BTreeMap<usize, usize>> {
+        let ids: std::collections::BTreeSet<_> =
+            parts.iter().flat_map(|p| self.meshes[p.mesh].submeshes.iter().map(|s| s.material)).collect();
         let mut out = BTreeMap::new();
         for id in ids {
             let mut path = self.materials[id].name.clone();
@@ -385,7 +379,9 @@ impl VisualCache {
                     Ok(m) => {
                         out.insert(id, m);
                     }
-                    Err(e) => self.report("material-modifier", &path, format!("replacement kept original: {e:#}")),
+                    Err(e) => {
+                        self.report("material-modifier", &path, format!("replacement kept original: {e:#}"))
+                    }
                 }
             }
         }
@@ -394,16 +390,8 @@ impl VisualCache {
     fn custom_block_parts(&mut self, path: &str, b: &gearbox_gbx::map::Block) -> Result<Option<Vec<Part>>> {
         let bytes = self.read(path)?;
         let l = crate::nodes::layout(&bytes)?;
-        let ctx = crate::prefab::Ctx {
-            buf: &bytes,
-            layout: &l,
-            path,
-        };
-        let n = l
-            .nodes
-            .iter()
-            .find(|n| n.class_id == 0x2e025000)
-            .context("custom block archive absent")?;
+        let ctx = crate::prefab::Ctx { buf: &bytes, layout: &l, path };
+        let n = l.nodes.iter().find(|n| n.class_id == 0x2e025000).context("custom block archive absent")?;
         let custom = crate::custom_block::read(&ctx, n.start)?;
         let Some(mobil) = custom.mobils.iter().find(|m| {
             crate::custom_block::mobil_key(m.id)
@@ -422,7 +410,8 @@ impl VisualCache {
                 crate::prefab::NodeLink::Inline(so) => self.mesh_ref(&ctx, so.mesh.clone(), 0)?,
                 crate::prefab::NodeLink::External(path) => self.file_parts(path, 0, 0)?,
                 crate::prefab::NodeLink::Earlier(i) => {
-                    let node = l.nodes.iter().find(|n| n.index == *i).context("shared custom mobil object")?;
+                    let node =
+                        l.nodes.iter().find(|n| n.index == *i).context("shared custom mobil object")?;
                     let mut r = super::decode::cursor(&bytes, node.start)?;
                     let so = ctx.static_object(&mut r)?;
                     self.mesh_ref(&ctx, so.mesh, 0)?
@@ -474,7 +463,9 @@ fn block_modifiers(
                 _ => [0, -1, 0],
             };
             let coord = std::array::from_fn(|k| b.coord[k] + delta[k]);
-            if let Some(parent) = grid.get(&coord).and_then(|cell| cell.iter().find(|b| b.flags & 0x10000000 == 0)) {
+            if let Some(parent) =
+                grid.get(&coord).and_then(|cell| cell.iter().find(|b| b.flags & 0x10000000 == 0))
+            {
                 if let Some(info) = assets.block_in(&parent.name, env) {
                     inherited = block_modifiers(map, assets, env, parent, info, grid, cache, depth + 1)?;
                 }

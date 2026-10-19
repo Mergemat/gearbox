@@ -1,5 +1,5 @@
-use super::Body;
 use super::super::{SolverFlags, constants::NULL_INDEX};
+use super::Body;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IslandItem {

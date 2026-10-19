@@ -110,14 +110,9 @@ enum Target {
 }
 
 fn parse_point(value: &str) -> Result<[f32; 3], String> {
-    let coordinates = value
-        .split(',')
-        .map(str::parse::<f32>)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    coordinates
-        .try_into()
-        .map_err(|_| "expected three comma-separated coordinates X,Y,Z".into())
+    let coordinates =
+        value.split(',').map(str::parse::<f32>).collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    coordinates.try_into().map_err(|_| "expected three comma-separated coordinates X,Y,Z".into())
 }
 
 pub fn main(args: Vec<String>) -> Result<()> {
@@ -133,24 +128,16 @@ pub fn main(args: Vec<String>) -> Result<()> {
             Ok(serde_json::from_slice(&std::fs::read(p)?)?)
         })
         .transpose()?;
-    let recorded = recorded.map(|t| {
-        if t.t0 > session.race_ms() { t.starting_at(session.race_ms()) } else { Ok(t) }
-    }).transpose()?;
+    let recorded = recorded
+        .map(|t| if t.t0 > session.race_ms() { t.starting_at(session.race_ms()) } else { Ok(t) })
+        .transpose()?;
     let gate_speed = matches!(args.target, Target::GateSpeed { .. });
     let objective = match args.target {
         Target::Goals { file } => Objective::Goals(serde_json::from_slice(&std::fs::read(file)?)?),
         Target::Waypoint { index } => Objective::Waypoint(index),
         Target::Finish => Objective::Finish,
-        Target::Gate {
-            index,
-            waypoint,
-            time_penalty,
-        }
-        | Target::GateSpeed {
-            index,
-            waypoint,
-            time_penalty,
-        } => {
+        Target::Gate { index, waypoint, time_penalty }
+        | Target::GateSpeed { index, waypoint, time_penalty } => {
             let mut n = origin.native()?;
             let gate = if let Some(wp) = waypoint {
                 gearbox_search::gate::gates(&mut n)?
@@ -164,8 +151,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
                         &mut n,
                         index,
                         inputs,
-                        args.until_ms
-                            .ok_or_else(|| anyhow::anyhow!("gate requires --until-ms"))?,
+                        args.until_ms.ok_or_else(|| anyhow::anyhow!("gate requires --until-ms"))?,
                     )?
                 } else {
                     None
@@ -175,29 +161,14 @@ pub fn main(args: Vec<String>) -> Result<()> {
                     None => gearbox_search::gate::target_gate(&mut n, index)?,
                 }
             };
-            eprintln!(
-                "target gate {} kind {}, boxes {:?}",
-                gate.waypoint, gate.kind, gate.boxes
-            );
+            eprintln!("target gate {} kind {}, boxes {:?}", gate.waypoint, gate.kind, gate.boxes);
             if gate_speed {
-                Objective::GateSpeed {
-                    ordinal: index,
-                    gate,
-                    time_penalty,
-                }
+                Objective::GateSpeed { ordinal: index, gate, time_penalty }
             } else {
-                Objective::Gate {
-                    ordinal: index,
-                    gate,
-                    time_penalty,
-                }
+                Objective::Gate { ordinal: index, gate, time_penalty }
             }
         }
-        Target::Path {
-            points,
-            at_ms,
-            deviation_penalty,
-        } => {
+        Target::Path { points, at_ms, deviation_penalty } => {
             let points = std::fs::read_to_string(points)?
                 .lines()
                 .filter(|s| !s.trim().is_empty())
@@ -206,22 +177,13 @@ pub fn main(args: Vec<String>) -> Result<()> {
                         .map_err(anyhow::Error::msg)
                 })
                 .collect::<Result<Vec<_>>>()?;
-            Objective::Path {
-                at_ms,
-                path: ReferencePath {
-                    points,
-                    deviation_penalty,
-                    stay_within: None,
-                },
-            }
+            Objective::Path { at_ms, path: ReferencePath { points, deviation_penalty, stay_within: None } }
         }
         Target::Position { at_ms, point } => Objective::Position { at_ms, point },
         Target::Speed { at_ms } => Objective::Speed { at_ms },
     };
     let until_ms = match &objective {
-        Objective::Speed { at_ms }
-        | Objective::Position { at_ms, .. }
-        | Objective::Path { at_ms, .. } => {
+        Objective::Speed { at_ms } | Objective::Position { at_ms, .. } | Objective::Path { at_ms, .. } => {
             ensure!(
                 args.until_ms.is_none_or(|v| v == *at_ms),
                 "--until-ms must equal --at-ms for fixed-time targets"
@@ -243,10 +205,9 @@ pub fn main(args: Vec<String>) -> Result<()> {
         seed: args.seed,
         method: match args.method {
             SearchMethod::HillClimb => Method::HillClimb,
-            SearchMethod::Population => Method::Population {
-                width: args.population,
-                curve_ticks: args.curve_ticks,
-            },
+            SearchMethod::Population => {
+                Method::Population { width: args.population, curve_ticks: args.curve_ticks }
+            }
             SearchMethod::Receding => Method::Receding {
                 horizon_ticks: args.horizon_ticks,
                 commit_ticks: args.commit_ticks,
@@ -271,21 +232,11 @@ pub fn main(args: Vec<String>) -> Result<()> {
             ..Default::default()
         },
     };
-    ensure!(
-        (1..=MAX_THREADS).contains(&config.threads),
-        "threads must be in 1..={MAX_THREADS}"
-    );
+    ensure!((1..=MAX_THREADS).contains(&config.threads), "threads must be in 1..={MAX_THREADS}");
     let inputs = if fresh {
         let t0 = origin.native()?.race_ms();
-        ensure!(
-            until_ms > t0 && (until_ms - t0) % 10 == 0,
-            "invalid fresh timeline end"
-        );
-        Timeline {
-            t0,
-            seed: None,
-            controls: vec![Default::default(); ((until_ms - t0) / 10) as usize],
-        }
+        ensure!(until_ms > t0 && (until_ms - t0) % 10 == 0, "invalid fresh timeline end");
+        Timeline { t0, seed: None, controls: vec![Default::default(); ((until_ms - t0) / 10) as usize] }
     } else {
         recorded.expect("recorded inputs loaded")
     };
@@ -358,19 +309,8 @@ mod tests {
             "100",
         ];
         let args = Args::try_parse_from(prefix.into_iter().chain(["--point", "-1.5,2,3"])).unwrap();
-        assert!(matches!(
-            args.target,
-            Target::Position {
-                at_ms: 100,
-                point: [-1.5, 2.0, 3.0]
-            }
-        ));
-        for suffix in [
-            vec![],
-            vec!["--point", "1,2"],
-            vec!["--point", "1,2,3,4"],
-            vec!["--point", "a,2,3"],
-        ] {
+        assert!(matches!(args.target, Target::Position { at_ms: 100, point: [-1.5, 2.0, 3.0] }));
+        for suffix in [vec![], vec!["--point", "1,2"], vec!["--point", "1,2,3,4"], vec!["--point", "a,2,3"]] {
             assert!(Args::try_parse_from(prefix.into_iter().chain(suffix)).is_err());
         }
     }

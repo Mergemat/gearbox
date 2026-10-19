@@ -8,8 +8,11 @@ impl CollisionWorld {
         for &id in &self.continuous_items {
             let item = &mut items[id.index()];
             item.entry_count = 0;
-            if item.layer == 0 { item.entry_start = u16::MAX; }
-            else { todo!("continuous contacts for layered object"); }
+            if item.layer == 0 {
+                item.entry_start = u16::MAX;
+            } else {
+                todo!("continuous contacts for layered object");
+            }
         }
     }
 
@@ -19,7 +22,9 @@ impl CollisionWorld {
         let mut first = 0u16;
         for &id in &self.discrete_items {
             let item = &geometry.state.dynamic_item[id.index()];
-            if item.layer == 0 { continue; }
+            if item.layer == 0 {
+                continue;
+            }
             let entries = geometry.entries(item.shape, item.iso, Some(id.into()), u32::MAX as u64);
             let count = entries.len() as u16;
             ranges.push((id.0, first, count));

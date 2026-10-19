@@ -13,7 +13,13 @@ pub fn fmt_s(ms: i32) -> String {
 }
 
 pub fn fmt_delta(ms: i32) -> String {
-    let sign = if ms > 0 { "+" } else if ms < 0 { "\u{2212}" } else { "\u{00b1}" };
+    let sign = if ms > 0 {
+        "+"
+    } else if ms < 0 {
+        "\u{2212}"
+    } else {
+        "\u{00b1}"
+    };
     let a = ms.unsigned_abs();
     format!("{sign}{}.{:03}", a / 1000, a % 1000)
 }

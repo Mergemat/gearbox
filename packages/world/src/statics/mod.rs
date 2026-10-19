@@ -3,21 +3,24 @@ pub(crate) mod build;
 pub(crate) mod decoration;
 mod instancing;
 pub(crate) mod items;
+mod mapworld;
 pub(crate) mod model;
 pub(crate) mod packs;
 pub(crate) mod shapes;
+mod spawn;
 mod tree;
 mod veget;
-mod mapworld;
-mod spawn;
 
-use std::collections::HashSet;
 use anyhow::{Result, ensure};
-use gearbox_packs::{assets::Assets, packs::PackSet};
-use gearbox_engine::{Iso, World, static_world::{Entity, Geometry, Item, StaticWorld, Surface}};
+use gearbox_engine::{
+    Iso, World,
+    static_world::{Entity, Geometry, Item, StaticWorld, Surface},
+};
 pub use gearbox_packs::placement as place;
+use gearbox_packs::{assets::Assets, packs::PackSet};
 pub use model::{BlockKey, Catalog, Geometry as BlockGeometry};
 pub use spawn::{block_pose, item_pose, map_pose};
+use std::collections::HashSet;
 
 #[derive(Clone, Debug, Default)]
 pub struct Selection {
@@ -31,7 +34,8 @@ pub struct MapAssets<'a> {
 
 impl<'a> MapAssets<'a> {
     pub fn from_packs(packs: &'a PackSet, filters: &[&str], map: &gearbox_gbx::Map) -> Result<Self> {
-        let catalog = gearbox_packs::catalog::crawl_cached(packs, filters, &gearbox_packs::install::cache_dir())?;
+        let catalog =
+            gearbox_packs::catalog::crawl_cached(packs, filters, &gearbox_packs::install::cache_dir())?;
         Self::from_catalog(Assets::from_catalog(catalog), packs, map)
     }
 
@@ -51,7 +55,11 @@ impl<'a> MapAssets<'a> {
 }
 
 fn surfaces(
-    shapes: &[gearbox_engine::static_world::Shape], out: &mut Vec<Surface>, item: u32, shape: u32, iso: Iso,
+    shapes: &[gearbox_engine::static_world::Shape],
+    out: &mut Vec<Surface>,
+    item: u32,
+    shape: u32,
+    iso: Iso,
 ) {
     if let Geometry::Compound(compound) = &shapes[shape as usize].geometry {
         for (&child, &local) in compound.children.iter().zip(&compound.locations) {
@@ -67,7 +75,9 @@ struct GateIds(u32);
 
 impl GateIds {
     fn assign(&mut self, entity: Entity) -> Entity {
-        if !matches!(entity, Entity::Gate(_)) { return entity; }
+        if !matches!(entity, Entity::Gate(_)) {
+            return entity;
+        }
         let id = self.0;
         self.0 += 1;
         Entity::Gate(id)
@@ -75,15 +85,17 @@ impl GateIds {
 }
 
 pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, selection: &Selection) -> Result<StaticWorld> {
-    let mut source = packs::PackSource::for_map(&assets.assets, map, assets.packs)
-        .map_err(anyhow::Error::msg)?;
+    let mut source =
+        packs::PackSource::for_map(&assets.assets, map, assets.packs).map_err(anyhow::Error::msg)?;
     let built = build::static_items(map, &mut source)?;
     ensure!(built.gaps.is_empty(), "static world incomplete: {}", built.gaps.join("; "));
     finish(map, source, built, selection)
 }
 
 pub(crate) fn finish(
-    map: &gearbox_gbx::Map, mut source: packs::PackSource<'_>, built: build::Built,
+    map: &gearbox_gbx::Map,
+    mut source: packs::PackSource<'_>,
+    built: build::Built,
     selection: &Selection,
 ) -> Result<StaticWorld> {
     ensure!(selection.omitted_items.iter().all(|&i| i < built.items.len()), "static selection out of range");
@@ -92,7 +104,9 @@ pub(crate) fn finish(
     let mut gates = GateIds::default();
     let mut prepared = HashSet::new();
     for (i, spec) in built.items.into_iter().enumerate() {
-        if selection.omitted_items.contains(&i) { continue; }
+        if selection.omitted_items.contains(&i) {
+            continue;
+        }
         let entity = gates.assign(spec.entity);
         shapes::prepare(&mut source.shapes, spec.shape, &mut prepared);
         let index = world.items.len() as u32;
@@ -111,16 +125,28 @@ pub(crate) fn finish(
     for (i, item) in world.items.iter().enumerate() {
         surfaces(&world.shapes, &mut world.surfaces, i as u32, item.shape, item.iso);
     }
-    let mut boxes = world.surfaces.iter().enumerate().map(|(i, s)| tree::Leaf {
-        bounds: shapes::bounds(&world.shapes[s.shape as usize]).transform(&s.iso), index: i as u32,
-    }).collect::<Vec<_>>();
-    world.tree = if boxes.is_empty() { gearbox_engine::static_world::Tree { leaf_size: 0, ..Default::default() } }
-        else { tree::build(&mut boxes, 2) };
+    let mut boxes = world
+        .surfaces
+        .iter()
+        .enumerate()
+        .map(|(i, s)| tree::Leaf {
+            bounds: shapes::bounds(&world.shapes[s.shape as usize]).transform(&s.iso),
+            index: i as u32,
+        })
+        .collect::<Vec<_>>();
+    world.tree = if boxes.is_empty() {
+        gearbox_engine::static_world::Tree { leaf_size: 0, ..Default::default() }
+    } else {
+        tree::build(&mut boxes, 2)
+    };
     Ok(world)
 }
 
 pub fn populate(
-    world: &mut World, map: &gearbox_gbx::Map, assets: &MapAssets<'_>, selection: &Selection,
+    world: &mut World,
+    map: &gearbox_gbx::Map,
+    assets: &MapAssets<'_>,
+    selection: &Selection,
 ) -> Result<()> {
     let statics = build(map, assets, selection)?;
     let water = crate::water::build(map, assets)?;

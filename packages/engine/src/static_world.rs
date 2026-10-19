@@ -1,5 +1,5 @@
+use crate::arrays::{CookedTriangle, TreeNode, Triangle};
 use crate::{Aabb, Iso, ShapeId, Vec3};
-use crate::arrays::{CookedTriangle, Triangle, TreeNode};
 
 pub const LAYER_TRIGGER: u8 = 1;
 pub const LAYER_STATIC: u8 = 2;
@@ -44,10 +44,7 @@ pub struct Tree {
 
 impl Default for Tree {
     fn default() -> Self {
-        Self {
-            nodes: Vec::new(), leaves: 0, depth: 0, leaf_size: 2,
-            bounds: Aabb::EMPTY,
-        }
+        Self { nodes: Vec::new(), leaves: 0, depth: 0, leaf_size: 2, bounds: Aabb::EMPTY }
     }
 }
 

@@ -81,16 +81,10 @@ enum Mode {
 impl PlayerInputs {
     pub fn decode(&self) -> Result<DecodedInputs> {
         if self.version <= 8 {
-            bail!(
-                "input version {} is ShootMania-style and not supported",
-                self.version
-            );
+            bail!("input version {} is ShootMania-style and not supported", self.version);
         }
         let state_bits = if self.version == 11 { 33 } else { 34 };
-        let mut r = Bits {
-            data: &self.data,
-            pos: 0,
-        };
+        let mut r = Bits { data: &self.data, pos: 0 };
         let mut mode = Mode::NotStarted;
         let mut cur = TickInput::default();
         let mut horn = false;
@@ -109,10 +103,7 @@ impl PlayerInputs {
                             let h = states & 2 != 0;
                             if h != horn {
                                 horn = h;
-                                events.push(Event {
-                                    tick,
-                                    kind: EventKind::Horn(h),
-                                });
+                                events.push(Event { tick, kind: EventKind::Horn(h) });
                             }
                         }
                     } else {
@@ -132,23 +123,14 @@ impl PlayerInputs {
                             let h = states & (1 << 6) != 0;
                             if h != horn {
                                 horn = h;
-                                events.push(Event {
-                                    tick,
-                                    kind: EventKind::Horn(h),
-                                });
+                                events.push(Event { tick, kind: EventKind::Horn(h) });
                             }
                         }
                         if states >> 31 & 1 != 0 {
-                            events.push(Event {
-                                tick,
-                                kind: EventKind::Respawn,
-                            });
+                            events.push(Event { tick, kind: EventKind::Respawn });
                         }
                         if states >> 33 & 1 != 0 {
-                            events.push(Event {
-                                tick,
-                                kind: EventKind::SecondaryRespawn,
-                            });
+                            events.push(Event { tick, kind: EventKind::SecondaryRespawn });
                         }
                     }
                 }
@@ -186,10 +168,7 @@ impl PlayerInputs {
             }
         }
         if truncated_at.is_none() && !r.rest_is_zero() {
-            bail!(
-                "input bitstream has {} unread non-zero bits",
-                self.data.len() * 8 - r.pos
-            );
+            bail!("input bitstream has {} unread non-zero bits", self.data.len() * 8 - r.pos);
         }
         Ok(DecodedInputs {
             start_offset_ms: self.start_offset_ms.unwrap_or(0),

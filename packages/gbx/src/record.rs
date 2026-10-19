@@ -64,16 +64,11 @@ pub fn parse_node_chunks(r: &mut Reader) -> Result<RecordData> {
             return Ok(false);
         }
         let version = r.u32()?;
-        ensure!(
-            version >= 5,
-            "record data version {version} is pre-TM2020 and not supported"
-        );
+        ensure!(version >= 5, "record data version {version} is pre-TM2020 and not supported");
         let uncompressed = r.len()?;
         let compressed = r.data()?;
         let mut payload = Vec::with_capacity(uncompressed);
-        flate2::read::ZlibDecoder::new(compressed)
-            .read_to_end(&mut payload)
-            .context("zlib")?;
+        flate2::read::ZlibDecoder::new(compressed).read_to_end(&mut payload).context("zlib")?;
         ensure!(payload.len() == uncompressed, "zlib size mismatch");
         out = Some(parse_payload(&payload, version).context("record payload")?);
         Ok(true)
@@ -116,21 +111,13 @@ fn parse_payload(buf: &[u8], version: u32) -> Result<RecordData> {
         if version >= 6 {
             r.i32()?;
         }
-        let raw = if version < 11 {
-            read_deltas(&mut r)?
-        } else {
-            read_columnar(&mut r)?
-        };
+        let raw = if version < 11 { read_deltas(&mut r)? } else { read_columnar(&mut r)? };
         let samples = raw
             .into_iter()
             .map(|(time_ms, raw)| {
-                let vehicle = (class_id == CLASS_VEHICLE_VIS && raw.len() >= 103)
-                    .then(|| decode_vehicle(&raw));
-                Sample {
-                    time_ms,
-                    vehicle,
-                    raw,
-                }
+                let vehicle =
+                    (class_id == CLASS_VEHICLE_VIS && raw.len() >= 103).then(|| decode_vehicle(&raw));
+                Sample { time_ms, vehicle, raw }
             })
             .collect();
         entities.push(Entity { class_id, samples });
@@ -144,13 +131,7 @@ fn parse_payload(buf: &[u8], version: u32) -> Result<RecordData> {
             }
         }
     }
-    Ok(RecordData {
-        version,
-        start_ms,
-        end_ms,
-        descs,
-        entities,
-    })
+    Ok(RecordData { version, start_ms, end_ms, descs, entities })
 }
 
 fn read_deltas(r: &mut Reader) -> Result<Vec<(i32, Vec<u8>)>> {
@@ -231,12 +212,7 @@ fn decode_vehicle(d: &[u8]) -> VehicleSample {
         top_contact: u8_at(76) & 0x20 != 0,
         wheel_materials: [u8_at(24), u8_at(26), u8_at(28), u8_at(30)],
         wheel_damper: [23, 25, 27, 29].map(|i| signed(u8_at(i)) * 2.0),
-        wheel_slip: [
-            slip1 & 0x40 != 0,
-            slip2 & 0x1 != 0,
-            slip2 & 0x4 != 0,
-            slip2 & 0x10 != 0,
-        ],
+        wheel_slip: [slip1 & 0x40 != 0, slip2 & 0x1 != 0, slip2 & 0x4 != 0, slip2 & 0x10 != 0],
         wheel_icing: [81, 82, 83, 84].map(|i| unit(u8_at(i))),
         wheel_dirt: [93, 95, 97, 99].map(|i| unit(u8_at(i))),
         reactor_flags: u8_at(89) & !0x1,

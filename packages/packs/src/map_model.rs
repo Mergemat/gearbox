@@ -10,20 +10,13 @@ pub struct WaterVolume {
     pub cell: [f32; 3],
 }
 
-pub fn water_volumes(
-    buf: &[u8],
-    path: &str,
-    ground: bool,
-    index: usize,
-) -> Result<Vec<WaterVolume>> {
+pub fn water_volumes(buf: &[u8], path: &str, ground: bool, index: usize) -> Result<Vec<WaterVolume>> {
     let l = nodes::layout(buf)?;
     let info = crate::blockinfo::read_block_info(buf, &l, path)?;
     let selected = info
         .variants
         .iter()
-        .position(|v| {
-            (v.kind == crate::blockinfo::VariantKind::Ground) == ground && v.index == index
-        })
+        .position(|v| (v.kind == crate::blockinfo::VariantKind::Ground) == ground && v.index == index)
         .context("water variant absent")?;
     let nested = crate::blockinfo::nested_blocks(buf, &l);
     let own = |p: &usize| !nested.iter().any(|&(s, e)| s <= *p && *p < e);
@@ -77,12 +70,7 @@ pub fn water_volumes(
         if id != u32::MAX && id & 0xc000_0000 != 0 && id & 0x3fff_ffff == 0 {
             r.string()?;
         }
-        out.push(WaterVolume {
-            boxes,
-            position,
-            yaw,
-            cell,
-        });
+        out.push(WaterVolume { boxes, position, yaw, cell });
     }
     Ok(out)
 }
@@ -130,14 +118,7 @@ pub(crate) fn animation_node(r: &mut Reader) -> Result<Animation> {
     let rot_axis = r.u8()?;
     let rot_range = [r.f32()?, r.f32()?];
     ensure!(trans_axis < 3 && rot_axis < 3, "invalid animation axis");
-    Ok(Animation {
-        translation,
-        rotation,
-        trans_axis,
-        trans_range,
-        rot_axis,
-        rot_range,
-    })
+    Ok(Animation { translation, rotation, trans_axis, trans_range, rot_axis, rot_range })
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -149,11 +130,7 @@ pub struct Dyna {
 }
 pub fn dyna(buf: &[u8], path: &str) -> Result<crate::prefab::DynaObject> {
     let l = nodes::layout(buf)?;
-    let ctx = Ctx {
-        buf,
-        layout: &l,
-        path,
-    };
+    let ctx = Ctx { buf, layout: &l, path };
     let mut r = Reader::new(buf);
     r.skip(l.head.body_start)?;
     ctx.dyna_object(&mut r)

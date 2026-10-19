@@ -3,7 +3,10 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use glam::{Vec2, Vec3};
-use gpui::{Context, KeyDownEvent, KeyUpEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PinchEvent, PlatformInput, ScrollDelta, ScrollWheelEvent, TouchPhase, Window, point, px};
+use gpui::{
+    Context, KeyDownEvent, KeyUpEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, PinchEvent, PlatformInput, ScrollDelta, ScrollWheelEvent, TouchPhase, Window, point, px,
+};
 
 use crate::app::{Editor, Sel, Tool};
 use crate::doc::GoalKind;
@@ -34,7 +37,9 @@ fn road_ahead(e: &Editor) -> Option<Vec2> {
     let f = e.sim.frames.get(e.cursor)?;
     let (o, size) = (crate::app::v2(e.viewport.origin), e.vsize());
     let clear = |s: &Vec2| s.x > o.x + 80.0 && s.y < o.y + size.y - 60.0;
-    [12.0, 9.0, 6.0, 4.0].into_iter().find_map(|d| e.wpt(Vec3::from(f.position()) + Vec3::from(f.axis(2)) * d).filter(clear))
+    [12.0, 9.0, 6.0, 4.0]
+        .into_iter()
+        .find_map(|d| e.wpt(Vec3::from(f.position()) + Vec3::from(f.axis(2)) * d).filter(clear))
 }
 
 fn newest(e: &Editor) -> Option<&crate::doc::Goal> {
@@ -73,26 +78,54 @@ impl Ctl {
         self.key_up(s);
     }
     pub fn key_down(&mut self, s: &str) {
-        self.out.push(PlatformInput::KeyDown(KeyDownEvent { keystroke: ks(s), is_held: false, prefer_character_input: false }));
+        self.out.push(PlatformInput::KeyDown(KeyDownEvent {
+            keystroke: ks(s),
+            is_held: false,
+            prefer_character_input: false,
+        }));
     }
     pub fn key_up(&mut self, s: &str) {
         self.out.push(PlatformInput::KeyUp(KeyUpEvent { keystroke: ks(s) }));
     }
     pub fn typ(&mut self, text: &str) {
         for c in text.chars() {
-            let k = Keystroke { modifiers: Modifiers::default(), key: c.to_string(), key_char: Some(c.to_string()), ..ks("a") };
-            self.out.push(PlatformInput::KeyDown(KeyDownEvent { keystroke: k.clone(), is_held: false, prefer_character_input: false }));
+            let k = Keystroke {
+                modifiers: Modifiers::default(),
+                key: c.to_string(),
+                key_char: Some(c.to_string()),
+                ..ks("a")
+            };
+            self.out.push(PlatformInput::KeyDown(KeyDownEvent {
+                keystroke: k.clone(),
+                is_held: false,
+                prefer_character_input: false,
+            }));
             self.out.push(PlatformInput::KeyUp(KeyUpEvent { keystroke: k }));
         }
     }
     pub fn move_to(&mut self, p: Vec2, pressed: Option<MouseButton>, modifiers: Modifiers) {
-        self.out.push(PlatformInput::MouseMove(MouseMoveEvent { position: at(p), pressed_button: pressed, modifiers }));
+        self.out.push(PlatformInput::MouseMove(MouseMoveEvent {
+            position: at(p),
+            pressed_button: pressed,
+            modifiers,
+        }));
     }
     pub fn down(&mut self, p: Vec2, button: MouseButton, modifiers: Modifiers, count: usize) {
-        self.out.push(PlatformInput::MouseDown(MouseDownEvent { button, position: at(p), modifiers, click_count: count, first_mouse: false }));
+        self.out.push(PlatformInput::MouseDown(MouseDownEvent {
+            button,
+            position: at(p),
+            modifiers,
+            click_count: count,
+            first_mouse: false,
+        }));
     }
     pub fn up(&mut self, p: Vec2, button: MouseButton, modifiers: Modifiers, count: usize) {
-        self.out.push(PlatformInput::MouseUp(MouseUpEvent { button, position: at(p), modifiers, click_count: count }));
+        self.out.push(PlatformInput::MouseUp(MouseUpEvent {
+            button,
+            position: at(p),
+            modifiers,
+            click_count: count,
+        }));
     }
     pub fn click(&mut self, p: Vec2) {
         self.move_to(p, None, Modifiers::default());
@@ -108,13 +141,28 @@ impl Ctl {
         self.up(*path.last().unwrap(), button, modifiers, 1);
     }
     pub fn scroll_px(&mut self, p: Vec2, d: Vec2, modifiers: Modifiers, phase: TouchPhase) {
-        self.out.push(PlatformInput::ScrollWheel(ScrollWheelEvent { position: at(p), delta: ScrollDelta::Pixels(point(px(d.x), px(d.y))), modifiers, touch_phase: phase }));
+        self.out.push(PlatformInput::ScrollWheel(ScrollWheelEvent {
+            position: at(p),
+            delta: ScrollDelta::Pixels(point(px(d.x), px(d.y))),
+            modifiers,
+            touch_phase: phase,
+        }));
     }
     pub fn scroll_lines(&mut self, p: Vec2, dy: f32, modifiers: Modifiers) {
-        self.out.push(PlatformInput::ScrollWheel(ScrollWheelEvent { position: at(p), delta: ScrollDelta::Lines(point(0.0, dy)), modifiers, touch_phase: TouchPhase::Moved }));
+        self.out.push(PlatformInput::ScrollWheel(ScrollWheelEvent {
+            position: at(p),
+            delta: ScrollDelta::Lines(point(0.0, dy)),
+            modifiers,
+            touch_phase: TouchPhase::Moved,
+        }));
     }
     pub fn pinch(&mut self, p: Vec2, delta: f32) {
-        self.out.push(PlatformInput::Pinch(PinchEvent { position: at(p), delta, modifiers: Modifiers::default(), phase: TouchPhase::Moved }));
+        self.out.push(PlatformInput::Pinch(PinchEvent {
+            position: at(p),
+            delta,
+            modifiers: Modifiers::default(),
+            phase: TouchPhase::Moved,
+        }));
     }
     pub fn dbl_click_id(&mut self, id: &str) -> bool {
         let Some(p) = hit(id) else { return false };
@@ -153,8 +201,14 @@ impl Ctl {
         let (o, size) = (crate::app::v2(e.viewport.origin), e.vsize());
         let k = e.scale;
         let (x0, y0) = (((o.x + size.x * 0.25) * k) as u32, ((o.y + size.y * 0.25) * k) as u32);
-        let (x1, y1) = ((((o.x + size.x * 0.75) * k) as u32).min(img.width()), (((o.y + size.y * 0.75) * k) as u32).min(img.height()));
-        let px: Vec<f32> = (y0..y1).flat_map(|y| (x0..x1).map(move |x| (x, y))).map(|(x, y)| img.get_pixel(x, y).0[0] as f32).collect();
+        let (x1, y1) = (
+            (((o.x + size.x * 0.75) * k) as u32).min(img.width()),
+            (((o.y + size.y * 0.75) * k) as u32).min(img.height()),
+        );
+        let px: Vec<f32> = (y0..y1)
+            .flat_map(|y| (x0..x1).map(move |x| (x, y)))
+            .map(|(x, y)| img.get_pixel(x, y).0[0] as f32)
+            .collect();
         let n = px.len().max(1) as f32;
         let mean = px.iter().sum::<f32>() / n;
         (px.iter().map(|v| (v - mean) * (v - mean)).sum::<f32>() / n).sqrt()
@@ -171,12 +225,17 @@ impl Ctl {
 }
 
 pub fn hit(id: &str) -> Option<Vec2> {
-    HITS.with(|h| h.borrow().get(id).copied()).map(|b| Vec2::new(f32::from(b.origin.x + b.size.width * 0.5), f32::from(b.origin.y + b.size.height * 0.5)))
+    HITS.with(|h| h.borrow().get(id).copied()).map(|b| {
+        Vec2::new(f32::from(b.origin.x + b.size.width * 0.5), f32::from(b.origin.y + b.size.height * 0.5))
+    })
 }
 
-const SHIFT: Modifiers = Modifiers { shift: true, control: false, alt: false, platform: false, function: false };
-const ALT: Modifiers = Modifiers { shift: false, control: false, alt: true, platform: false, function: false };
-const NONE: Modifiers = Modifiers { shift: false, control: false, alt: false, platform: false, function: false };
+const SHIFT: Modifiers =
+    Modifiers { shift: true, control: false, alt: false, platform: false, function: false };
+const ALT: Modifiers =
+    Modifiers { shift: false, control: false, alt: true, platform: false, function: false };
+const NONE: Modifiers =
+    Modifiers { shift: false, control: false, alt: false, platform: false, function: false };
 
 pub struct Script {
     pub dir: PathBuf,
@@ -195,8 +254,31 @@ pub struct Script {
 impl Script {
     pub fn new(dir: PathBuf) -> Self {
         let _ = std::fs::create_dir_all(&dir);
-        let ctl = Ctl { out: Vec::new(), n: 0, log: Vec::new(), fails: Vec::new(), dir: dir.clone(), f: HashMap::new(), v: HashMap::new(), shots: Vec::new(), perf: Vec::new(), quit_ok: false };
-        Self { dir, frames: 0, steps: Vec::new(), i: 0, wait: 0, since: Instant::now(), began: Instant::now(), ctl, record: None, timer_frames: 0, done: false }
+        let ctl = Ctl {
+            out: Vec::new(),
+            n: 0,
+            log: Vec::new(),
+            fails: Vec::new(),
+            dir: dir.clone(),
+            f: HashMap::new(),
+            v: HashMap::new(),
+            shots: Vec::new(),
+            perf: Vec::new(),
+            quit_ok: false,
+        };
+        Self {
+            dir,
+            frames: 0,
+            steps: Vec::new(),
+            i: 0,
+            wait: 0,
+            since: Instant::now(),
+            began: Instant::now(),
+            ctl,
+            record: None,
+            timer_frames: 0,
+            done: false,
+        }
     }
 
     fn add(&mut self, name: &'static str, f: impl FnMut(&mut Editor, &mut Ctl) -> Flow + 'static) {
@@ -206,14 +288,24 @@ impl Script {
 
 impl Editor {
     pub fn ready(&self) -> bool {
-        self.world_ready && self.sim.done() && (self.show.physics || self.visual_state.is_none()) && self.loading.is_none()
+        self.world_ready
+            && self.sim.done()
+            && (self.show.physics || self.visual_state.is_none())
+            && self.loading.is_none()
     }
 
     pub fn screenshot(&self, path: &Path) -> bool {
         let Some(id) = self.window_id else { return false };
         let _ = std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")));
         let kind = if path.extension().is_some_and(|x| x == "jpg") { "-tjpg" } else { "-tpng" };
-        let ok = std::process::Command::new("screencapture").arg("-x").arg("-o").arg(kind).arg(format!("-l{id}")).arg(path).status().is_ok_and(|s| s.success());
+        let ok = std::process::Command::new("screencapture")
+            .arg("-x")
+            .arg("-o")
+            .arg(kind)
+            .arg(format!("-l{id}"))
+            .arg(path)
+            .status()
+            .is_ok_and(|s| s.success());
         eprintln!("screenshot {} {}", path.display(), if ok { "saved" } else { "FAILED" });
         ok
     }
@@ -221,7 +313,8 @@ impl Editor {
     pub fn wpt(&self, p: Vec3) -> Option<Vec2> {
         let s = crate::camera::project(&self.vp, self.vsize(), p)?;
         let size = self.vsize();
-        (s.x > 4.0 && s.y > 40.0 && s.x < size.x - 4.0 && s.y < size.y - 4.0).then(|| s + crate::app::v2(self.viewport.origin))
+        (s.x > 4.0 && s.y > 40.0 && s.x < size.x - 4.0 && s.y < size.y - 4.0)
+            .then(|| s + crate::app::v2(self.viewport.origin))
     }
 
     pub fn vcenter(&self) -> Vec2 {
@@ -229,7 +322,10 @@ impl Editor {
     }
 
     pub fn tick_x(&self, k: usize) -> f32 {
-        f32::from(self.tl.bounds.origin.x) + crate::ui::dopesheet::GUTTER + ((k as f64 - self.tl.start) * self.tl.ppt) as f32 + 0.5
+        f32::from(self.tl.bounds.origin.x)
+            + crate::ui::dopesheet::GUTTER
+            + ((k as f64 - self.tl.start) * self.tl.ppt) as f32
+            + 0.5
     }
 
     pub fn ruler_y(&self) -> f32 {
@@ -301,8 +397,16 @@ impl Editor {
         let elapsed = s.since.elapsed();
         let advance = match flow {
             Flow::Next => {
-                let timer = if s.timer_frames * 10 > s.ctl.n { format!(" ({} of {} frames on the timer: the window drew none)", s.timer_frames, s.ctl.n) } else { String::new() };
-                s.ctl.say(format!("step {} \u{00b7} {name} \u{00b7} {:.2} s{timer}", s.i + 1, elapsed.as_secs_f32()));
+                let timer = if s.timer_frames * 10 > s.ctl.n {
+                    format!(" ({} of {} frames on the timer: the window drew none)", s.timer_frames, s.ctl.n)
+                } else {
+                    String::new()
+                };
+                s.ctl.say(format!(
+                    "step {} \u{00b7} {name} \u{00b7} {:.2} s{timer}",
+                    s.i + 1,
+                    elapsed.as_secs_f32()
+                ));
                 true
             }
             Flow::Wait if elapsed > Duration::from_secs(90) => {
@@ -370,7 +474,11 @@ impl Editor {
             if let Some((name, _)) = s.steps.get(s.i) {
                 let name = *name;
                 if s.ctl.quit_ok {
-                    s.ctl.say(format!("step {} \u{00b7} {name} \u{00b7} {:.2} s", s.i + 1, s.since.elapsed().as_secs_f32()));
+                    s.ctl.say(format!(
+                        "step {} \u{00b7} {name} \u{00b7} {:.2} s",
+                        s.i + 1,
+                        s.since.elapsed().as_secs_f32()
+                    ));
                     s.i += 1;
                 } else {
                     s.ctl.fails.push(format!("the app quit during step {}: {name}", s.i + 1));
@@ -384,7 +492,12 @@ impl Editor {
     fn finish_script(&mut self, s: &mut Script) {
         s.done = true;
         let mut r = String::new();
-        r += &format!("# editor scripted run \u{00b7} {:.1} s \u{00b7} {} of {} steps\n\n", s.began.elapsed().as_secs_f32(), s.i.min(s.steps.len()), s.steps.len());
+        r += &format!(
+            "# editor scripted run \u{00b7} {:.1} s \u{00b7} {} of {} steps\n\n",
+            s.began.elapsed().as_secs_f32(),
+            s.i.min(s.steps.len()),
+            s.steps.len()
+        );
         r += &format!("{} checks failed\n\n", s.ctl.fails.len());
         for f in &s.ctl.fails {
             r += &format!("FAIL {f}\n");
@@ -405,7 +518,11 @@ impl Editor {
         for l in self.log.iter().filter(|l| l.level != crate::app::LogLevel::Info) {
             r += &format!("{} [{}] {}\n", l.at, l.source, l.text);
         }
-        let path = if s.record.is_some() { self.opts.record.clone().unwrap().with_extension("txt") } else { s.dir.join("report.txt") };
+        let path = if s.record.is_some() {
+            self.opts.record.clone().unwrap().with_extension("txt")
+        } else {
+            s.dir.join("report.txt")
+        };
         let _ = std::fs::write(&path, &r);
         eprintln!("{r}");
         eprintln!("report: {}", path.display());
@@ -441,7 +558,10 @@ fn build_e2e(s: &mut Script) {
             return Flow::Wait;
         }
         c.check(e.doc.inputs.controls.is_empty(), "blank run: no inputs");
-        c.check(e.sim.frames.len() == e.doc.len + 1, format!("simulated every tick ({} frames for {} ticks)", e.sim.frames.len(), e.doc.len));
+        c.check(
+            e.sim.frames.len() == e.doc.len + 1,
+            format!("simulated every tick ({} frames for {} ticks)", e.sim.frames.len(), e.doc.len),
+        );
         c.say(format!("  race time at tick 0: {} ms; {} gates", e.race_ms0, e.gates.len()));
         c.shot(e, "01-open-blank");
         Flow::Next
@@ -471,7 +591,10 @@ fn build_e2e(s: &mut Script) {
         }
         let dy = e.camera.goal.yaw as f64 - c.f["yaw"];
         let dp = e.camera.goal.pitch as f64 - c.f["pitch"];
-        c.check((dy + 240.0 * 0.0055).abs() < 1e-3, format!("orbit: yaw {dy:+.4} rad for 240 pt right (expected \u{2212}1.32)"));
+        c.check(
+            (dy + 240.0 * 0.0055).abs() < 1e-3,
+            format!("orbit: yaw {dy:+.4} rad for 240 pt right (expected \u{2212}1.32)"),
+        );
         c.check((dp + 60.0 * 0.0055).abs() < 1e-3, format!("orbit: pitch {dp:+.4} rad for 60 pt up"));
         c.shot(e, "03-camera-orbit");
         Flow::Next
@@ -558,7 +681,10 @@ fn build_e2e(s: &mut Script) {
         c.check(d1 < d0 * 0.6, format!("wheel dolly: {d0:.1} m \u{2192} {d1:.1} m"));
         c.check(d2 < d1, format!("pinch dolly: {d1:.1} m \u{2192} {d2:.1} m"));
         let stay = e.wpt(c.v["hit"]).map(|s| s.distance(m));
-        c.check(stay.is_some_and(|d| d < 3.0), format!("the point under the cursor stays under it ({:.2} pt off)", stay.unwrap_or(f32::NAN)));
+        c.check(
+            stay.is_some_and(|d| d < 3.0),
+            format!("the point under the cursor stays under it ({:.2} pt off)", stay.unwrap_or(f32::NAN)),
+        );
         c.shot(e, "05-camera-dolly");
         Flow::Next
     });
@@ -591,44 +717,52 @@ fn build_e2e(s: &mut Script) {
                 c.key_up("e");
                 c.up(m + Vec2::new(90.0, 0.0), MouseButton::Right, NONE, 1);
                 let moved = e.camera.eye().distance(c.v["eye"]);
-                c.check(moved > 5.0, format!("fly moved the eye {moved:.1} m at {:.0} m/s", e.camera.fly_speed));
+                c.check(
+                    moved > 5.0,
+                    format!("fly moved the eye {moved:.1} m at {:.0} m/s", e.camera.fly_speed),
+                );
                 perf_end(e, c, "fly (RMB held, WASD, mouse look)");
                 c.shot(e, "06-camera-fly");
                 Flow::Next
             }
         }
     });
-    s.add("views: top, bookmark, recall, focus", |e, c| {
-        match c.n {
-            1 => {
-                c.key("alt-1");
-                Flow::Wait
-            }
-            2..=300 if !e.settled() || c.n < 10 => Flow::Wait,
-            2..=300 => {
-                c.check(e.camera.goal.pitch > 1.5, format!("top view: pitch {:.3} rad", e.camera.goal.pitch));
-                c.shot(e, "07-camera-top");
-                c.key("ctrl-shift-1");
-                c.f.insert("bm", e.camera.goal.yaw as f64);
-                c.n = 301;
-                Flow::Wait
-            }
-            302 => {
-                c.key("alt-3");
-                Flow::Wait
-            }
-            303..=600 if !e.settled() || c.n < 312 => Flow::Wait,
-            303..=600 => {
-                c.key("ctrl-1");
-                c.n = 601;
-                Flow::Wait
-            }
-            _ if !e.settled() || c.n < 610 => Flow::Wait,
-            _ => {
-                c.check(e.doc.bookmarks.len() == 1 && e.camera.goal.pitch > 1.5, format!("camera bookmark saved and recalled ({} saved, pitch {:.2})", e.doc.bookmarks.len(), e.camera.goal.pitch));
-                c.key("f");
-                Flow::Next
-            }
+    s.add("views: top, bookmark, recall, focus", |e, c| match c.n {
+        1 => {
+            c.key("alt-1");
+            Flow::Wait
+        }
+        2..=300 if !e.settled() || c.n < 10 => Flow::Wait,
+        2..=300 => {
+            c.check(e.camera.goal.pitch > 1.5, format!("top view: pitch {:.3} rad", e.camera.goal.pitch));
+            c.shot(e, "07-camera-top");
+            c.key("ctrl-shift-1");
+            c.f.insert("bm", e.camera.goal.yaw as f64);
+            c.n = 301;
+            Flow::Wait
+        }
+        302 => {
+            c.key("alt-3");
+            Flow::Wait
+        }
+        303..=600 if !e.settled() || c.n < 312 => Flow::Wait,
+        303..=600 => {
+            c.key("ctrl-1");
+            c.n = 601;
+            Flow::Wait
+        }
+        _ if !e.settled() || c.n < 610 => Flow::Wait,
+        _ => {
+            c.check(
+                e.doc.bookmarks.len() == 1 && e.camera.goal.pitch > 1.5,
+                format!(
+                    "camera bookmark saved and recalled ({} saved, pitch {:.2})",
+                    e.doc.bookmarks.len(),
+                    e.camera.goal.pitch
+                ),
+            );
+            c.key("f");
+            Flow::Next
         }
     });
     s.add("import a replay's inputs (\u{2318}I)", |e, c| {
@@ -646,7 +780,13 @@ fn build_e2e(s: &mut Script) {
             return Flow::Wait;
         }
         let fin = e.sim.frames.iter().find_map(|f| f.finish);
-        c.check(fin.is_some(), format!("the imported run finishes: {}", fin.map_or("no".into(), |t| crate::fmt::fmt_ms(t as i32))));
+        c.check(
+            fin.is_some(),
+            format!(
+                "the imported run finishes: {}",
+                fin.map_or("no".into(), |t| crate::fmt::fmt_ms(t as i32))
+            ),
+        );
         c.check(matches!(e.doc.run_origin, crate::doc::Origin::Replay(_)), "run origin: replay");
         c.check(e.doc.history.len() == 1, "the blank run is in the history");
         Flow::Next
@@ -667,40 +807,47 @@ fn build_e2e(s: &mut Script) {
         c.check(g.samples.len() > 100, format!("ghost {}: {} samples", g.name, g.samples.len()));
         Flow::Next
     });
-    s.add("follow the car while playing (\u{21e7}F, Space)", |e, c| {
-        match c.n {
-            1 => {
-                c.key("home");
-                Flow::Wait
+    s.add("follow the car while playing (\u{21e7}F, Space)", |e, c| match c.n {
+        1 => {
+            c.key("home");
+            Flow::Wait
+        }
+        2..=30 => Flow::Wait,
+        31 => {
+            c.key("shift-f");
+            c.key("space");
+            perf_start(e);
+            c.f.insert("t0", secs());
+            c.f.insert("from", e.cursor as f64);
+            Flow::Wait
+        }
+        _ if secs() - c.f["t0"] < 1.5 => {
+            if secs() - c.f["t0"] > 1.0 && !c.f.contains_key("shot") {
+                c.f.insert("shot", 1.0);
+                c.shot(e, "08-follow-playback-ghost");
             }
-            2..=30 => Flow::Wait,
-            31 => {
-                c.key("shift-f");
-                c.key("space");
-                perf_start(e);
-                c.f.insert("t0", secs());
-                c.f.insert("from", e.cursor as f64);
-                Flow::Wait
-            }
-            _ if secs() - c.f["t0"] < 1.5 => {
-                if secs() - c.f["t0"] > 1.0 && !c.f.contains_key("shot") {
-                    c.f.insert("shot", 1.0);
-                    c.shot(e, "08-follow-playback-ghost");
-                }
-                Flow::Wait
-            }
-            _ => {
-                perf_end(e, c, "follow camera, playback, realistic view");
-                let (moved, t) = (e.cursor as f64 - c.f["from"], secs() - c.f["t0"]);
-                c.check((moved - t * 100.0).abs() < t * 20.0 + 10.0, format!("playback ran at 1\u{00d7}: {moved} ticks in {t:.2} s"));
-                c.key("space");
-                c.key("shift-f");
-                Flow::Next
-            }
+            Flow::Wait
+        }
+        _ => {
+            perf_end(e, c, "follow camera, playback, realistic view");
+            let (moved, t) = (e.cursor as f64 - c.f["from"], secs() - c.f["t0"]);
+            c.check(
+                (moved - t * 100.0).abs() < t * 20.0 + 10.0,
+                format!("playback ran at 1\u{00d7}: {moved} ticks in {t:.2} s"),
+            );
+            c.key("space");
+            c.key("shift-f");
+            Flow::Next
         }
     });
     s.add("gate goal: click the first checkpoint", |e, c| {
-        let cp = e.sim.frames.windows(2).find(|w| w[1].waypoints > w[0].waypoints).and_then(|w| w[1].last_crossing).map(|x| x.0);
+        let cp = e
+            .sim
+            .frames
+            .windows(2)
+            .find(|w| w[1].waypoints > w[0].waypoints)
+            .and_then(|w| w[1].last_crossing)
+            .map(|x| x.0);
         let Some(w) = cp else { return Flow::Fail("the run crosses no checkpoint".into()) };
         match c.n {
             1 => {
@@ -734,17 +881,25 @@ fn build_e2e(s: &mut Script) {
             _ if e.doc.goals.is_empty() => Flow::Wait,
             _ if !c.f.contains_key("placed") => {
                 c.f.insert("placed", c.n as f64);
-                let Some((i, g)) = gate_goal(e) else { return Flow::Fail("the click added no gate goal".into()) };
+                let Some((i, g)) = gate_goal(e) else {
+                    return Flow::Fail("the click added no gate goal".into());
+                };
                 c.check(true, format!("gate goal {} added", g.name));
                 let ms = e.reach.get(i).and_then(|r| r.ms);
-                c.check(ms.is_some(), format!("the run reaches it at {}", ms.map_or("-".into(), crate::fmt::fmt_ms)));
+                c.check(
+                    ms.is_some(),
+                    format!("the run reaches it at {}", ms.map_or("-".into(), crate::fmt::fmt_ms)),
+                );
                 c.shot(e, "09-goal-gate");
                 Flow::Wait
             }
             _ if !e.search.running() && c.n < c.f["placed"] as u32 + 60 => Flow::Wait,
             _ if !c.f.contains_key("auto") => {
                 c.f.insert("auto", 1.0);
-                c.check(e.search.running() && e.job.starts_with("Search to"), format!("placing the goal starts a search towards it ({})", e.job));
+                c.check(
+                    e.search.running() && e.job.starts_with("Search to"),
+                    format!("placing the goal starts a search towards it ({})", e.job),
+                );
                 c.f.insert("live", std::sync::Arc::as_ptr(&e.search.live) as usize as f64);
                 c.f.insert("edited", c.n as f64);
                 e.edit("goal speed", None, |d| d.goals[0].when.min_kmh = Some(1.0));
@@ -757,7 +912,10 @@ fn build_e2e(s: &mut Script) {
                 }
                 c.f.insert("followed", 1.0);
                 c.check(again && e.search.running(), "changing the goal it aims at searches again");
-                c.check(e.aimed_goals().iter().map(|g| g.id).eq([e.doc.goals[0].id]), "aimed at the same goal");
+                c.check(
+                    e.aimed_goals().iter().map(|g| g.id).eq([e.doc.goals[0].id]),
+                    "aimed at the same goal",
+                );
                 e.edit("goal speed", None, |d| d.goals[0].when.min_kmh = None);
                 c.key("cmd-.");
                 if !c.click_id("spec-auto") {
@@ -800,7 +958,12 @@ fn build_e2e(s: &mut Script) {
             42..=200 => {
                 let (gate, point) = (gate_goal(e).map(|(_, g)| g.id), newest(e).map(|g| g.id));
                 let aimed = e.aimed_goals().iter().map(|g| g.id).collect::<Vec<_>>();
-                c.check(e.search.running() && gate.is_some_and(|g| aimed.contains(&g)) && point.is_some_and(|p| aimed.contains(&p)), format!("placing a second goal adds it to the aim ({aimed:?}), searching"));
+                c.check(
+                    e.search.running()
+                        && gate.is_some_and(|g| aimed.contains(&g))
+                        && point.is_some_and(|p| aimed.contains(&p)),
+                    format!("placing a second goal adds it to the aim ({aimed:?}), searching"),
+                );
                 e.search.stop();
                 e.spec.auto = false;
                 c.key("q");
@@ -821,8 +984,14 @@ fn build_e2e(s: &mut Script) {
             _ => {
                 let Some(g) = newest(e) else { return Flow::Fail("no goal".into()) };
                 let y = g.pos().y as f64;
-                c.check(matches!(g.kind, GoalKind::Point { .. }), format!("point goal {} placed by the engine raycast", g.name));
-                c.check(y > c.f["y0"] + 0.5, format!("lifted {:.2} m into the air with the handle", y - c.f["y0"]));
+                c.check(
+                    matches!(g.kind, GoalKind::Point { .. }),
+                    format!("point goal {} placed by the engine raycast", g.name),
+                );
+                c.check(
+                    y > c.f["y0"] + 0.5,
+                    format!("lifted {:.2} m into the air with the handle", y - c.f["y0"]),
+                );
                 c.shot(e, "10-goal-point-lifted");
                 Flow::Next
             }
@@ -859,16 +1028,20 @@ fn build_e2e(s: &mut Script) {
             202..=206 => Flow::Wait,
             207 => {
                 let Some((gz, _)) = e.gizmo() else { return Flow::Fail("no rotate gizmo".into()) };
-                let Some(GoalKind::Pose(p)) = newest(e).map(|g| &g.kind) else { return Flow::Fail("not a pose".into()) };
+                let Some(GoalKind::Pose(p)) = newest(e).map(|g| &g.kind) else {
+                    return Flow::Fail("not a pose".into());
+                };
                 c.f.insert("yaw0", p.ypr[0] as f64);
                 let n = gz.ring_axis(1);
                 let u = n.any_orthonormal_vector();
                 let v = n.cross(u);
                 let r = gz.scale * 1.2;
-                let path: Vec<Vec2> = (0..=10).filter_map(|i| {
-                    let a = i as f32 / 10.0 * 0.6;
-                    e.wpt(gz.center + (u * a.cos() + v * a.sin()) * r)
-                }).collect();
+                let path: Vec<Vec2> = (0..=10)
+                    .filter_map(|i| {
+                        let a = i as f32 / 10.0 * 0.6;
+                        e.wpt(gz.center + (u * a.cos() + v * a.sin()) * r)
+                    })
+                    .collect();
                 if path.len() < 5 {
                     return Flow::Fail("ring off screen".into());
                 }
@@ -891,41 +1064,56 @@ fn build_e2e(s: &mut Script) {
             }
             221..=226 => Flow::Wait,
             _ => {
-                let Some(GoalKind::Pose(p)) = newest(e).map(|g| &g.kind) else { return Flow::Fail("not a pose".into()) };
+                let Some(GoalKind::Pose(p)) = newest(e).map(|g| &g.kind) else {
+                    return Flow::Fail("not a pose".into());
+                };
                 let dyaw = (p.ypr[0] as f64 - c.f["yaw0"]).abs();
                 c.check(dyaw > 5.0, format!("yaw ring rotated the pose by {dyaw:.1}\u{00b0}"));
-                c.check((p.angle_tol - 15.0).abs() < 1e-4, format!("typed rotation tolerance: {}\u{00b0}", p.angle_tol));
+                c.check(
+                    (p.angle_tol - 15.0).abs() < 1e-4,
+                    format!("typed rotation tolerance: {}\u{00b0}", p.angle_tol),
+                );
                 c.shot(e, "11-goal-pose");
                 c.key("q");
                 Flow::Next
             }
         }
     });
-    s.add("undo / redo", |e, c| {
-        match c.n {
-            1 => {
-                let Some(g) = newest(e) else { return Flow::Fail("no goal to undo (pose goal step failed)".into()) };
-                c.f.insert("tol", if let GoalKind::Pose(p) = &g.kind { p.angle_tol as f64 } else { 0.0 });
-                c.key("cmd-z");
-                Flow::Wait
-            }
-            2..=4 => Flow::Wait,
-            5 => {
-                let t = if let Some(GoalKind::Pose(p)) = newest(e).map(|g| &g.kind) { p.angle_tol as f64 } else { 0.0 };
-                c.check((t - c.f["tol"]).abs() > 1e-3, format!("undo restored the tolerance to {t}\u{00b0}"));
-                c.key("cmd-shift-z");
-                Flow::Wait
-            }
-            6..=8 => Flow::Wait,
-            _ => {
-                let t = if let Some(GoalKind::Pose(p)) = newest(e).map(|g| &g.kind) { p.angle_tol as f64 } else { 0.0 };
-                c.check((t - c.f["tol"]).abs() < 1e-3, "redo reapplied it");
-                Flow::Next
-            }
+    s.add("undo / redo", |e, c| match c.n {
+        1 => {
+            let Some(g) = newest(e) else {
+                return Flow::Fail("no goal to undo (pose goal step failed)".into());
+            };
+            c.f.insert("tol", if let GoalKind::Pose(p) = &g.kind { p.angle_tol as f64 } else { 0.0 });
+            c.key("cmd-z");
+            Flow::Wait
+        }
+        2..=4 => Flow::Wait,
+        5 => {
+            let t = if let Some(GoalKind::Pose(p)) = newest(e).map(|g| &g.kind) {
+                p.angle_tol as f64
+            } else {
+                0.0
+            };
+            c.check((t - c.f["tol"]).abs() > 1e-3, format!("undo restored the tolerance to {t}\u{00b0}"));
+            c.key("cmd-shift-z");
+            Flow::Wait
+        }
+        6..=8 => Flow::Wait,
+        _ => {
+            let t = if let Some(GoalKind::Pose(p)) = newest(e).map(|g| &g.kind) {
+                p.angle_tol as f64
+            } else {
+                0.0
+            };
+            c.check((t - c.f["tol"]).abs() < 1e-3, "redo reapplied it");
+            Flow::Next
         }
     });
     s.add("objective: the gate, a 3 s budget", |e, c| {
-        let Some(gid) = gate_goal(e).map(|(_, g)| g.id) else { return Flow::Fail("no gate goal (gate goal step failed)".into()) };
+        let Some(gid) = gate_goal(e).map(|(_, g)| g.id) else {
+            return Flow::Fail("no gate goal (gate goal step failed)".into());
+        };
         match c.n {
             1 => {
                 c.click_id(&format!("goal-{gid}"));
@@ -961,13 +1149,24 @@ fn build_e2e(s: &mut Script) {
             _ => {
                 let (reach, wps) = e.search_ctx_parts();
                 let w = |k: usize| wps.get(k.min(wps.len().saturating_sub(1))).copied().unwrap_or(0) as usize;
-                let ctx = crate::optimize::Ctx { goals: &e.doc.goals, race_ms0: e.race_ms0, reach: &reach, waypoints_at: &w };
+                let ctx = crate::optimize::Ctx {
+                    goals: &e.doc.goals,
+                    race_ms0: e.race_ms0,
+                    reach: &reach,
+                    waypoints_at: &w,
+                };
                 let s = e.spec.sentence(&ctx);
                 c.say(format!("  objective: {s}"));
                 c.say(format!("  constraints: {}", e.spec.constraint_sentence(&ctx)));
                 let name = gate_goal(e).map_or(String::new(), |(_, g)| g.name.clone());
-                c.check(s.starts_with(&format!("Minimise time to reach {name}")), "the objective is the gate, by time");
-                c.check(e.spec.by_time && e.spec.seconds == 3.0, format!("3 s typed into the budget ({} s)", e.spec.seconds));
+                c.check(
+                    s.starts_with(&format!("Minimise time to reach {name}")),
+                    "the objective is the gate, by time",
+                );
+                c.check(
+                    e.spec.by_time && e.spec.seconds == 3.0,
+                    format!("3 s typed into the budget ({} s)", e.spec.seconds),
+                );
                 c.shot(e, "12-search-objective");
                 Flow::Next
             }
@@ -997,7 +1196,10 @@ fn build_e2e(s: &mut Script) {
         let (n, att, err, best) = (l.candidates.len(), l.attempts, l.error.clone(), l.best.clone());
         drop(l);
         c.check(err.is_none(), format!("search finished without error {}", err.unwrap_or_default()));
-        c.say(format!("  {att} attempts, {n} candidates, best {}", best.map_or("-".into(), |b| crate::optimize::metric(&b).text)));
+        c.say(format!(
+            "  {att} attempts, {n} candidates, best {}",
+            best.map_or("-".into(), |b| crate::optimize::metric(&b).text)
+        ));
         c.check(n > 0, "at least one improving candidate (each verified by tas's fresh-runner replay)");
         c.shot(e, "14-search-done");
         Flow::Next
@@ -1030,39 +1232,44 @@ fn build_e2e(s: &mut Script) {
                 let msg = e.checks.get(&id).cloned().unwrap_or_default();
                 c.check(msg.contains("identical"), format!("replays exactly: {msg}"));
                 let after = gate_goal(e).and_then(|(i, _)| e.reach.get(i)?.ms).unwrap_or(0) as f64;
-                c.say(format!("  gate time {} \u{2192} {}", crate::fmt::fmt_ms(c.f["before"] as i32), crate::fmt::fmt_ms(after as i32)));
-                c.check(matches!(e.doc.run_origin, crate::doc::Origin::Search(_)), "the candidate is the run (undoable)");
+                c.say(format!(
+                    "  gate time {} \u{2192} {}",
+                    crate::fmt::fmt_ms(c.f["before"] as i32),
+                    crate::fmt::fmt_ms(after as i32)
+                ));
+                c.check(
+                    matches!(e.doc.run_origin, crate::doc::Origin::Search(_)),
+                    "the candidate is the run (undoable)",
+                );
                 c.shot(e, "16-candidate-accepted");
                 Flow::Next
             }
         }
     });
-    s.add("A/B compare (previous version, then the ghost)", |e, c| {
-        match c.n {
-            1 => {
-                c.click_id("btab-1");
-                Flow::Wait
+    s.add("A/B compare (previous version, then the ghost)", |e, c| match c.n {
+        1 => {
+            c.click_id("btab-1");
+            Flow::Wait
+        }
+        2..=40 => Flow::Wait,
+        41 => {
+            c.shot(e, "17-compare-previous");
+            c.click_id("ghost-0");
+            Flow::Wait
+        }
+        42..=45 => Flow::Wait,
+        46 => {
+            if !c.click_id("ghost-b") {
+                return Flow::Fail("no compare button on the ghost".into());
             }
-            2..=40 => Flow::Wait,
-            41 => {
-                c.shot(e, "17-compare-previous");
-                c.click_id("ghost-0");
-                Flow::Wait
-            }
-            42..=45 => Flow::Wait,
-            46 => {
-                if !c.click_id("ghost-b") {
-                    return Flow::Fail("no compare button on the ghost".into());
-                }
-                Flow::Wait
-            }
-            47..=70 => Flow::Wait,
-            _ => {
-                c.check(matches!(e.compare.1, crate::app::RunRef::Ghost(0)), "B is the replay ghost");
-                c.shot(e, "18-compare-ghost");
-                c.click_id("btab-0");
-                Flow::Next
-            }
+            Flow::Wait
+        }
+        47..=70 => Flow::Wait,
+        _ => {
+            c.check(matches!(e.compare.1, crate::app::RunRef::Ghost(0)), "B is the replay ghost");
+            c.shot(e, "18-compare-ghost");
+            c.click_id("btab-0");
+            Flow::Next
         }
     });
     s.add("place car on the surface and simulate", |e, c| {
@@ -1123,10 +1330,17 @@ fn build_e2e(s: &mut Script) {
                 let s = e.doc.start.clone().unwrap();
                 let f = e.sim.frames.get(s.tick).copied();
                 let ok = f.is_some_and(|f| f.position().map(f32::to_bits) == s.pos.map(f32::to_bits));
-                c.check(ok, format!("the run arrives at tick {} with the car exactly where it was placed", s.tick));
+                c.check(
+                    ok,
+                    format!("the run arrives at tick {} with the car exactly where it was placed", s.tick),
+                );
                 let v = glam::Vec3::from(s.velocity).length() * 3.6;
                 c.check((v - 120.0).abs() < 0.5, format!("typed start speed {v:.1} km/h along the heading"));
-                let after = e.sim.frames.get(s.tick + 50).map_or(0.0, |f| Vec3::from(f.position()).distance(Vec3::from(s.pos)));
+                let after = e
+                    .sim
+                    .frames
+                    .get(s.tick + 50)
+                    .map_or(0.0, |f| Vec3::from(f.position()).distance(Vec3::from(s.pos)));
                 c.check(after > 5.0, format!("simulated from there: {after:.1} m in 0.5 s"));
                 c.shot(e, "20-simulate-from-start");
                 c.key("space");
@@ -1134,85 +1348,98 @@ fn build_e2e(s: &mut Script) {
             }
         }
     });
-    s.add("save the project (\u{2318}S), reopen it", |e, c| {
-        match c.n {
-            1 => {
-                e.project_name = "e2e-script".into();
-                c.key("cmd-s");
-                Flow::Wait
+    s.add("save the project (\u{2318}S), reopen it", |e, c| match c.n {
+        1 => {
+            e.project_name = "e2e-script".into();
+            c.key("cmd-s");
+            Flow::Wait
+        }
+        2..=6 => Flow::Wait,
+        7 => {
+            let Some(p) = e.project_path.clone() else { return Flow::Fail("not saved".into()) };
+            c.say(format!("  saved {}", p.display()));
+            c.f.insert("goals", e.doc.goals.len() as f64);
+            c.f.insert("runs", e.doc.runs.len() as f64);
+            c.f.insert("bm", e.doc.bookmarks.len() as f64);
+            c.v.insert("start", Vec3::from(e.doc.start.as_ref().map_or([0.0; 3], |s| s.pos)));
+            c.key("cmd-o");
+            Flow::Wait
+        }
+        8..=10 => Flow::Wait,
+        11 => {
+            let saved = e.project_path.clone();
+            let Some(i) = e.pm_projects().iter().position(|x| Some(&x.path) == saved.as_ref()) else {
+                return Flow::Fail("project not listed in Open".into());
+            };
+            if !c.dbl_click_id(&format!("proj-{i}")) {
+                return Flow::Fail(format!("no row proj-{i} on the Projects screen"));
             }
-            2..=6 => Flow::Wait,
-            7 => {
-                let Some(p) = e.project_path.clone() else { return Flow::Fail("not saved".into()) };
-                c.say(format!("  saved {}", p.display()));
-                c.f.insert("goals", e.doc.goals.len() as f64);
-                c.f.insert("runs", e.doc.runs.len() as f64);
-                c.f.insert("bm", e.doc.bookmarks.len() as f64);
-                c.v.insert("start", Vec3::from(e.doc.start.as_ref().map_or([0.0; 3], |s| s.pos)));
-                c.key("cmd-o");
-                Flow::Wait
+            Flow::Wait
+        }
+        _ if c.n < 30 || !e.ready() || e.gates.is_empty() => Flow::Wait,
+        _ => {
+            c.check(
+                e.doc.goals.len() as f64 == c.f["goals"],
+                format!("reloaded {} goals", e.doc.goals.len()),
+            );
+            c.check(e.doc.bookmarks.len() as f64 == c.f["bm"], "camera bookmarks reloaded");
+            c.check(
+                e.doc.start.as_ref().is_some_and(|s| Vec3::from(s.pos) == c.v["start"]),
+                "start state reloaded",
+            );
+            c.check(
+                e.sim
+                    .frames
+                    .get(e.doc.start.as_ref().map_or(0, |s| s.tick))
+                    .is_some_and(|f| Vec3::from(f.position()) == c.v["start"]),
+                "and simulated from it again",
+            );
+            c.shot(e, "24-project-reloaded");
+            if let Some(dir) = e
+                .project_path
+                .as_ref()
+                .and_then(|p| p.parent())
+                .filter(|d| d.ends_with("editor/projects/e2e-script"))
+            {
+                let _ = std::fs::remove_dir_all(dir);
             }
-            8..=10 => Flow::Wait,
-            11 => {
-                let saved = e.project_path.clone();
-                let Some(i) = e.pm_projects().iter().position(|x| Some(&x.path) == saved.as_ref()) else { return Flow::Fail("project not listed in Open".into()) };
-                if !c.dbl_click_id(&format!("proj-{i}")) {
-                    return Flow::Fail(format!("no row proj-{i} on the Projects screen"));
-                }
-                Flow::Wait
-            }
-            _ if c.n < 30 || !e.ready() || e.gates.is_empty() => Flow::Wait,
-            _ => {
-                c.check(e.doc.goals.len() as f64 == c.f["goals"], format!("reloaded {} goals", e.doc.goals.len()));
-                c.check(e.doc.bookmarks.len() as f64 == c.f["bm"], "camera bookmarks reloaded");
-                c.check(e.doc.start.as_ref().is_some_and(|s| Vec3::from(s.pos) == c.v["start"]), "start state reloaded");
-                c.check(e.sim.frames.get(e.doc.start.as_ref().map_or(0, |s| s.tick)).is_some_and(|f| Vec3::from(f.position()) == c.v["start"]), "and simulated from it again");
-                c.shot(e, "24-project-reloaded");
-                if let Some(dir) = e.project_path.as_ref().and_then(|p| p.parent()).filter(|d| d.ends_with("editor/projects/e2e-script")) {
-                    let _ = std::fs::remove_dir_all(dir);
-                }
-                Flow::Next
-            }
+            Flow::Next
         }
     });
-    s.add("shortcut cheat sheet (?)", |e, c| {
-        match c.n {
-            1 => {
-                c.key("shift-/");
-                Flow::Wait
-            }
-            2..=8 => Flow::Wait,
-            9 => {
-                c.check(e.cheatsheet, "cheat sheet open");
-                c.shot(e, "25-cheatsheet");
-                c.key("escape");
-                Flow::Wait
-            }
-            _ => Flow::Next,
+    s.add("shortcut cheat sheet (?)", |e, c| match c.n {
+        1 => {
+            c.key("shift-/");
+            Flow::Wait
         }
+        2..=8 => Flow::Wait,
+        9 => {
+            c.check(e.cheatsheet, "cheat sheet open");
+            c.shot(e, "25-cheatsheet");
+            c.key("escape");
+            Flow::Wait
+        }
+        _ => Flow::Next,
     });
-    s.add("idle frame times and the final view", |e, c| {
-        match c.n {
-            1 => {
-                c.key("home");
-                perf_start(e);
-                Flow::Wait
-            }
-            2..=240 => {
-                let m = e.vcenter();
-                c.move_to(m, None, ALT);
-                c.down(m, MouseButton::Left, ALT, 1);
-                c.move_to(m + Vec2::new(2.0, 0.0), Some(MouseButton::Left), ALT);
-                c.up(m + Vec2::new(2.0, 0.0), MouseButton::Left, ALT, 1);
-                Flow::Wait
-            }
-            _ => {
-                perf_end(e, c, "continuous orbit, whole track in view, idle simulation");
-                e.sel = Sel::None;
-                e.tool = Tool::Select;
-                c.shot(e, "26-overview");
-                Flow::Next
-            }
+    s.add("idle frame times and the final view", |e, c| match c.n {
+        1 => {
+            c.key("home");
+            perf_start(e);
+            Flow::Wait
+        }
+        2..=240 => {
+            let m = e.vcenter();
+            c.move_to(m, None, ALT);
+            c.down(m, MouseButton::Left, ALT, 1);
+            c.move_to(m + Vec2::new(2.0, 0.0), Some(MouseButton::Left), ALT);
+            c.up(m + Vec2::new(2.0, 0.0), MouseButton::Left, ALT, 1);
+            Flow::Wait
+        }
+        _ => {
+            perf_end(e, c, "continuous orbit, whole track in view, idle simulation");
+            e.sel = Sel::None;
+            e.tool = Tool::Select;
+            c.shot(e, "26-overview");
+            Flow::Next
         }
     });
 }
@@ -1250,7 +1477,10 @@ fn build_smoke(s: &mut Script) {
         if c.n < at + 5 {
             return Flow::Wait;
         }
-        c.check(e.sim.frames.len() == e.doc.len + 1, format!("simulated every tick ({} frames for {} ticks)", e.sim.frames.len(), e.doc.len));
+        c.check(
+            e.sim.frames.len() == e.doc.len + 1,
+            format!("simulated every tick ({} frames for {} ticks)", e.sim.frames.len(), e.doc.len),
+        );
         let sd = c.rendered(e, "smoke-1-open");
         c.check(sd > 8.0, format!("the viewport shows the track (luma spread {sd:.1})"));
         Flow::Next
@@ -1263,7 +1493,13 @@ fn build_smoke(s: &mut Script) {
         Some(0) => press(c, "menu-0", "no replay in the import menu"),
         Some(_) if matches!(e.doc.run_origin, crate::doc::Origin::Replay(_)) && e.ready() => {
             let fin = e.sim.frames.iter().find_map(|f| f.finish);
-            c.check(fin.is_some(), format!("the imported run finishes: {}", fin.map_or("no".into(), |t| crate::fmt::fmt_ms(t as i32))));
+            c.check(
+                fin.is_some(),
+                format!(
+                    "the imported run finishes: {}",
+                    fin.map_or("no".into(), |t| crate::fmt::fmt_ms(t as i32))
+                ),
+            );
             Flow::Next
         }
         _ => Flow::Wait,
@@ -1273,10 +1509,15 @@ fn build_smoke(s: &mut Script) {
             let (k0, k1) = (e.race_start_tick() + 1200, e.race_start_tick() + 300);
             let vis = e.tl.start..e.tl.start + e.tl.width() as f64 / e.tl.ppt.max(1e-9);
             if !(vis.contains(&(k0 as f64)) && vis.contains(&(k1 as f64))) {
-                return Flow::Fail(format!("ticks {k1}..{k0} are not on the timeline ({:.0}..{:.0})", vis.start, vis.end));
+                return Flow::Fail(format!(
+                    "ticks {k1}..{k0} are not on the timeline ({:.0}..{:.0})",
+                    vis.start, vis.end
+                ));
             }
             let y = e.ruler_y();
-            let path: Vec<Vec2> = (0..=12).map(|i| Vec2::new(e.tick_x(k0) + (e.tick_x(k1) - e.tick_x(k0)) * i as f32 / 12.0, y)).collect();
+            let path: Vec<Vec2> = (0..=12)
+                .map(|i| Vec2::new(e.tick_x(k0) + (e.tick_x(k1) - e.tick_x(k0)) * i as f32 / 12.0, y))
+                .collect();
             c.f.insert("to", k1 as f64);
             c.drag(&path, MouseButton::Left, NONE);
             advance(c)
@@ -1284,7 +1525,10 @@ fn build_smoke(s: &mut Script) {
         Some(_) if e.cursor.abs_diff(c.f["to"] as usize) > 1 && c.n < c.f["acted"] as u32 + 30 => Flow::Wait,
         Some(_) => {
             let to = c.f["to"] as usize;
-            c.check(e.cursor.abs_diff(to) <= 1, format!("dragging the ruler moved the playhead to tick {} (aimed at {to})", e.cursor));
+            c.check(
+                e.cursor.abs_diff(to) <= 1,
+                format!("dragging the ruler moved the playhead to tick {} (aimed at {to})", e.cursor),
+            );
             Flow::Next
         }
         None => Flow::Wait,
@@ -1305,18 +1549,28 @@ fn build_smoke(s: &mut Script) {
         Some(_) if e.playing && c.n < c.f["acted"] as u32 + 30 => Flow::Wait,
         Some(_) => {
             let moved = e.cursor as f64 - c.f["from"];
-            c.check(!e.playing && moved >= 20.0, format!("played {moved} ticks in {:.2} s, then Space stopped it", secs() - c.f["t0"]));
+            c.check(
+                !e.playing && moved >= 20.0,
+                format!("played {moved} ticks in {:.2} s, then Space stopped it", secs() - c.f["t0"]),
+            );
             Flow::Next
         }
         None => Flow::Wait,
     });
     s.add("search to the first checkpoint, 2 s budget", |e, c| {
-        let cp = e.sim.frames.windows(2).find(|w| w[1].waypoints > w[0].waypoints).and_then(|w| w[1].last_crossing).map(|x| x.0);
+        let cp = e
+            .sim
+            .frames
+            .windows(2)
+            .find(|w| w[1].waypoints > w[0].waypoints)
+            .and_then(|w| w[1].last_crossing)
+            .map(|x| x.0);
         let Some(w) = cp else { return Flow::Fail("the run crosses no checkpoint".into()) };
         match stage(c) {
             Some(0) => press(c, "rtab-1", "no Search tab"),
             Some(1) => {
-                if hit("num:spec.budget").is_none() && !c.f.contains_key("unfolded") && c.click_id("sec-stop") {
+                if hit("num:spec.budget").is_none() && !c.f.contains_key("unfolded") && c.click_id("sec-stop")
+                {
                     c.f.insert("unfolded", 1.0);
                 }
                 press(c, "num:spec.budget", "no budget field under Stop")
@@ -1328,11 +1582,17 @@ fn build_smoke(s: &mut Script) {
             }
             Some(3) if e.spec.seconds != 2.0 && c.n < c.f["acted"] as u32 + 60 => Flow::Wait,
             Some(3) => {
-                c.check(e.spec.by_time && e.spec.seconds == 2.0, format!("2 s typed into the budget ({} s)", e.spec.seconds));
+                c.check(
+                    e.spec.by_time && e.spec.seconds == 2.0,
+                    format!("2 s typed into the budget ({} s)", e.spec.seconds),
+                );
                 advance(c)
             }
             Some(4) => {
-                if hit(&format!("gate-{w}")).is_none() && !c.f.contains_key("opened") && c.click_id("grp-world") {
+                if hit(&format!("gate-{w}")).is_none()
+                    && !c.f.contains_key("opened")
+                    && c.click_id("grp-world")
+                {
                     c.f.insert("opened", 1.0);
                 }
                 press(c, &format!("gate-{w}"), &format!("no gate-{w} row in the Outliner"))
@@ -1352,8 +1612,14 @@ fn build_smoke(s: &mut Script) {
                 if att == 0 && err.is_none() {
                     return Flow::Wait;
                 }
-                c.check(err.is_none(), format!("the search finished without error {}", err.unwrap_or_default()));
-                c.check(n > 0, format!("{n} improving candidates from {att} tries in {:.1} s", secs() - c.f["t0"]));
+                c.check(
+                    err.is_none(),
+                    format!("the search finished without error {}", err.unwrap_or_default()),
+                );
+                c.check(
+                    n > 0,
+                    format!("{n} improving candidates from {att} tries in {:.1} s", secs() - c.f["t0"]),
+                );
                 Flow::Next
             }
             _ => Flow::Wait,
@@ -1365,13 +1631,26 @@ fn build_smoke(s: &mut Script) {
         match stage(c) {
             Some(0) if e.sel == Sel::Candidate(id) => advance(c),
             Some(0) => press(c, &format!("cand-{id}"), &format!("no result row cand-{id}")),
-            Some(1) if (e.sel != Sel::Candidate(id) || !e.runs_frames.contains_key(&crate::background::Key::Candidate(id))) && c.n < c.f["acted"] as u32 + 300 => Flow::Wait,
+            Some(1)
+                if (e.sel != Sel::Candidate(id)
+                    || !e.runs_frames.contains_key(&crate::background::Key::Candidate(id)))
+                    && c.n < c.f["acted"] as u32 + 300 =>
+            {
+                Flow::Wait
+            }
             Some(1) => {
                 c.check(e.preview == Some(id), "the candidate previews");
-                c.f.insert("before", gate_goal(e).and_then(|(i, _)| e.reach.get(i)?.ms).unwrap_or(i32::MAX) as f64);
+                c.f.insert(
+                    "before",
+                    gate_goal(e).and_then(|(i, _)| e.reach.get(i)?.ms).unwrap_or(i32::MAX) as f64,
+                );
                 press(c, &format!("acc-{id}"), "no Use it button")
             }
-            Some(_) if e.accept_check.is_some() || !e.ready() || !matches!(e.doc.run_origin, crate::doc::Origin::Search(_)) => {
+            Some(_)
+                if e.accept_check.is_some()
+                    || !e.ready()
+                    || !matches!(e.doc.run_origin, crate::doc::Origin::Search(_)) =>
+            {
                 if c.n > c.f["acted"] as u32 + 600 {
                     return Flow::Fail("Use it did not make the candidate the run".into());
                 }
@@ -1381,7 +1660,14 @@ fn build_smoke(s: &mut Script) {
                 let msg = e.checks.get(&id).cloned().unwrap_or_default();
                 c.check(msg.contains("identical"), format!("the run replays the preview exactly: {msg}"));
                 let after = gate_goal(e).and_then(|(i, _)| e.reach.get(i)?.ms);
-                c.check(after.is_some_and(|a| a as f64 <= c.f["before"]), format!("checkpoint time {} \u{2192} {}", crate::fmt::fmt_ms(c.f["before"] as i32), after.map_or("-".into(), crate::fmt::fmt_ms)));
+                c.check(
+                    after.is_some_and(|a| a as f64 <= c.f["before"]),
+                    format!(
+                        "checkpoint time {} \u{2192} {}",
+                        crate::fmt::fmt_ms(c.f["before"] as i32),
+                        after.map_or("-".into(), crate::fmt::fmt_ms)
+                    ),
+                );
                 let sd = c.rendered(e, "smoke-2-accepted");
                 c.check(sd > 8.0, format!("the viewport still renders (luma spread {sd:.1})"));
                 Flow::Next
@@ -1397,7 +1683,10 @@ fn build_smoke(s: &mut Script) {
         Some(_) if e.project_path.is_none() && c.n < 120 => Flow::Wait,
         Some(_) => {
             let p = e.project_path.clone();
-            c.check(p.as_ref().is_some_and(|p| p.exists()), format!("saved {}", p.map_or("nothing".into(), |p| p.display().to_string())));
+            c.check(
+                p.as_ref().is_some_and(|p| p.exists()),
+                format!("saved {}", p.map_or("nothing".into(), |p| p.display().to_string())),
+            );
             c.check(!e.dirty_doc(), "nothing left unsaved");
             Flow::Next
         }
@@ -1433,7 +1722,11 @@ fn build_record(s: &mut Script, path: PathBuf) {
         let _ = std::fs::remove_file(&p2);
         perf_start(e);
         let id = e.window_id.unwrap_or(0);
-        let child = std::process::Command::new("screencapture").args(["-v", "-V28", "-x", "-k", &format!("-l{id}")]).arg(&p2).spawn().ok();
+        let child = std::process::Command::new("screencapture")
+            .args(["-v", "-V28", "-x", "-k", &format!("-l{id}")])
+            .arg(&p2)
+            .spawn()
+            .ok();
         c.say(format!("recording {} ({})", p2.display(), if child.is_some() { "started" } else { "FAILED" }));
         RECORDER.with(|r| *r.borrow_mut() = child);
         Flow::Next
@@ -1451,7 +1744,9 @@ fn build_record(s: &mut Script, path: PathBuf) {
         Flow::Wait
     });
     s.add("dolly in to the cursor", |e, c| {
-        let Some(p) = e.sim.frames.get(e.sim.frames.len() / 3).map(|f| Vec3::from(f.position())) else { return Flow::Next };
+        let Some(p) = e.sim.frames.get(e.sim.frames.len() / 3).map(|f| Vec3::from(f.position())) else {
+            return Flow::Next;
+        };
         let m = e.wpt(p).unwrap_or(e.vcenter());
         if c.n > 90 {
             return Flow::Next;
@@ -1479,7 +1774,11 @@ fn build_record(s: &mut Script, path: PathBuf) {
                 Flow::Wait
             }
             2..=110 => {
-                c.move_to(m + Vec2::new(c.n as f32 * 0.8, (c.n as f32 * 0.05).sin() * 20.0), Some(MouseButton::Right), NONE);
+                c.move_to(
+                    m + Vec2::new(c.n as f32 * 0.8, (c.n as f32 * 0.05).sin() * 20.0),
+                    Some(MouseButton::Right),
+                    NONE,
+                );
                 Flow::Wait
             }
             _ => {
@@ -1489,66 +1788,68 @@ fn build_record(s: &mut Script, path: PathBuf) {
             }
         }
     });
-    s.add("follow playback", |e, c| {
-        match c.n {
-            1 => {
-                c.click(Vec2::new(e.tick_x(e.sim.frames.len() / 5), e.ruler_y()));
-                c.key("shift-f");
-                Flow::Wait
+    s.add("follow playback", |e, c| match c.n {
+        1 => {
+            c.click(Vec2::new(e.tick_x(e.sim.frames.len() / 5), e.ruler_y()));
+            c.key("shift-f");
+            Flow::Wait
+        }
+        2 => {
+            c.key("space");
+            Flow::Wait
+        }
+        3..=330 => {
+            if c.n % 4 == 0 && (100..200).contains(&c.n) {
+                let m = e.vcenter();
+                c.drag(&[m, m + Vec2::new(5.0, 0.0)], MouseButton::Middle, NONE);
             }
-            2 => {
-                c.key("space");
-                Flow::Wait
-            }
-            3..=330 => {
-                if c.n % 4 == 0 && (100..200).contains(&c.n) {
-                    let m = e.vcenter();
-                    c.drag(&[m, m + Vec2::new(5.0, 0.0)], MouseButton::Middle, NONE);
-                }
-                Flow::Wait
-            }
-            _ => {
-                c.key("space");
-                c.key("shift-f");
-                c.key("home");
-                Flow::Next
-            }
+            Flow::Wait
+        }
+        _ => {
+            c.key("space");
+            c.key("shift-f");
+            c.key("home");
+            Flow::Next
         }
     });
-    s.add("search session", |e, c| {
-        match c.n {
-            1 => {
-                let cp = e.sim.frames.windows(2).find(|w| w[1].waypoints > w[0].waypoints).and_then(|w| w[1].last_crossing).map(|x| x.0);
-                if let Some(w) = cp {
-                    c.click_id(&format!("gate-{w}"));
-                }
-                Flow::Wait
+    s.add("search session", |e, c| match c.n {
+        1 => {
+            let cp = e
+                .sim
+                .frames
+                .windows(2)
+                .find(|w| w[1].waypoints > w[0].waypoints)
+                .and_then(|w| w[1].last_crossing)
+                .map(|x| x.0);
+            if let Some(w) = cp {
+                c.click_id(&format!("gate-{w}"));
             }
-            2..=20 => Flow::Wait,
-            21 => {
-                c.click_id("gate-goal");
-                Flow::Wait
-            }
-            22..=40 => Flow::Wait,
-            41 => {
-                c.click_id("goal-obj");
-                c.key("f");
-                Flow::Wait
-            }
-            42..=70 => Flow::Wait,
-            71 => {
-                e.spec.attempts = 320;
-                c.click_id("sem-toggle");
-                Flow::Wait
-            }
-            72..=120 => Flow::Wait,
-            121 => {
-                c.key("cmd-r");
-                Flow::Wait
-            }
-            _ if e.search.running() || c.n < 130 => Flow::Wait,
-            _ => Flow::Next,
+            Flow::Wait
         }
+        2..=20 => Flow::Wait,
+        21 => {
+            c.click_id("gate-goal");
+            Flow::Wait
+        }
+        22..=40 => Flow::Wait,
+        41 => {
+            c.click_id("goal-obj");
+            c.key("f");
+            Flow::Wait
+        }
+        42..=70 => Flow::Wait,
+        71 => {
+            e.spec.attempts = 320;
+            c.click_id("sem-toggle");
+            Flow::Wait
+        }
+        72..=120 => Flow::Wait,
+        121 => {
+            c.key("cmd-r");
+            Flow::Wait
+        }
+        _ if e.search.running() || c.n < 130 => Flow::Wait,
+        _ => Flow::Next,
     });
     s.add("preview and accept", |e, c| {
         let last = e.search.live.lock().unwrap().candidates.last().map(|x| x.id);

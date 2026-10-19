@@ -9,13 +9,8 @@ pub(super) fn cursor(b: &[u8], p: usize) -> Result<Reader<'_>> {
     Ok(r)
 }
 pub(super) fn chunk(ctx: &Ctx<'_>, start: usize, id: u32) -> Result<usize> {
-    let end = ctx
-        .layout
-        .nodes
-        .iter()
-        .find(|n| n.start == start)
-        .and_then(|n| n.end)
-        .context("node without end")?;
+    let end =
+        ctx.layout.nodes.iter().find(|n| n.start == start).and_then(|n| n.end).context("node without end")?;
     ctx.buf
         .get(start..end)
         .context("node bounds")?
@@ -25,11 +20,7 @@ pub(super) fn chunk(ctx: &Ctx<'_>, start: usize, id: u32) -> Result<usize> {
         .with_context(|| format!("chunk {id:#x} absent"))
 }
 fn node<'a>(ctx: &'a Ctx<'_>, index: u32) -> Result<&'a crate::nodes::NodeSpan> {
-    ctx.layout
-        .nodes
-        .iter()
-        .find(|n| n.index == index)
-        .with_context(|| format!("node {index} absent"))
+    ctx.layout.nodes.iter().find(|n| n.index == index).with_context(|| format!("node {index} absent"))
 }
 fn reference(ctx: &Ctx<'_>, r: &mut Reader) -> Result<NodeLink<usize>> {
     ctx.noderef(r, |c, r, class| {
@@ -216,11 +207,7 @@ fn visual(ctx: &Ctx<'_>, start: usize) -> Result<Mesh> {
             }
         }
     }
-    ensure!(
-        mesh.positions.len() == count,
-        "visual/vertex count {} != {count}",
-        mesh.positions.len()
-    );
+    ensure!(mesh.positions.len() == count, "visual/vertex count {} != {count}", mesh.positions.len());
     let mut r = cursor(ctx.buf, chunk(ctx, start, 0x0906a001)?)?;
     ensure!(r.bool32()?, "visual without index buffer");
     let kind = r.u32()?;
@@ -351,11 +338,7 @@ impl VisualCache {
             for _ in 0..r.len()? {
                 let (raw, name) = crate::crystal::id(&mut r)?;
                 global_joints.push(name.unwrap_or_else(|| {
-                    if raw == u32::MAX {
-                        String::new()
-                    } else {
-                        format!("bone-id-{raw:#x}")
-                    }
+                    if raw == u32::MAX { String::new() } else { format!("bone-id-{raw:#x}") }
                 }));
             }
         }
@@ -392,10 +375,7 @@ impl VisualCache {
             });
             let mesh_id = self.meshes.len();
             self.meshes.push(mesh);
-            out.push(Part {
-                mesh: mesh_id,
-                chain: Vec::new(),
-            });
+            out.push(Part { mesh: mesh_id, chain: Vec::new() });
         }
         Ok(out)
     }
@@ -406,7 +386,14 @@ impl VisualCache {
             m => self.solid(ctx, resolve_start(ctx, m)?),
         }
     }
-    fn at(&mut self, ctx: &Ctx<'_>, start: usize, class: u32, variant: usize, depth: usize) -> Result<Vec<Part>> {
+    fn at(
+        &mut self,
+        ctx: &Ctx<'_>,
+        start: usize,
+        class: u32,
+        variant: usize,
+        depth: usize,
+    ) -> Result<Vec<Part>> {
         ensure!(depth < 64, "model recursion limit");
         match class {
             0x090bb000 => self.solid(ctx, start),
@@ -427,23 +414,31 @@ impl VisualCache {
                 let p = ctx.prefab(&mut r)?;
                 let mut out = Vec::new();
                 for e in p.ents {
-                    let loc = crate::assets::Loc {
-                        rotation: e.rotation,
-                        position: e.position,
-                    };
+                    let loc = crate::assets::Loc { rotation: e.rotation, position: e.position };
                     let result = match e.model {
                         NodeLink::External(p) => self.file_parts(&p, 0, depth + 1),
                         NodeLink::Earlier(i) => {
                             let n = node(ctx, i)?;
                             self.at(ctx, n.start, n.class_id, 0, depth + 1)
                         }
-                        NodeLink::Inline(crate::prefab::Model::StaticObject(so)) => self.mesh_ref(ctx, so.mesh, depth + 1),
-                        NodeLink::Inline(crate::prefab::Model::Prefab(p)) => self.prefab_value(ctx, *p, depth + 1),
-                        NodeLink::Inline(crate::prefab::Model::DynaObject(d)) => self.mesh_ref(ctx, d.mesh, depth + 1),
-                        NodeLink::Inline(crate::prefab::Model::Other(c)) if !matches!(c, 0x09051000 | 0x09003000 | 0x2f086000) => {
+                        NodeLink::Inline(crate::prefab::Model::StaticObject(so)) => {
+                            self.mesh_ref(ctx, so.mesh, depth + 1)
+                        }
+                        NodeLink::Inline(crate::prefab::Model::Prefab(p)) => {
+                            self.prefab_value(ctx, *p, depth + 1)
+                        }
+                        NodeLink::Inline(crate::prefab::Model::DynaObject(d)) => {
+                            self.mesh_ref(ctx, d.mesh, depth + 1)
+                        }
+                        NodeLink::Inline(crate::prefab::Model::Other(c))
+                            if !matches!(c, 0x09051000 | 0x09003000 | 0x2f086000) =>
+                        {
                             continue;
                         }
-                        NodeLink::Null | NodeLink::Inline(crate::prefab::Model::Kinematic(_)) | NodeLink::Inline(crate::prefab::Model::Trigger { .. }) | NodeLink::Inline(crate::prefab::Model::Surface(_)) => {
+                        NodeLink::Null
+                        | NodeLink::Inline(crate::prefab::Model::Kinematic(_))
+                        | NodeLink::Inline(crate::prefab::Model::Trigger { .. })
+                        | NodeLink::Inline(crate::prefab::Model::Surface(_)) => {
                             continue;
                         }
                         _ => Err(anyhow::anyhow!("prefab entity visual class unsupported")),
@@ -455,7 +450,9 @@ impl VisualCache {
                                 out.push(p);
                             }
                         }
-                        Err(error) => self.report("prefab", &format!("{}:{}", ctx.path, e.name), format!("{error:#}")),
+                        Err(error) => {
+                            self.report("prefab", &format!("{}:{}", ctx.path, e.name), format!("{error:#}"))
+                        }
                     }
                 }
                 Ok(out)
@@ -501,9 +498,13 @@ impl VisualCache {
         for e in p.ents {
             let mut parts = match e.model {
                 NodeLink::External(p) => self.file_parts(&p, 0, depth + 1)?,
-                NodeLink::Inline(crate::prefab::Model::StaticObject(so)) => self.mesh_ref(ctx, so.mesh, depth + 1)?,
+                NodeLink::Inline(crate::prefab::Model::StaticObject(so)) => {
+                    self.mesh_ref(ctx, so.mesh, depth + 1)?
+                }
                 NodeLink::Inline(crate::prefab::Model::Prefab(p)) => self.prefab_value(ctx, *p, depth + 1)?,
-                NodeLink::Inline(crate::prefab::Model::DynaObject(d)) => self.mesh_ref(ctx, d.mesh, depth + 1)?,
+                NodeLink::Inline(crate::prefab::Model::DynaObject(d)) => {
+                    self.mesh_ref(ctx, d.mesh, depth + 1)?
+                }
                 NodeLink::Earlier(i) => {
                     let n = node(ctx, i)?;
                     self.at(ctx, n.start, n.class_id, 0, depth + 1)?
@@ -511,13 +512,7 @@ impl VisualCache {
                 _ => continue,
             };
             for p in &mut parts {
-                p.chain.insert(
-                    0,
-                    crate::assets::Loc {
-                        rotation: e.rotation,
-                        position: e.position,
-                    },
-                );
+                p.chain.insert(0, crate::assets::Loc { rotation: e.rotation, position: e.position });
             }
             out.extend(parts);
         }
@@ -556,7 +551,9 @@ impl VisualCache {
                     let m = reference(&ctx, &mut r)?;
                     return self.model_ref(&ctx, m, depth);
                 }
-                if let Some(n) = l.nodes.iter().find(|n| matches!(n.class_id, 0x09145000 | 0x09159000 | 0x09003000)) {
+                if let Some(n) =
+                    l.nodes.iter().find(|n| matches!(n.class_id, 0x09145000 | 0x09159000 | 0x09003000))
+                {
                     return self.at(&ctx, n.start, n.class_id, variant, depth);
                 }
                 let mut refs: Vec<_> = l
@@ -648,7 +645,8 @@ impl VisualCache {
                     uvs: vec![Vec::new()],
                     ..Default::default()
                 });
-                let tris: &[[usize; 3]] = if face.len() == 3 { &[[0, 1, 2]] } else { &[[0, 1, 3], [1, 2, 3]] };
+                let tris: &[[usize; 3]] =
+                    if face.len() == 3 { &[[0, 1, 2]] } else { &[[0, 1, 3], [1, 2, 3]] };
                 for tri in tris {
                     let [a, b, c] = tri.map(|j| g.positions[face[j] as usize]);
                     let ab = std::array::from_fn::<_, 3, _>(|i| b[i] - a[i]);
@@ -679,10 +677,7 @@ impl VisualCache {
             });
             let id = self.meshes.len();
             self.meshes.push(mesh);
-            parts.push(Part {
-                mesh: id,
-                chain: Vec::new(),
-            });
+            parts.push(Part { mesh: id, chain: Vec::new() });
         }
         Ok(parts)
     }
@@ -691,7 +686,11 @@ impl VisualCache {
 impl VisualCache {
     fn tree_material(&mut self, path: &str, slot: usize, refs: &[NodeLink<usize>]) -> MaterialId {
         let mut mat = Material::default();
-        for (k, sampler, role) in [(0, "Diffuse", TextureRole::Albedo), (1, "Normal", TextureRole::Normal), (2, "Roughness", TextureRole::Specular)] {
+        for (k, sampler, role) in [
+            (0, "Diffuse", TextureRole::Albedo),
+            (1, "Normal", TextureRole::Normal),
+            (2, "Roughness", TextureRole::Specular),
+        ] {
             let mut found = None;
             for r in [refs.get(k + 3), refs.get(k)].into_iter().flatten() {
                 let NodeLink::External(p) = r else { continue };
@@ -700,15 +699,24 @@ impl VisualCache {
                     self.texture(p).ok()
                 } else {
                     let mut child = Material::default();
-                    self.texture_graph(p, &mut child, 1, &mut Default::default()).ok().and_then(|()| child.textures.first().map(|b| b.texture))
+                    self.texture_graph(p, &mut child, 1, &mut Default::default())
+                        .ok()
+                        .and_then(|()| child.textures.first().map(|b| b.texture))
                 };
                 if found.is_some() {
                     break;
                 }
             }
             match found {
-                Some(texture) => mat.textures.push(TextureBinding { sampler: sampler.into(), role, texture, bitmap_usage: None }),
-                None if k == 0 => self.report("tree-material", path, format!("slot {slot}: no diffuse texture")),
+                Some(texture) => mat.textures.push(TextureBinding {
+                    sampler: sampler.into(),
+                    role,
+                    texture,
+                    bitmap_usage: None,
+                }),
+                None if k == 0 => {
+                    self.report("tree-material", path, format!("slot {slot}: no diffuse texture"))
+                }
                 None => {}
             }
         }
@@ -755,20 +763,14 @@ impl VisualCache {
             }
         }
         r.skip(leaves * 4 + 1 + 4 + 1 + 1 + 8)?;
-        let params = crate::veget::Params {
-            tilt_degrees: r.f32()?,
-            scale_variation: r.f32()?,
-            random_y: r.bool32()?,
-        };
+        let params =
+            crate::veget::Params { tilt_degrees: r.f32()?, scale_variation: r.f32()?, random_y: r.bool32()? };
         let mut out = Vec::new();
         for mut mesh in meshes {
             mesh.vegetation = Some(params);
             let id = self.meshes.len();
             self.meshes.push(mesh);
-            out.push(Part {
-                mesh: id,
-                chain: Vec::new(),
-            });
+            out.push(Part { mesh: id, chain: Vec::new() });
         }
         Ok(out)
     }

@@ -1,5 +1,8 @@
 use gpui::prelude::FluentBuilder;
-use gpui::{AnyElement, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, px};
+use gpui::{
+    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
+    div, px,
+};
 
 use crate::app::*;
 use crate::theme::{self, c};
@@ -40,17 +43,25 @@ pub fn trick_badges(t: Option<[u32; 3]>) -> gpui::Div {
 }
 
 impl Editor {
-    pub fn run_button(&mut self, id: &str, label: &str, go: impl Fn(&mut Editor) + 'static, cx: &mut Context<Self>) -> AnyElement {
+    pub fn run_button(
+        &mut self,
+        id: &str,
+        label: &str,
+        go: impl Fn(&mut Editor) + 'static,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let attempts = self.search.live.lock().unwrap().attempts;
         if self.search.running() {
             div()
                 .flex()
                 .items_center()
                 .gap(px(theme::SP3))
-                .child(btn(format!("{id}-stop"), "Stop", Btn::Danger).on_click(cx.listener(|this, _, _, cx| {
-                    this.search.stop();
-                    cx.notify();
-                })))
+                .child(btn(format!("{id}-stop"), "Stop", Btn::Danger).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        this.search.stop();
+                        cx.notify();
+                    },
+                )))
                 .child(muted(format!("{attempts} tries")))
                 .into_any_element()
         } else {
@@ -74,7 +85,15 @@ impl Editor {
         }
         v.push(heading(format!("Takes \u{00b7} {}", cands.len())).into_any_element());
         if let Some(e) = err {
-            v.push(div().px(px(theme::PAD)).pb(px(theme::SP2)).text_size(px(theme::FS_BODY)).text_color(c(theme::ERROR)).child(e).into_any_element());
+            v.push(
+                div()
+                    .px(px(theme::PAD))
+                    .pb(px(theme::SP2))
+                    .text_size(px(theme::FS_BODY))
+                    .text_color(c(theme::ERROR))
+                    .child(e)
+                    .into_any_element(),
+            );
         }
         let n = cands.len();
         for (i, cand) in cands.iter().rev().take(SHOWN_TAKES).enumerate() {
@@ -96,13 +115,36 @@ impl Editor {
                     .cursor_pointer()
                     .when(on, |d| d.bg(c(theme::SELECT)))
                     .when(!on, |d| d.hover(|s| s.bg(c(theme::RAISED))))
-                    .child(div().w(px(52.0)).flex_none().text_size(px(theme::FS_BODY)).text_color(c(if i == 0 { theme::TEXT } else { theme::MUTED })).child(format!("Take {}", n - i)))
-                    .child(div().flex_1().min_w_0().truncate().font_family(theme::MONO).text_size(px(theme::FS_SMALL)).text_color(c(if i == 0 { theme::OK } else { theme::MUTED })).child(m.text))
-                    .child(btn(format!("take-use-{id}"), "Apply", if i == 0 { Btn::Normal } else { Btn::Quiet }).tooltip(tip("Apply this take", Some("It becomes your run (undoable; the old one goes to History)."))).on_click(cx.listener(move |this, _, _, cx| {
-                        this.accept(id);
-                        cx.stop_propagation();
-                        cx.notify();
-                    })))
+                    .child(
+                        div()
+                            .w(px(52.0))
+                            .flex_none()
+                            .text_size(px(theme::FS_BODY))
+                            .text_color(c(if i == 0 { theme::TEXT } else { theme::MUTED }))
+                            .child(format!("Take {}", n - i)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .font_family(theme::MONO)
+                            .text_size(px(theme::FS_SMALL))
+                            .text_color(c(if i == 0 { theme::OK } else { theme::MUTED }))
+                            .child(m.text),
+                    )
+                    .child(
+                        btn(format!("take-use-{id}"), "Apply", if i == 0 { Btn::Normal } else { Btn::Quiet })
+                            .tooltip(tip(
+                                "Apply this take",
+                                Some("It becomes your run (undoable; the old one goes to History)."),
+                            ))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.accept(id);
+                                cx.stop_propagation();
+                                cx.notify();
+                            })),
+                    )
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if this.preview == Some(id) {
                             this.preview = None;
@@ -118,10 +160,18 @@ impl Editor {
             );
         }
         if n > SHOWN_TAKES {
-            v.push(div().px(px(theme::PAD)).py(px(theme::SP1)).child(btn("takes-all", format!("All {n} in Search"), Btn::Quiet).on_click(cx.listener(|this, _, _, cx| {
-                this.layout.right_tab = 1;
-                cx.notify();
-            }))).into_any_element());
+            v.push(
+                div()
+                    .px(px(theme::PAD))
+                    .py(px(theme::SP1))
+                    .child(btn("takes-all", format!("All {n} in Search"), Btn::Quiet).on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.layout.right_tab = 1;
+                            cx.notify();
+                        },
+                    )))
+                    .into_any_element(),
+            );
         }
         v
     }

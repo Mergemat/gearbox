@@ -58,7 +58,10 @@ impl Picker {
         let (tx, rx) = channel();
         let results = Arc::new(Mutex::new(Vec::new()));
         let out = results.clone();
-        std::thread::Builder::new().name("pick".into()).spawn(move || run(origin, rx, out, wake)).expect("spawning the pick thread");
+        std::thread::Builder::new()
+            .name("pick".into())
+            .spawn(move || run(origin, rx, out, wake))
+            .expect("spawning the pick thread");
         Self { tx, results }
     }
 
@@ -71,7 +74,12 @@ impl Picker {
     }
 }
 
-fn run(origin: Savestate, rx: Receiver<Request>, out: Arc<Mutex<Vec<Picked>>>, wake: Arc<dyn Fn() + Send + Sync>) {
+fn run(
+    origin: Savestate,
+    rx: Receiver<Request>,
+    out: Arc<Mutex<Vec<Picked>>>,
+    wake: Arc<dyn Fn() + Send + Sync>,
+) {
     let mut runner = origin.fork();
     while let Ok(first) = rx.recv() {
         let mut batch = vec![first];
@@ -86,13 +94,19 @@ fn run(origin: Savestate, rx: Receiver<Request>, out: Arc<Mutex<Vec<Picked>>>, w
             }
             let t = Instant::now();
             let seg = (r.dir * REACH).to_array();
-            let res = catch_unwind(AssertUnwindSafe(|| gearbox_search::picking::pick(&mut runner, r.origin.to_array(), seg)));
+            let res = catch_unwind(AssertUnwindSafe(|| {
+                gearbox_search::picking::pick(&mut runner, r.origin.to_array(), seg)
+            }));
             let micros = t.elapsed().as_micros() as u64;
             let (hit, error) = match res {
                 Ok(h) => (h, None),
                 Err(p) => {
                     runner = origin.fork();
-                    let msg = p.downcast_ref::<String>().cloned().or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_else(|| "panic".into());
+                    let msg = p
+                        .downcast_ref::<String>()
+                        .cloned()
+                        .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                        .unwrap_or_else(|| "panic".into());
                     (None, Some(msg))
                 }
             };

@@ -33,7 +33,13 @@ impl Recorder {
         Self { next: tick }
     }
 
-    pub fn write(&mut self, inputs: &mut InputFile, race_ms0: i32, until: usize, keys: Keys) -> Option<usize> {
+    pub fn write(
+        &mut self,
+        inputs: &mut InputFile,
+        race_ms0: i32,
+        until: usize,
+        keys: Keys,
+    ) -> Option<usize> {
         if until <= self.next {
             return None;
         }

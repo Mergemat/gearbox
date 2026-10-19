@@ -1,12 +1,12 @@
-use crate::{Aabb, ItemId, Iso, ShapeId, State, Vec3, World};
-use crate::arrays::{CookedTriangle, Triangle, TreeNode};
+use crate::arrays::{CookedTriangle, TreeNode, Triangle};
 use crate::collision::*;
 use crate::static_world as sw;
+use crate::{Aabb, Iso, ItemId, ShapeId, State, Vec3, World};
 
-pub mod scale;
 pub mod convex;
-pub mod triangle;
 mod mesh;
+pub mod scale;
+pub mod triangle;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Shape<'a> {
@@ -22,9 +22,12 @@ pub enum Shape<'a> {
 impl Shape<'_> {
     pub fn code(self) -> u32 {
         match self {
-            Self::Sphere(_) => 0, Self::Ellipsoid(_) => 1,
-            Self::Box(_) => 6, Self::Mesh(_) => 7,
-            Self::Compound(_) => 13, Self::CompoundInstance(_) => 15,
+            Self::Sphere(_) => 0,
+            Self::Ellipsoid(_) => 1,
+            Self::Box(_) => 6,
+            Self::Mesh(_) => 7,
+            Self::Compound(_) => 13,
+            Self::CompoundInstance(_) => 15,
             Self::Convex(_) => 10,
         }
     }
@@ -37,7 +40,9 @@ pub struct Geometry<'a> {
 }
 
 impl<'a> Geometry<'a> {
-    pub const fn new(world: &'a World, state: &'a State) -> Self { Self { world, state } }
+    pub const fn new(world: &'a World, state: &'a State) -> Self {
+        Self { world, state }
+    }
 
     pub fn shape(self, r: ShapeId) -> Shape<'a> {
         match r {
@@ -55,22 +60,31 @@ impl<'a> Geometry<'a> {
 
     pub fn mesh(self, shape: &'a sw::Mesh) -> Mesh<'a> {
         Mesh {
-            vertices: &shape.vertices, triangles: &shape.triangles,
-            cooked: &shape.cooked, nodes: &shape.tree.nodes,
+            vertices: &shape.vertices,
+            triangles: &shape.triangles,
+            cooked: &shape.cooked,
+            nodes: &shape.tree.nodes,
         }
     }
 
     pub fn local_box(self, shape: ShapeId) -> Aabb {
         match self.shape(shape) {
-            Shape::Mesh(s) => if !s.cooked.is_empty() { s.tree.bounds } else { Aabb::EMPTY },
+            Shape::Mesh(s) => {
+                if !s.cooked.is_empty() {
+                    s.tree.bounds
+                } else {
+                    Aabb::EMPTY
+                }
+            }
             Shape::Sphere(s) => Aabb::new(Vec3::ZERO, Vec3::new(s.radius, s.radius, s.radius)),
             Shape::Ellipsoid(s) => Aabb::new(Vec3::ZERO, s.radii),
             Shape::Box(s) => s.bounds,
             Shape::Convex(s) => s.bounds,
             Shape::Compound(s) => self.compound_box(s, &s.locations, None),
             Shape::CompoundInstance(s) => {
-                let Shape::Compound(base) = self.shape(s.base)
-                    else { panic!("instance base must be compound") };
+                let Shape::Compound(base) = self.shape(s.base) else {
+                    panic!("instance base must be compound")
+                };
                 self.compound_box(base, &s.transforms[..base.children.len()], None)
             }
         }
@@ -80,8 +94,9 @@ impl<'a> Geometry<'a> {
         match self.shape(shape) {
             Shape::Sphere(s) => Aabb::new(iso.pos, Vec3::new(s.radius, s.radius, s.radius)),
             Shape::CompoundInstance(s) => {
-                let Shape::Compound(base) = self.shape(s.base)
-                    else { panic!("instance base must be compound") };
+                let Shape::Compound(base) = self.shape(s.base) else {
+                    panic!("instance base must be compound")
+                };
                 self.compound_box(base, &s.transforms[..base.children.len()], Some(iso))
             }
             Shape::Compound(_) => todo!("compound world box method"),
@@ -90,9 +105,12 @@ impl<'a> Geometry<'a> {
     }
 
     fn compound_box(self, base: &sw::Compound, transforms: &[Iso], pose: Option<Iso>) -> Aabb {
-        base.children.iter().zip(transforms)
+        base.children
+            .iter()
+            .zip(transforms)
             .map(|(&child, &local)| self.world_box(child, pose.map_or(local, |iso| iso * local)))
-            .reduce(crate::tree::box_union).unwrap_or(Aabb::EMPTY)
+            .reduce(crate::tree::box_union)
+            .unwrap_or(Aabb::EMPTY)
     }
 
     pub fn entries(self, shape: ShapeId, iso: Iso, item: Option<ItemId>, tag: u64) -> Vec<ShapeEntry> {
@@ -101,15 +119,21 @@ impl<'a> Geometry<'a> {
         out
     }
 
-    fn add_entries(self, shape: ShapeId, iso: Iso, item: Option<ItemId>, tag: u64,
-        out: &mut Vec<ShapeEntry>) {
+    fn add_entries(
+        self,
+        shape: ShapeId,
+        iso: Iso,
+        item: Option<ItemId>,
+        tag: u64,
+        out: &mut Vec<ShapeEntry>,
+    ) {
         let (children, transforms, tags) = match self.shape(shape) {
             Shape::Compound(s) => (s.children.as_slice(), s.locations.as_slice(), None),
             Shape::CompoundInstance(s) => {
-                let Shape::Compound(base) = self.shape(s.base)
-                    else { panic!("instance base must be compound") };
-                (&base.children[..s.tags.len()], &s.transforms[..s.tags.len()],
-                    Some(&s.tags))
+                let Shape::Compound(base) = self.shape(s.base) else {
+                    panic!("instance base must be compound")
+                };
+                (&base.children[..s.tags.len()], &s.transforms[..s.tags.len()], Some(&s.tags))
             }
             _ => {
                 out.push(ShapeEntry { shape, iso, item, tag, bounds: self.world_box(shape, iso) });
@@ -136,8 +160,9 @@ impl Geometry<'_> {
         let (children, transforms) = match self.shape(shape) {
             Shape::Compound(s) => (s.children.as_slice(), s.locations.as_slice()),
             Shape::CompoundInstance(s) => {
-                let Shape::Compound(base) = self.shape(s.base)
-                    else { panic!("instance base must be compound") };
+                let Shape::Compound(base) = self.shape(s.base) else {
+                    panic!("instance base must be compound")
+                };
                 (&base.children[..s.tags.len()], &s.transforms[..s.tags.len()])
             }
             _ => {

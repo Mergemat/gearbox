@@ -1,11 +1,12 @@
-use std::sync::Arc;
 use crate::{
-    arena, race,
-    collision::{Geometry, DynaCollision},
+    arena,
+    collision::{DynaCollision, Geometry},
     dyna::Tick,
-    session::{Session, Controls},
-    vehicle::{before, post, vis, step},
+    race,
+    session::{Controls, Session},
+    vehicle::{before, post, step, vis},
 };
+use std::sync::Arc;
 
 pub const DT: f32 = 0.010000001;
 
@@ -50,10 +51,7 @@ impl Session {
 
     fn apply_controls(&mut self, now: u32, controls: Controls) {
         self.countdown(now);
-        arena::car_phy_update(
-            std::slice::from_mut(&mut self.vehicle),
-            &self.config.grid,
-        );
+        arena::car_phy_update(std::slice::from_mut(&mut self.vehicle), &self.config.grid);
         self.vehicle.controls.gas = controls.gas;
         self.vehicle.controls.brake = controls.brake;
         self.vehicle.controls.steer = controls.steer;
@@ -99,11 +97,7 @@ impl Session {
     fn dyna_step(&mut self, now: u32) {
         self.dyna.step(
             Tick { ms: now, dt: DT },
-            &mut DynaCollision {
-                world: &self.world,
-                state: &mut self.state,
-                manager: self.config.manager,
-            },
+            &mut DynaCollision { world: &self.world, state: &mut self.state, manager: self.config.manager },
         );
     }
 
@@ -155,8 +149,7 @@ impl Session {
     }
 
     fn continuous(&mut self) {
-        self.state.collision_world[self.config.manager]
-            .update_continuous(&mut self.state.dynamic_item);
+        self.state.collision_world[self.config.manager].update_continuous(&mut self.state.dynamic_item);
     }
 
     fn rebuild_entries(&mut self) {

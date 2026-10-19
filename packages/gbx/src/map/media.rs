@@ -69,10 +69,7 @@ pub(super) fn node(r: &mut Reader) -> Result<()> {
             }
             (0x030A_2000, 0x030A_2006) => {
                 let version = 6 + r.u32()?;
-                ensure!(
-                    (6..=10).contains(&version),
-                    "custom camera key version {version}"
-                );
+                ensure!((6..=10).contains(&version), "custom camera key version {version}");
                 for _ in 0..r.len()? {
                     r.f32()?;
                     r.i32()?;
@@ -281,10 +278,7 @@ pub(super) fn node(r: &mut Reader) -> Result<()> {
             }
             (0x0329_F000, 0x0329_F000) => {
                 let version = r.u32()?;
-                ensure!(
-                    (4..=11).contains(&version),
-                    "entity media version {version}"
-                );
+                ensure!((4..=11).contains(&version), "entity media version {version}");
                 node(r)?;
                 r.f32()?;
                 for _ in 0..r.len()? {

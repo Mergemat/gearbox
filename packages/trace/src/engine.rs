@@ -83,13 +83,18 @@ pub fn find_map(trace: &Trace, dir: &Path, search: &[PathBuf]) -> Option<PathBuf
         candidates.push(d.join(&m.file));
         if let (Some(id), Ok(rd)) = (m.tmx, std::fs::read_dir(d)) {
             let prefix = format!("{id}_");
-            let mut found: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&prefix))).collect();
+            let mut found: Vec<PathBuf> = rd
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&prefix)))
+                .collect();
             found.sort();
             candidates.extend(found);
         }
     }
     candidates.into_iter().find(|p| {
-        std::fs::metadata(p).is_ok_and(|md| md.len() == m.len) && std::fs::read(p).is_ok_and(|b| crate::file::fnv64(&b) == m.hash)
+        std::fs::metadata(p).is_ok_and(|md| md.len() == m.len)
+            && std::fs::read(p).is_ok_and(|b| crate::file::fnv64(&b) == m.hash)
     })
 }
 
@@ -111,11 +116,24 @@ mod tests {
     }
 
     fn trace() -> Trace {
-        let steps: Vec<Controls> = (0..6).map(|k| Controls { gas: 1.0, brake: 0.0, steer: k as f32 * 0.25 }).collect();
+        let steps: Vec<Controls> =
+            (0..6).map(|k| Controls { gas: 1.0, brake: 0.0, steer: k as f32 * 0.25 }).collect();
         let mut e = Toy(TickState { race_ms: -20, ..TickState::default() });
         let states = record(&mut e, &steps);
         let map = MapRef { file: String::new(), path: String::new(), hash: 0, len: 0, tmx: None };
-        Trace { case: Case { id: "toy".into(), map, source: String::new(), t0: -20, seed: None, start_ms: -20, steps }, engine: "toy".into(), states }
+        Trace {
+            case: Case {
+                id: "toy".into(),
+                map,
+                source: String::new(),
+                t0: -20,
+                seed: None,
+                start_ms: -20,
+                steps,
+            },
+            engine: "toy".into(),
+            states,
+        }
     }
 
     #[test]
@@ -134,7 +152,9 @@ mod tests {
         let mut other = t.clone();
         other.case.steps[2].steer = 0.0;
         match check(&mut *fresh(), &other) {
-            Outcome::Diff { tick, diff, .. } => assert_eq!((tick, diff.field.as_str()), (3, "body.position.x")),
+            Outcome::Diff { tick, diff, .. } => {
+                assert_eq!((tick, diff.field.as_str()), (3, "body.position.x"))
+            }
             o => panic!("{o:?}"),
         }
     }

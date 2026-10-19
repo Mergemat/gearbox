@@ -15,8 +15,10 @@ impl ForceRays<'_> {
             ignored: [self.vehicle_item.map(Into::into), None],
             ..QueryFilter::default()
         };
-        self.manager.raycast(self.geometry, Ray { origin, direction }, filter).map(|hit| {
-            ForceRayHit { fraction: hit.fraction, normal: hit.normal, surface: hit.material as u8 }
+        self.manager.raycast(self.geometry, Ray { origin, direction }, filter).map(|hit| ForceRayHit {
+            fraction: hit.fraction,
+            normal: hit.normal,
+            surface: hit.material as u8,
         })
     }
 }

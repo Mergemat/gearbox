@@ -55,7 +55,8 @@ fn build(exe: &Path, app: &Path) -> Result<()> {
 
 fn info_plist() -> String {
     let version = env!("CARGO_PKG_VERSION");
-    format!(r#"<?xml version="1.0" encoding="UTF-8"?>
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -99,5 +100,6 @@ fn info_plist() -> String {
     </array>
 </dict>
 </plist>
-"#)
+"#
+    )
 }

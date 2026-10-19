@@ -1,6 +1,6 @@
-use crate::{Aabb, Iso, Vec3};
-use super::{Geometry, Triangle};
 use super::super::surface::SurfaceGrid;
+use super::{Geometry, Triangle};
+use crate::{Aabb, Iso, Vec3};
 
 const NO_WATER: f32 = f32::MIN;
 const TRIANGLE_LIMIT: usize = 80;
@@ -28,9 +28,7 @@ struct FaceClip {
     skip_first: bool,
 }
 
-fn clip_face(vertices: [Vec3; 4], grid: &SurfaceGrid, geometry: &mut impl Geometry)
-    -> Option<FaceClip>
-{
+fn clip_face(vertices: [Vec3; 4], grid: &SurfaceGrid, geometry: &mut impl Geometry) -> Option<FaceClip> {
     let mut down = None;
     let mut up = None;
     let mut touches_missing = false;
@@ -41,17 +39,21 @@ fn clip_face(vertices: [Vec3; 4], grid: &SurfaceGrid, geometry: &mut impl Geomet
         touches_missing |= first_height == NO_WATER;
         let second_height = geometry.height(grid, second);
         if (first.y > first_height) != (second.y > second_height) {
-            if first.y > first_height { down = Some(edge); }
-            else { up = Some((edge + 1) % 4); }
+            if first.y > first_height {
+                down = Some(edge);
+            } else {
+                up = Some((edge + 1) % 4);
+            }
         }
     }
     let first = vertices[0];
     let height = geometry.height(grid, first);
     let crossings = down.zip(up);
-    if (crossings.is_none() && first.y >= height) || touches_missing { return None; }
+    if (crossings.is_none() && first.y >= height) || touches_missing {
+        return None;
+    }
     let Some((down, up)) = crossings else {
-        return Some(FaceClip { count: 2, start: 1, first: vertices[1], apex: first,
-            skip_first: false });
+        return Some(FaceClip { count: 2, start: 1, first: vertices[1], apex: first, skip_first: false });
     };
     let down_from = vertices[down];
     let up_from = vertices[up];
@@ -65,37 +67,51 @@ fn clip_face(vertices: [Vec3; 4], grid: &SurfaceGrid, geometry: &mut impl Geomet
     let up_ratio = up_depth / (up_depth - up_end_depth);
     let first = down_from + (down_to - down_from) * down_ratio;
     let apex = up_from + (up_to - up_from) * up_ratio;
-    if geometry.height(grid, apex) == NO_WATER { return None; }
+    if geometry.height(grid, apex) == NO_WATER {
+        return None;
+    }
     let skip_first = geometry.height(grid, first) == NO_WATER;
-    let count = if up < down { up + 3 - down }
-        else if up == down { 3 } else { up - down - 1 };
+    let count = if up < down {
+        up + 3 - down
+    } else if up == down {
+        3
+    } else {
+        up - down - 1
+    };
     Some(FaceClip { count, start: down, first, apex, skip_first })
 }
 
-pub fn submerged_triangles(bounds: Aabb, pose: Iso, grid: &SurfaceGrid,
-    geometry: &mut impl Geometry) -> Vec<Triangle>
-{
+pub fn submerged_triangles(
+    bounds: Aabb,
+    pose: Iso,
+    grid: &SurfaceGrid,
+    geometry: &mut impl Geometry,
+) -> Vec<Triangle> {
     let vertices = bounds.corners().map(|point| {
         let rows = pose.rot.rows;
-        Vec3::new(point.y * rows[0].y + rows[0].x * point.x + point.z * rows[0].z,
+        Vec3::new(
+            point.y * rows[0].y + rows[0].x * point.x + point.z * rows[0].z,
             point.y * rows[1].y + rows[1].x * point.x + point.z * rows[1].z,
-            point.y * rows[2].y + rows[2].x * point.x + point.z * rows[2].z) + pose.pos
+            point.y * rows[2].y + rows[2].x * point.x + point.z * rows[2].z,
+        ) + pose.pos
     });
     let mut triangles = Vec::new();
     for face in BOX_TOPOLOGY {
         let vertices = face.vertices.map(|index| vertices[index]);
-        let Some(clip) = clip_face(vertices, grid, geometry) else { continue; };
+        let Some(clip) = clip_face(vertices, grid, geometry) else {
+            continue;
+        };
         let normal = pose.rot.transform_y_first(face.normal);
         for index in usize::from(clip.skip_first)..clip.count {
-            if triangles.len() >= TRIANGLE_LIMIT { break; }
+            if triangles.len() >= TRIANGLE_LIMIT {
+                break;
+            }
             let first = if index == 0 { clip.first } else { vertices[(index + clip.start) % 4] };
             let second = vertices[(clip.start + 1 + index) % 4];
             let triangle = Triangle { vertices: [first, second, clip.apex], normal };
             let added = geometry.split_horizontal(triangle, TRIANGLE_LIMIT - triangles.len());
             assert!(added.len() <= TRIANGLE_LIMIT - triangles.len(), "U2 triangle limit");
-            if added.len() > 1
-                && geometry.height(grid, added[added.len() - 1].vertices[0]) == NO_WATER
-            {
+            if added.len() > 1 && geometry.height(grid, added[added.len() - 1].vertices[0]) == NO_WATER {
                 continue;
             }
             triangles.extend(added);

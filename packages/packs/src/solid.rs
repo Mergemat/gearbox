@@ -31,11 +31,7 @@ fn skip_id(r: &mut Reader) -> Result<()> {
 }
 
 fn node<'a>(ctx: &'a Ctx<'_>, index: u32) -> Result<&'a crate::nodes::NodeSpan> {
-    ctx.layout
-        .nodes
-        .iter()
-        .find(|n| n.index == index)
-        .with_context(|| format!("missing visual node {index}"))
+    ctx.layout.nodes.iter().find(|n| n.index == index).with_context(|| format!("missing visual node {index}"))
 }
 
 fn reference(r: &mut Reader, ctx: &Ctx<'_>) -> Result<u32> {
@@ -112,11 +108,7 @@ fn visual(ctx: &Ctx<'_>, index: u32) -> Result<(Vec<[f32; 3]>, Vec<u32>)> {
     let mut indices = Vec::new();
     let mut last = 0i32;
     for _ in 0..r.len()? {
-        let v = if kind == 0x09057001 {
-            last.wrapping_add(r.i16()? as i32)
-        } else {
-            r.u16()? as i32
-        };
+        let v = if kind == 0x09057001 { last.wrapping_add(r.i16()? as i32) } else { r.u16()? as i32 };
         last = v;
         indices.push(v as u16 as u32);
     }
@@ -157,11 +149,7 @@ pub fn collision(ctx: &Ctx<'_>, start: usize) -> Result<Surface> {
     let material_count = r.len()?;
     ensure!(material_count > 0, "Solid2 external materials not decoded");
     let mut materials = Vec::new();
-    for m in ctx
-        .layout
-        .nodes
-        .iter()
-        .filter(|n| n.start > start && n.start < end && n.class_id == 0x090fd000)
+    for m in ctx.layout.nodes.iter().filter(|n| n.start > start && n.start < end && n.class_id == 0x090fd000)
     {
         let mut r = cursor(ctx.buf, m.start)?;
         ensure!(r.u32()? == 0x090fd000, "user material chunk");
@@ -212,11 +200,7 @@ pub fn collision(ctx: &Ctx<'_>, start: usize) -> Result<Surface> {
         surf_version: 2,
         surf: has_geometry.then_some(SurfNode {
             kind: 7,
-            surf: Surf::Mesh {
-                version: 7,
-                vertices,
-                triangles,
-            },
+            surf: Surf::Mesh { version: 7, vertices, triangles },
             gameplay_main_dir: Some([0.0, 0.0, 1.0]),
         }),
         materials: Vec::new(),
@@ -233,15 +217,21 @@ pub fn external_materials(ctx: &Ctx<'_>, start: usize) -> Result<Vec<String>> {
     let n = r.len()?;
     r.skip(n * if version >= 32 { 20 } else { 16 })?;
     ensure!(r.u32()? == 10, "visual array version");
-    for _ in 0..r.len()? { reference(&mut r, ctx)?; }
-    for _ in 0..r.len()? { skip_id(&mut r)?; }
-    if r.u32()? != 0 { return Ok(Vec::new()); }
+    for _ in 0..r.len()? {
+        reference(&mut r, ctx)?;
+    }
+    for _ in 0..r.len()? {
+        skip_id(&mut r)?;
+    }
+    if r.u32()? != 0 {
+        return Ok(Vec::new());
+    }
     ensure!(r.u32()? == 10, "material array version");
     let mut out = Vec::new();
     for _ in 0..r.len()? {
-        match ctx.noderef(&mut r, |c,r,_| c.skip_node(r))? {
+        match ctx.noderef(&mut r, |c, r, _| c.skip_node(r))? {
             crate::prefab::NodeLink::External(p) => out.push(p),
-            crate::prefab::NodeLink::Null => {},
+            crate::prefab::NodeLink::Null => {}
             _ => bail!("unsupported inline Solid2 material modifier traversal"),
         }
     }

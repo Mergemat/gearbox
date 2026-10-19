@@ -42,7 +42,10 @@ impl Loc {
             aw * bw - ax * bx - ay * by - az * bz,
         ];
         let p = self.rotate(child.position);
-        Loc { rotation, position: [p[0] + self.position[0], p[1] + self.position[1], p[2] + self.position[2]] }
+        Loc {
+            rotation,
+            position: [p[0] + self.position[0], p[1] + self.position[1], p[2] + self.position[2]],
+        }
     }
 
     fn rotate(&self, v: [f32; 3]) -> [f32; 3] {
@@ -68,7 +71,6 @@ impl Loc {
             1.0 - 2.0 * (x * x + y * y),
         ]
     }
-
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,8 +172,10 @@ impl Assets {
     pub fn from_catalog(cat: Catalog) -> Self {
         let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
         for (path, block) in &cat.index.blocks {
-            by_name.entry(block.name.as_deref().unwrap_or_else(|| block_name(path)).to_ascii_lowercase())
-                .or_default().push(path.clone());
+            by_name
+                .entry(block.name.as_deref().unwrap_or_else(|| block_name(path)).to_ascii_lowercase())
+                .or_default()
+                .push(path.clone());
         }
         for paths in by_name.values_mut() {
             paths.sort_by_key(|p| (p.contains("\\Deprecated\\"), !p.starts_with("Stadium\\"), p.clone()));
@@ -180,7 +184,8 @@ impl Assets {
     }
 
     pub fn open(dir: &Path) -> Result<Assets> {
-        let index: Index = serde_json::from_slice(&std::fs::read(dir.join("index.json")).context("index.json")?)?;
+        let index: Index =
+            serde_json::from_slice(&std::fs::read(dir.join("index.json")).context("index.json")?)?;
         let b = std::fs::read(dir.join("surfaces.bin")).context("surfaces.bin")?;
         ensure!(b.starts_with(MAGIC), "surfaces.bin: bad magic");
         let n = u32::from_le_bytes(b[8..12].try_into().unwrap()) as usize;
@@ -188,12 +193,18 @@ impl Assets {
         let mut p = 12;
         for i in 0..n {
             let len = u32::from_le_bytes(b.get(p..p + 4).context("truncated")?.try_into().unwrap()) as usize;
-            surfaces.push(crate::surface::decode(b.get(p + 4..p + 4 + len).context("truncated")?).with_context(|| format!("surface {i}"))?);
+            surfaces.push(
+                crate::surface::decode(b.get(p + 4..p + 4 + len).context("truncated")?)
+                    .with_context(|| format!("surface {i}"))?,
+            );
             p += 4 + len;
         }
         let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
         for (path, block) in &index.blocks {
-            by_name.entry(block.name.as_deref().unwrap_or_else(|| block_name(path)).to_ascii_lowercase()).or_default().push(path.clone());
+            by_name
+                .entry(block.name.as_deref().unwrap_or_else(|| block_name(path)).to_ascii_lowercase())
+                .or_default()
+                .push(path.clone());
         }
         for v in by_name.values_mut() {
             v.sort_by_key(|p| (p.contains("\\Deprecated\\"), !p.starts_with("Stadium\\"), p.clone()));
@@ -226,7 +237,9 @@ impl Assets {
     }
 
     pub fn block_in(&self, name: &str, env: &str) -> Option<&Block> {
-        if let Some((_, block)) = self.index.custom_blocks.iter().find(|(key, _)| key.eq_ignore_ascii_case(name)) {
+        if let Some((_, block)) =
+            self.index.custom_blocks.iter().find(|(key, _)| key.eq_ignore_ascii_case(name))
+        {
             return Some(block);
         }
         let paths = self.by_name.get(&name.to_ascii_lowercase())?;
@@ -234,7 +247,9 @@ impl Assets {
         let p = paths
             .iter()
             .filter(|p| p.starts_with(&own) || p.starts_with("Stadium\\") || p.starts_with("Stadium256\\"))
-            .min_by_key(|p| (p.contains("\\Deprecated\\"), !p.starts_with(&own), !p.starts_with("Stadium\\"), p.as_str()))?;
+            .min_by_key(|p| {
+                (p.contains("\\Deprecated\\"), !p.starts_with(&own), !p.starts_with("Stadium\\"), p.as_str())
+            })?;
         self.index.blocks.get(p)
     }
 
@@ -250,25 +265,42 @@ impl Assets {
         self.index.materials.get(path).map(|&(surface, gameplay)| MaterialIds { surface, gameplay })
     }
 
-    pub fn block_model(&self, name: &str, ground: bool, variant: usize, group: usize, mobil: usize) -> Result<Vec<PlacedSurface<'_>>> {
+    pub fn block_model(
+        &self,
+        name: &str,
+        ground: bool,
+        variant: usize,
+        group: usize,
+        mobil: usize,
+    ) -> Result<Vec<PlacedSurface<'_>>> {
         let b = self.block(name).with_context(|| format!("unknown block {name}"))?;
-        let v = b
-            .variants
-            .iter()
-            .find(|v| v.ground == ground && v.index == variant)
-            .with_context(|| format!("{name}: no {} variant {variant}", if ground { "ground" } else { "air" }))?;
-        let m = v.mobils.get(group).and_then(|g| g.get(mobil)).with_context(|| format!("{name}: no mobil {group}/{mobil}"))?;
+        let v = b.variants.iter().find(|v| v.ground == ground && v.index == variant).with_context(|| {
+            format!("{name}: no {} variant {variant}", if ground { "ground" } else { "air" })
+        })?;
+        let m = v
+            .mobils
+            .get(group)
+            .and_then(|g| g.get(mobil))
+            .with_context(|| format!("{name}: no mobil {group}/{mobil}"))?;
         let Some(prefab) = &m.prefab else { return Ok(Vec::new()) };
-        let modifiers: Vec<&str> = [&b.material_modifier, &b.material_modifier2].into_iter().flatten().map(|s| s.as_str()).collect();
+        let modifiers: Vec<&str> =
+            [&b.material_modifier, &b.material_modifier2].into_iter().flatten().map(|s| s.as_str()).collect();
         self.prefab_surfaces(prefab, &modifiers)
     }
 
     pub fn prefab_surfaces(&self, prefab: &str, modifiers: &[&str]) -> Result<Vec<PlacedSurface<'_>>> {
-        let mods: Vec<ModifierRef> = modifiers.iter().map(|&path| ModifierRef { path, folder: None, keep_track_wall: false }).collect();
+        let mods: Vec<ModifierRef> = modifiers
+            .iter()
+            .map(|&path| ModifierRef { path, folder: None, keep_track_wall: false })
+            .collect();
         self.prefab_surfaces_with(prefab, &mods)
     }
 
-    pub fn prefab_surfaces_with(&self, prefab: &str, mods: &[ModifierRef<'_>]) -> Result<Vec<PlacedSurface<'_>>> {
+    pub fn prefab_surfaces_with(
+        &self,
+        prefab: &str,
+        mods: &[ModifierRef<'_>],
+    ) -> Result<Vec<PlacedSurface<'_>>> {
         let mut out = Vec::new();
         self.walk(prefab, &mut Vec::new(), mods, &mut out, 0)?;
         Ok(out)
@@ -279,7 +311,9 @@ impl Assets {
         self.index
             .decorations
             .iter()
-            .filter(|(p, d)| d.name.eq_ignore_ascii_case(name) && (p.starts_with(&own) || p.starts_with("Stadium\\")))
+            .filter(|(p, d)| {
+                d.name.eq_ignore_ascii_case(name) && (p.starts_with(&own) || p.starts_with("Stadium\\"))
+            })
             .min_by_key(|(p, _)| (!p.starts_with(&own), p.as_str()))
             .map(|(_, d)| d)
     }
@@ -290,7 +324,10 @@ impl Assets {
         self.index
             .items
             .keys()
-            .filter(|p| p.to_ascii_lowercase().ends_with(&file) && (p.starts_with(&own) || p.starts_with("Stadium\\Items\\")))
+            .filter(|p| {
+                p.to_ascii_lowercase().ends_with(&file)
+                    && (p.starts_with(&own) || p.starts_with("Stadium\\Items\\"))
+            })
             .min_by_key(|p| (!p.starts_with(&own), p.as_str()))
             .map(|p| p.as_str())
     }
@@ -301,19 +338,33 @@ impl Assets {
 
     pub fn item_model_variant(&self, path: &str, variant: usize) -> Result<Vec<PlacedSurface<'_>>> {
         let it = self.index.items.get(path).with_context(|| format!("unknown item {path}"))?;
-        let mods: Vec<ModifierRef> = it.material_modifier.iter().map(|s| ModifierRef { path: s, folder: None, keep_track_wall: false }).collect();
+        let mods: Vec<ModifierRef> = it
+            .material_modifier
+            .iter()
+            .map(|s| ModifierRef { path: s, folder: None, keep_track_wall: false })
+            .collect();
         let mods = mods.as_slice();
         let mut out = Vec::new();
-        let models = if it.variants.is_empty() { &it.models } else {
+        let models = if it.variants.is_empty() {
+            &it.models
+        } else {
             it.variants.get(variant).with_context(|| format!("item {path} has no variant {variant}"))?
         };
         for m in models {
             match m {
-                EntModel::Other { class_id: Some(0x2f086000), path: source } => bail!("{path}: vegetation collision model not decoded ({source:?})"),
-                EntModel::Other { class_id: Some(0x09144000), path: source } => bail!("{path}: dynamic collision model not decoded ({source:?})"),
+                EntModel::Other { class_id: Some(0x2f086000), path: source } => {
+                    bail!("{path}: vegetation collision model not decoded ({source:?})")
+                }
+                EntModel::Other { class_id: Some(0x09144000), path: source } => {
+                    bail!("{path}: dynamic collision model not decoded ({source:?})")
+                }
                 EntModel::Prefab(x) => self.walk(x, &mut Vec::new(), mods, &mut out, 0)?,
-                EntModel::Static { shape: None, mesh_collidable: true, .. } => bail!("{path}: mesh collision not decoded"),
-                EntModel::Static { shape: Some(id), .. } | EntModel::Surface(id) => out.push(self.place(*id, Role::Collision, &[], mods)),
+                EntModel::Static { shape: None, mesh_collidable: true, .. } => {
+                    bail!("{path}: mesh collision not decoded")
+                }
+                EntModel::Static { shape: Some(id), .. } | EntModel::Surface(id) => {
+                    out.push(self.place(*id, Role::Collision, &[], mods))
+                }
                 EntModel::Dyna { dyna_shape, static_shape, .. } => {
                     if let Some(id) = dyna_shape {
                         out.push(self.place(*id, Role::DynaShape, &[], mods));
@@ -322,9 +373,16 @@ impl Assets {
                         out.push(self.place(*id, Role::DynaStaticShape, &[], mods));
                     }
                 }
-                EntModel::BlockTrigger { waypoint, shape } => out.push(self.place(*shape, Role::BlockTrigger(*waypoint), &[], mods)),
+                EntModel::BlockTrigger { waypoint, shape } => {
+                    out.push(self.place(*shape, Role::BlockTrigger(*waypoint), &[], mods))
+                }
                 EntModel::Trigger { waypoint, shape: Some(id), loc } => {
-                    let mut ps = self.place(*id, waypoint.map(Role::Waypoint).unwrap_or(Role::SpecialTrigger), &[], mods);
+                    let mut ps = self.place(
+                        *id,
+                        waypoint.map(Role::Waypoint).unwrap_or(Role::SpecialTrigger),
+                        &[],
+                        mods,
+                    );
                     ps.vertex_loc = *loc;
                     out.push(ps);
                 }
@@ -334,7 +392,14 @@ impl Assets {
         Ok(out)
     }
 
-    fn walk<'a>(&'a self, prefab: &str, chain: &mut Vec<Loc>, mods: &[ModifierRef<'_>], out: &mut Vec<PlacedSurface<'a>>, depth: usize) -> Result<()> {
+    fn walk<'a>(
+        &'a self,
+        prefab: &str,
+        chain: &mut Vec<Loc>,
+        mods: &[ModifierRef<'_>],
+        out: &mut Vec<PlacedSurface<'a>>,
+        depth: usize,
+    ) -> Result<()> {
         if depth > 16 {
             bail!("prefab nesting too deep at {prefab}");
         }
@@ -343,11 +408,19 @@ impl Assets {
             let loc = Loc { rotation: e.rotation, position: e.position };
             chain.push(loc);
             match &e.model {
-                EntModel::Other { class_id: Some(0x2f086000), path: source } => bail!("{prefab}: vegetation collision model not decoded ({source:?})"),
-                EntModel::Other { class_id: Some(0x09144000), path: source } => bail!("{prefab}: dynamic collision model not decoded ({source:?})"),
+                EntModel::Other { class_id: Some(0x2f086000), path: source } => {
+                    bail!("{prefab}: vegetation collision model not decoded ({source:?})")
+                }
+                EntModel::Other { class_id: Some(0x09144000), path: source } => {
+                    bail!("{prefab}: dynamic collision model not decoded ({source:?})")
+                }
                 EntModel::Prefab(x) => self.walk(x, chain, mods, out, depth + 1)?,
-                EntModel::Static { shape: None, mesh_collidable: true, .. } => bail!("{prefab}: mesh collision not decoded"),
-                EntModel::Static { shape: Some(id), .. } | EntModel::Surface(id) => out.push(self.place(*id, Role::Collision, chain, mods)),
+                EntModel::Static { shape: None, mesh_collidable: true, .. } => {
+                    bail!("{prefab}: mesh collision not decoded")
+                }
+                EntModel::Static { shape: Some(id), .. } | EntModel::Surface(id) => {
+                    out.push(self.place(*id, Role::Collision, chain, mods))
+                }
                 EntModel::Dyna { dyna_shape, static_shape, .. } => {
                     if let Some(id) = dyna_shape {
                         out.push(self.place(*id, Role::DynaShape, chain, mods));
@@ -356,7 +429,9 @@ impl Assets {
                         out.push(self.place(*id, Role::DynaStaticShape, chain, mods));
                     }
                 }
-                EntModel::BlockTrigger { waypoint, shape } => out.push(self.place(*shape, Role::BlockTrigger(*waypoint), chain, mods)),
+                EntModel::BlockTrigger { waypoint, shape } => {
+                    out.push(self.place(*shape, Role::BlockTrigger(*waypoint), chain, mods))
+                }
                 EntModel::Trigger { waypoint, shape: Some(id), loc } => {
                     let role = waypoint.map(Role::Waypoint).unwrap_or(Role::SpecialTrigger);
                     let mut ps = self.place(*id, role, chain, mods);
@@ -385,7 +460,8 @@ impl Assets {
                         continue;
                     }
                     if let Some(mo) = self.index.modifiers.get(md.path)
-                        && let Some(r) = crate::material::replacement(&path, &mo.folder, md.folder, &mo.skinned)
+                        && let Some(r) =
+                            crate::material::replacement(&path, &mo.folder, md.folder, &mo.skinned)
                         && self.index.materials.contains_key(&r)
                     {
                         path = r;
@@ -396,7 +472,16 @@ impl Assets {
                 Some((path, ids))
             })
             .collect();
-        PlacedSurface { id, role, surface: &self.surfaces[id], loc, chain: chain.to_vec(), materials, modified, vertex_loc: None }
+        PlacedSurface {
+            id,
+            role,
+            surface: &self.surfaces[id],
+            loc,
+            chain: chain.to_vec(),
+            materials,
+            modified,
+            vertex_loc: None,
+        }
     }
 }
 
@@ -410,7 +495,11 @@ mod tests {
     }
 
     fn apply(m: &[f32; 9], v: [f32; 3]) -> [f32; 3] {
-        [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]]
+        [
+            m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+            m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+            m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
+        ]
     }
 
     #[test]
@@ -424,7 +513,13 @@ mod tests {
         let parent = Loc { position: [10.0, 0.0, 0.0], ..yaw90() };
         let child = Loc { rotation: [0.0, 0.0, 0.0, 1.0], position: [1.0, 2.0, 0.0] };
         let c = parent.then(&child);
-        assert!((c.position[0] - 10.0).abs() < 1e-5 && (c.position[1] - 2.0).abs() < 1e-5 && (c.position[2] + 1.0).abs() < 1e-5, "{:?}", c.position);
+        assert!(
+            (c.position[0] - 10.0).abs() < 1e-5
+                && (c.position[1] - 2.0).abs() < 1e-5
+                && (c.position[2] + 1.0).abs() < 1e-5,
+            "{:?}",
+            c.position
+        );
         let twice = yaw90().then(&yaw90()).matrix();
         assert!((twice[0] + 1.0).abs() < 1e-5 && (twice[8] + 1.0).abs() < 1e-5);
     }

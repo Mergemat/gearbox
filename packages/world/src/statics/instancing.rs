@@ -26,11 +26,14 @@ pub fn hidden_baked(map: &gearbox_gbx::Map, src: &dyn ModelSource) -> Result<Vec
             ground.insert(unit_coord(block.coord, unit, block.dir, geometry.size)?);
         }
     }
-    Ok(map.baked_blocks
+    Ok(map
+        .baked_blocks
         .iter()
-        .map(|block| block.free.is_none()
-            && src.block_geometry(&BlockKey::of(block)).is_some_and(|geometry| geometry.terrain())
-            && ground.contains(&block.coord))
+        .map(|block| {
+            block.free.is_none()
+                && src.block_geometry(&BlockKey::of(block)).is_some_and(|geometry| geometry.terrain())
+                && ground.contains(&block.coord)
+        })
         .collect())
 }
 
@@ -83,22 +86,30 @@ impl Grid {
     }
 
     fn first_upright<'m>(
-        &self, map: &'m gearbox_gbx::Map, cell: &[(usize, usize)],
+        &self,
+        map: &'m gearbox_gbx::Map,
+        cell: &[(usize, usize)],
     ) -> Option<&'m gearbox_gbx::map::Block> {
         cell.iter().map(|&k| Grid::block(map, k)).find(|block| block.flags & 0x1000_0000 == 0)
     }
 }
 
 pub fn clip_parent<'m>(
-    map: &'m gearbox_gbx::Map, grid: &Grid, block: &gearbox_gbx::map::Block,
+    map: &'m gearbox_gbx::Map,
+    grid: &Grid,
+    block: &gearbox_gbx::map::Block,
     geometry: &crate::statics::model::Geometry,
 ) -> Result<Option<&'m gearbox_gbx::map::Block>> {
     if geometry.kind != crate::statics::model::catalog::GeometrySource::Clip || geometry.clip_type == 0 {
         return Ok(None);
     }
     if block.free.is_some() {
-        return Ok(map.baked_blocks.iter().position(|candidate| std::ptr::eq(candidate, block))
-            .and_then(|index| grid.free_parents.get(&index)).map(|&k| Grid::block(map, k)));
+        return Ok(map
+            .baked_blocks
+            .iter()
+            .position(|candidate| std::ptr::eq(candidate, block))
+            .and_then(|index| grid.free_parents.get(&index))
+            .map(|&k| Grid::block(map, k)));
     }
     let dir = match geometry.clip_type {
         2 => 5,
@@ -108,20 +119,35 @@ pub fn clip_parent<'m>(
     let c = neighbour(block.coord, dir);
     let cell = grid.cells.get(&c).map(|v| v.as_slice()).unwrap_or(&[]);
     if block.flags & 0x1000_0000 != 0 {
-        let face = match geometry.clip_type { 2 => 4, 3 => 5, _ => (block.dir as u32 + 2) & 3 };
+        let face = match geometry.clip_type {
+            2 => 4,
+            3 => 5,
+            _ => (block.dir as u32 + 2) & 3,
+        };
         for &k in cell {
             let parent = Grid::block(map, k);
-            if parent.flags & 0x1000_0000 == 0 { continue; }
+            if parent.flags & 0x1000_0000 == 0 {
+                continue;
+            }
             let Some(parent_geometry) = grid.geometry.get(&k) else { continue };
             let local_face = if face < 4 { (face + 4 - parent.dir as u32) & 3 } else { face };
             for (unit, clips) in parent_geometry.units.iter().zip(parent_geometry.clip_faces.iter()) {
-                if unit_coord(parent.coord, *unit, parent.dir, parent_geometry.size)? != c { continue; }
+                if unit_coord(parent.coord, *unit, parent.dir, parent_geometry.size)? != c {
+                    continue;
+                }
                 for (j, name) in clips.faces[local_face as usize].iter().enumerate() {
                     let Some(name) = name else { continue };
-                    if !gearbox_packs::assets::block_name(name).eq_ignore_ascii_case(&block.name) { continue; }
-                    let d = if local_face < 4 { (local_face + 2) & 3 }
-                        else { (clips.directions[(local_face-4) as usize] as u32 >> (j*2)) & 3 };
-                    if (d + parent.dir as u32) & 3 == block.dir as u32 { return Ok(Some(parent)); }
+                    if !gearbox_packs::assets::block_name(name).eq_ignore_ascii_case(&block.name) {
+                        continue;
+                    }
+                    let d = if local_face < 4 {
+                        (local_face + 2) & 3
+                    } else {
+                        (clips.directions[(local_face - 4) as usize] as u32 >> (j * 2)) & 3
+                    };
+                    if (d + parent.dir as u32) & 3 == block.dir as u32 {
+                        return Ok(Some(parent));
+                    }
                 }
             }
         }

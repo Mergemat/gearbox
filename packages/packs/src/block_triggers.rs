@@ -8,25 +8,12 @@ use anyhow::{Context, Result, ensure};
 use gearbox_gbx::reader::Reader;
 
 fn solid_surface(ctx: &Ctx<'_>, start: usize) -> Result<Surface> {
-    let solid = ctx
-        .layout
-        .nodes
-        .iter()
-        .find(|n| n.start == start)
-        .context("trigger solid span")?;
+    let solid = ctx.layout.nodes.iter().find(|n| n.start == start).context("trigger solid span")?;
     let end = solid.end.context("trigger solid without end")?;
-    let nodes: Vec<_> = ctx
-        .layout
-        .nodes
-        .iter()
-        .filter(|n| n.start > start && n.start < end)
-        .collect();
+    let nodes: Vec<_> = ctx.layout.nodes.iter().filter(|n| n.start > start && n.start < end).collect();
     let trees: Vec<_> = nodes.iter().filter(|n| n.class_id == 0x0904f000).collect();
     let surfaces: Vec<_> = nodes.iter().filter(|n| n.class_id == 0x0900c000).collect();
-    ensure!(
-        trees.len() == 1 && surfaces.len() == 1,
-        "legacy trigger solid tree layout not decoded"
-    );
+    ensure!(trees.len() == 1 && surfaces.len() == 1, "legacy trigger solid tree layout not decoded");
     let mut r = Reader::new(ctx.buf);
     r.skip(trees[0].start)?;
     ensure!(
@@ -40,10 +27,7 @@ fn solid_surface(ctx: &Ctx<'_>, start: usize) -> Result<Surface> {
     let mut r = Reader::new(ctx.buf);
     r.skip(surfaces[0].start)?;
     let mut surface = ctx.surface(&mut r)?;
-    let child = surface
-        .surf
-        .take()
-        .context("legacy trigger without surface")?;
+    let child = surface.surf.take().context("legacy trigger without surface")?;
     surface.surf = Some(SurfNode {
         kind: 13,
         surf: Surf::Compound {
@@ -57,19 +41,12 @@ fn solid_surface(ctx: &Ctx<'_>, start: usize) -> Result<Surface> {
 }
 
 pub fn load(set: &PackSet, blocks: &[(&Block, Option<u32>)], id_base: usize) -> Result<Catalog> {
-    let mut cat = Catalog {
-        index: Index::default(),
-        surfaces: Vec::new(),
-    };
+    let mut cat = Catalog { index: Index::default(), surfaces: Vec::new() };
     for &(block, waypoint) in blocks {
         let buf = set.read_path(&block.path)?;
         let layout = crate::nodes::layout(&buf)?;
         let parsed = crate::blockinfo::read_block_info(&buf, &layout, &block.path)?;
-        let ctx = Ctx {
-            buf: &buf,
-            layout: &layout,
-            path: &block.path,
-        };
+        let ctx = Ctx { buf: &buf, layout: &layout, path: &block.path };
         let mut actual = block.clone();
         let mut changed = false;
         for v in parsed.variants {
@@ -107,10 +84,7 @@ pub fn load(set: &PackSet, blocks: &[(&Block, Option<u32>)], id_base: usize) -> 
                     let Some(original) = m.prefab.take() else {
                         continue;
                     };
-                    let key = format!(
-                        "{}#trigger-{:?}-{}-{group}-{mobil}",
-                        block.path, v.kind, v.index
-                    );
+                    let key = format!("{}#trigger-{:?}-{}-{group}-{mobil}", block.path, v.kind, v.index);
                     let ent = |model| Ent {
                         model,
                         rotation: [0.0, 0.0, 0.0, 1.0],

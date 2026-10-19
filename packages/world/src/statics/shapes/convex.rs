@@ -1,14 +1,24 @@
 use anyhow::{Result, ensure};
-use gearbox_engine::{Aabb, Vec3, math::{minss, maxss}, static_world::{Convex, Face}};
+use gearbox_engine::{
+    Aabb, Vec3,
+    math::{maxss, minss},
+    static_world::{Convex, Face},
+};
 
-fn dot(a: Vec3, b: Vec3) -> f32 { (a.y * b.y + a.x * b.x) + a.z * b.z }
+fn dot(a: Vec3, b: Vec3) -> f32 {
+    (a.y * b.y + a.x * b.x) + a.z * b.z
+}
 
 fn axis(axes: &mut Vec<Vec3>, n: Vec3) -> u32 {
     if let Some(i) = axes.iter().position(|&a| {
         let delta = (1.0 - dot(n, a).abs()).abs();
         delta.is_nan() || delta < 0.00001
-    }) { i as u32 }
-    else { axes.push(n); axes.len() as u32 - 1 }
+    }) {
+        i as u32
+    } else {
+        axes.push(n);
+        axes.len() as u32 - 1
+    }
 }
 
 pub(super) fn bounds(hull: &mut Convex) {
@@ -37,8 +47,16 @@ pub(super) fn read(raw: &[u8], material: u16) -> Result<Convex> {
     let n = reader.u32()?;
     let ranges = (0..n).map(|_| Ok((reader.u32()?, reader.u32()?))).collect::<Result<Vec<_>>>()?;
     ensure!(indices.iter().all(|&i| (i as usize) < vertices.len()), "convex vertex index out of bounds");
-    let mut hull = Convex { material, vertices, indices, faces: Vec::new(), edges: Vec::new(),
-        normals: Vec::new(), directions: Vec::new(), bounds: Aabb::new(center, half) };
+    let mut hull = Convex {
+        material,
+        vertices,
+        indices,
+        faces: Vec::new(),
+        edges: Vec::new(),
+        normals: Vec::new(),
+        directions: Vec::new(),
+        bounds: Aabb::new(center, half),
+    };
     for (start, count) in ranges {
         ensure!(
             count >= 3 && start as u64 + count as u64 <= hull.indices.len() as u64,
@@ -53,8 +71,14 @@ pub(super) fn read(raw: &[u8], material: u16) -> Result<Convex> {
             normal = normal * inv;
         }
         let id = axis(&mut hull.normals, normal);
-        hull.faces.push(Face { normal, offset: ((-normal.x * v0.x) - normal.y * v0.y) - normal.z * v0.z,
-            axis: id, positive: dot(normal, hull.normals[id as usize]) > 0.0, start, count });
+        hull.faces.push(Face {
+            normal,
+            offset: ((-normal.x * v0.x) - normal.y * v0.y) - normal.z * v0.z,
+            axis: id,
+            positive: dot(normal, hull.normals[id as usize]) > 0.0,
+            start,
+            count,
+        });
         for k in 0..ids.len() {
             let (a, b) = (ids[k], ids[(k + 1) % ids.len()]);
             if !hull.edges.iter().any(|e| (e[0] == a && e[1] == b) || (e[0] == b && e[1] == a)) {
@@ -65,7 +89,9 @@ pub(super) fn read(raw: &[u8], material: u16) -> Result<Convex> {
     for e in &mut hull.edges {
         let mut d = hull.vertices[e[1] as usize] - hull.vertices[e[0] as usize];
         let length = dot(d, d);
-        if length > 1.0e-10 && f32::MAX > length { d = d * (1.0 / length.sqrt()); }
+        if length > 1.0e-10 && f32::MAX > length {
+            d = d * (1.0 / length.sqrt());
+        }
         e[2] = axis(&mut hull.directions, d);
     }
     Ok(hull)

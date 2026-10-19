@@ -1,5 +1,5 @@
 use super::Vehicle;
-use crate::{Vec3};
+use crate::Vec3;
 
 pub(super) fn clear_previous_controls(vehicle: &mut Vehicle) {
     let flags = vehicle.previous_controls.control_word;

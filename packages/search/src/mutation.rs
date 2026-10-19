@@ -87,10 +87,7 @@ impl Constraints {
 
 impl Mutation {
     pub fn validate(&self) -> Result<()> {
-        ensure!(
-            self.max_changes > 0 && self.max_span_ticks > 0,
-            "changes and span must be positive"
-        );
+        ensure!(self.max_changes > 0 && self.max_span_ticks > 0, "changes and span must be positive");
         ensure!(
             self.max_steer_delta.is_finite() && (0.0..=2.0).contains(&self.max_steer_delta),
             "steer delta must be finite and in [0, 2]"
@@ -139,11 +136,7 @@ impl Mutation {
         if self.max_shift_ticks == 0 {
             return;
         }
-        let channel = if steer_only {
-            2
-        } else {
-            rng.random_range(0..3)
-        };
+        let channel = if steer_only { 2 } else { rng.random_range(0..3) };
         let get = |c: Controls| match channel {
             0 => c.gas,
             1 => c.brake,
@@ -190,18 +183,10 @@ impl Mutation {
     ) {
         let t0 = inputs.t0;
         let controls = &mut inputs.controls;
-        if attempt % 16 < 3
-            && controls[window.clone()]
-                .iter()
-                .all(|c| *c == Controls::default())
-        {
+        if attempt % 16 < 3 && controls[window.clone()].iter().all(|c| *c == Controls::default()) {
             let steer = [0.0, -0.1, 0.1][attempt % 16];
             for c in &mut controls[window] {
-                *c = Controls {
-                    gas: 1.0,
-                    brake: 0.0,
-                    steer,
-                };
+                *c = Controls { gas: 1.0, brake: 0.0, steer };
             }
             return;
         }
@@ -209,11 +194,7 @@ impl Mutation {
             let first = rng.random_range(window.start..window.end);
             let last = (first + rng.random_range(1..=curve_ticks * 4)).min(window.end);
             for chunk in controls[first..last].chunks_mut(curve_ticks) {
-                let steer = if rng.random_bool(0.5) {
-                    rng.random_range(-1.0..=1.0)
-                } else {
-                    0.0
-                };
+                let steer = if rng.random_bool(0.5) { rng.random_range(-1.0..=1.0) } else { 0.0 };
                 let gas = if rng.random_bool(0.85) { 1.0 } else { 0.0 };
                 let brake = if rng.random_bool(0.15) { 1.0 } else { 0.0 };
                 chunk.fill(Controls { gas, brake, steer });
@@ -250,16 +231,8 @@ impl Mutation {
                 return;
             }
             let at = candidates[rng.random_range(0..candidates.len())];
-            let at = if kind == 2 {
-                at.saturating_sub(2).max(window.start)
-            } else {
-                at
-            };
-            let duration = if kind == 2 {
-                rng.random_range(4..=12)
-            } else {
-                rng.random_range(2..=12)
-            };
+            let at = if kind == 2 { at.saturating_sub(2).max(window.start) } else { at };
+            let duration = if kind == 2 { rng.random_range(4..=12) } else { rng.random_range(2..=12) };
             let end = at.saturating_add(duration).min(window.end);
             let sign = if rng.random::<bool>() { 1.0 } else { -1.0 };
             for (j, c) in controls[at..end].iter_mut().enumerate() {
@@ -284,7 +257,9 @@ mod tests {
     #[test]
     fn shifts_move_transitions_without_new_values() {
         use rand::SeedableRng;
-        let parent: Vec<Controls> = (0..40).map(|k| c(if (10..20).contains(&k) { 0.0 } else { 1.0 }, 0.0, if k < 25 { -0.5 } else { 0.7 })).collect();
+        let parent: Vec<Controls> = (0..40)
+            .map(|k| c(if (10..20).contains(&k) { 0.0 } else { 1.0 }, 0.0, if k < 25 { -0.5 } else { 0.7 }))
+            .collect();
         let m = Mutation { max_changes: 3, max_shift_ticks: 6, ..Default::default() };
         let mut moved = false;
         for seed in 0..200 {
@@ -293,7 +268,10 @@ mod tests {
             assert_eq!(child[..5], parent[..5]);
             assert_eq!(child[35..], parent[35..]);
             for x in &child {
-                assert!([0.0, 1.0].contains(&x.gas) && x.brake == 0.0 && [-0.5, 0.7].contains(&x.steer), "{x:?}");
+                assert!(
+                    [0.0, 1.0].contains(&x.gas) && x.brake == 0.0 && [-0.5, 0.7].contains(&x.steer),
+                    "{x:?}"
+                );
             }
             let changes = |f: fn(&Controls) -> f32| child.windows(2).filter(|w| f(&w[0]) != f(&w[1])).count();
             assert!(changes(|x| x.gas) <= 2 && changes(|x| x.steer) <= 1);
@@ -338,7 +316,12 @@ mod tests {
     #[test]
     fn mutated_candidates_stay_within_the_constraints() {
         use rand::SeedableRng;
-        let k = Constraints { fixed: [false, true, false], steer_limit: Some(0.5), locked: vec![10..20], ..Default::default() };
+        let k = Constraints {
+            fixed: [false, true, false],
+            steer_limit: Some(0.5),
+            locked: vec![10..20],
+            ..Default::default()
+        };
         let m = Mutation { max_changes: 4, max_span_ticks: 30, constraints: k.clone(), ..Default::default() };
         let parent = vec![c(1.0, 0.0, 0.1); 60];
         for seed in 0..200 {

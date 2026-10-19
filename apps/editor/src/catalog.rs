@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 pub use gearbox_world::paths::map_stem;
+use std::path::{Path, PathBuf};
 
 fn collect_maps(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else { return };
@@ -16,7 +16,10 @@ fn collect_maps(dir: &Path, depth: u32, out: &mut Vec<PathBuf>) {
 
 pub fn test_maps() -> Option<&'static Path> {
     static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
-    DIR.get_or_init(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/golden/maps").canonicalize().ok()).as_deref()
+    DIR.get_or_init(|| {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/golden/maps").canonicalize().ok()
+    })
+    .as_deref()
 }
 
 pub fn scan_maps(game: &gearbox_packs::install::Game) -> Vec<PathBuf> {

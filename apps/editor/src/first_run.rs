@@ -1,8 +1,8 @@
-use gpui::{
-    App, AppContext, Bounds, Context, FontWeight, IntoElement, ParentElement, PathPromptOptions,
-    Render, StatefulInteractiveElement, Styled, TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
-};
 use gearbox_packs::install::{Game, Origin};
+use gpui::{
+    App, AppContext, Bounds, Context, FontWeight, IntoElement, ParentElement, PathPromptOptions, Render,
+    StatefulInteractiveElement, Styled, TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
+};
 
 use crate::theme::{self, c};
 use crate::ui::widgets::{Btn, btn};
@@ -19,14 +19,20 @@ pub fn open(cx: &mut App, next: impl FnOnce(Game, &mut App) + 'static) {
     let bounds = Bounds::centered(None, size(px(460.0), px(220.0)), cx);
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
-        titlebar: Some(TitlebarOptions { title: Some("Gearbox".into()), appears_transparent: true, ..Default::default() }),
+        titlebar: Some(TitlebarOptions {
+            title: Some("Gearbox".into()),
+            appears_transparent: true,
+            ..Default::default()
+        }),
         focus: true,
         show: true,
         ..Default::default()
     };
     let next: Continue = Box::new(next);
-    cx.open_window(options, move |_, cx| cx.new(|_| Locate { error: None, choosing: false, next: Some(next) }))
-        .expect("opening the window");
+    cx.open_window(options, move |_, cx| {
+        cx.new(|_| Locate { error: None, choosing: false, next: Some(next) })
+    })
+    .expect("opening the window");
 }
 
 impl Locate {
@@ -43,7 +49,8 @@ impl Locate {
         });
         let window = window.window_handle();
         cx.spawn(async move |this, cx| {
-            let folder = picked.await.ok().and_then(Result::ok).flatten().and_then(|paths| paths.into_iter().next());
+            let folder =
+                picked.await.ok().and_then(Result::ok).flatten().and_then(|paths| paths.into_iter().next());
             let _ = this.update(cx, |locate, cx| {
                 locate.choosing = false;
                 let Some(folder) = folder else { return cx.notify() };

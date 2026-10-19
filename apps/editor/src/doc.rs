@@ -34,7 +34,14 @@ impl GateGoal {
 
     pub fn of_parts(parts: Vec<GatePart>) -> Self {
         let first = &parts[0].gate;
-        let mut g = GateGoal { waypoint: first.waypoint, kind: first.kind, boxes: Vec::new(), ordinal: first.ordinal, also: Vec::new(), parts: Vec::new() };
+        let mut g = GateGoal {
+            waypoint: first.waypoint,
+            kind: first.kind,
+            boxes: Vec::new(),
+            ordinal: first.ordinal,
+            also: Vec::new(),
+            parts: Vec::new(),
+        };
         for p in &parts {
             for w in std::iter::once(p.gate.waypoint).chain(p.gate.also.iter().copied()) {
                 if !g.has(w) {
@@ -48,7 +55,11 @@ impl GateGoal {
     }
 
     pub fn split(&self, name: &str) -> Vec<GatePart> {
-        if self.parts.is_empty() { vec![GatePart { name: name.into(), gate: self.clone() }] } else { self.parts.clone() }
+        if self.parts.is_empty() {
+            vec![GatePart { name: name.into(), gate: self.clone() }]
+        } else {
+            self.parts.clone()
+        }
     }
 }
 
@@ -58,7 +69,13 @@ pub fn parts_name(parts: &[GatePart]) -> String {
 
 pub fn touching(gates: &[&gearbox_search::gate::Gate]) -> Vec<Vec<u32>> {
     const TOUCH: f32 = 1.0;
-    let near = |a: &gearbox_search::gate::Gate, b: &gearbox_search::gate::Gate| a.boxes.iter().any(|p| b.boxes.iter().any(|q| (0..3).all(|k| p.min[k] - TOUCH <= q.max[k] && q.min[k] - TOUCH <= p.max[k])));
+    let near = |a: &gearbox_search::gate::Gate, b: &gearbox_search::gate::Gate| {
+        a.boxes.iter().any(|p| {
+            b.boxes
+                .iter()
+                .any(|q| (0..3).all(|k| p.min[k] - TOUCH <= q.max[k] && q.min[k] - TOUCH <= p.max[k]))
+        })
+    };
     let mut group: Vec<usize> = (0..gates.len()).collect();
     let root = |g: &[usize], mut i: usize| {
         while g[i] != i {
@@ -117,7 +134,11 @@ impl PoseSpec {
 
     pub fn goal(&self) -> gearbox_search::pose::PoseGoal {
         gearbox_search::pose::PoseGoal {
-            pose: gearbox_search::pose::Pose { position: self.pos, rotation: ypr_quat(self.ypr), velocity: self.velocity },
+            pose: gearbox_search::pose::Pose {
+                position: self.pos,
+                rotation: ypr_quat(self.ypr),
+                velocity: self.velocity,
+            },
             position_tolerance: self.pos_tol,
             angle_tolerance: self.angle_tol.to_radians(),
             velocity_tolerance: self.use_velocity.then_some(self.vel_tol),
@@ -139,7 +160,11 @@ pub enum GoalKind {
 
 pub fn trigger_box(pos: [f32; 3], size: [f32; 3], ypr: [f32; 3]) -> gearbox_search::goals::TriggerBox {
     let q = ypr_rot(ypr);
-    gearbox_search::goals::TriggerBox { center: pos, half: size.map(|v| (v * 0.5).max(0.01)), rotation: [q.x, q.y, q.z, q.w] }
+    gearbox_search::goals::TriggerBox {
+        center: pos,
+        half: size.map(|v| (v * 0.5).max(0.01)),
+        rotation: [q.x, q.y, q.z, q.w],
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -162,7 +187,12 @@ pub struct When {
 
 impl When {
     pub fn conditions(&self) -> gearbox_search::goals::Conditions {
-        gearbox_search::goals::Conditions { min_speed: self.min_kmh.map(|v| v / 3.6), pitch: self.pitch, slide: self.slide, min_crossings: None }
+        gearbox_search::goals::Conditions {
+            min_speed: self.min_kmh.map(|v| v / 3.6),
+            pitch: self.pitch,
+            slide: self.slide,
+            min_crossings: None,
+        }
     }
 
     pub fn summary(&self) -> Vec<String> {
@@ -179,7 +209,11 @@ impl When {
             });
         }
         if let Some([a, b]) = self.slide {
-            v.push(if a >= 45.0 && b <= 135.0 { "sideways".into() } else { format!("slide {a:.0}\u{2026}{b:.0}\u{00b0}") });
+            v.push(if a >= 45.0 && b <= 135.0 {
+                "sideways".into()
+            } else {
+                format!("slide {a:.0}\u{2026}{b:.0}\u{00b0}")
+            });
         }
         v
     }
@@ -206,7 +240,9 @@ fn yes() -> bool {
 impl Goal {
     pub fn pos(&self) -> Vec3 {
         match &self.kind {
-            GoalKind::Gate(g) => g.boxes.first().map_or(Vec3::ZERO, |b| (Vec3::from(b.min) + Vec3::from(b.max)) * 0.5),
+            GoalKind::Gate(g) => {
+                g.boxes.first().map_or(Vec3::ZERO, |b| (Vec3::from(b.min) + Vec3::from(b.max)) * 0.5)
+            }
             GoalKind::Point { pos, .. } => Vec3::from(*pos),
             GoalKind::Pose(p) => Vec3::from(p.pos),
             GoalKind::Box { pos, .. } => Vec3::from(*pos),
@@ -253,7 +289,11 @@ impl StartState {
 
     pub fn placement(&self) -> gearbox_search::pose::Placement {
         gearbox_search::pose::Placement {
-            pose: gearbox_search::pose::Pose { position: self.pos, rotation: ypr_quat(self.ypr), velocity: self.velocity },
+            pose: gearbox_search::pose::Pose {
+                position: self.pos,
+                rotation: ypr_quat(self.ypr),
+                velocity: self.velocity,
+            },
             angular_velocity: self.angular.map(f32::to_radians),
             reset_contacts: self.reset_contacts,
         }
@@ -448,7 +488,15 @@ impl Doc {
     }
 
     pub fn current(&mut self, origin: Origin) -> Run {
-        Run { id: self.id(), name: self.run_name.clone(), inputs: self.inputs.clone(), len: self.len, start: self.start.clone(), origin, at: clock() }
+        Run {
+            id: self.id(),
+            name: self.run_name.clone(),
+            inputs: self.inputs.clone(),
+            len: self.len,
+            start: self.start.clone(),
+            origin,
+            at: clock(),
+        }
     }
 
     pub fn remember(&mut self, why: &str) {
@@ -539,7 +587,8 @@ pub fn rot_ypr(q: Quat) -> [f32; 3] {
 }
 
 pub fn frame_rot(f: &Frame) -> Quat {
-    Quat::from_mat3(&Mat3::from_cols(Vec3::from(f.axis(0)), Vec3::from(f.axis(1)), Vec3::from(f.axis(2)))).normalize()
+    Quat::from_mat3(&Mat3::from_cols(Vec3::from(f.axis(0)), Vec3::from(f.axis(1)), Vec3::from(f.axis(2))))
+        .normalize()
 }
 
 pub fn frame_pose(f: &Frame) -> gearbox_search::pose::Pose {
@@ -550,7 +599,13 @@ pub fn control_at(inputs: &InputFile, race_ms0: i32, k: usize) -> Controls {
     inputs.at(race_ms0 + 10 * k as i32)
 }
 
-pub fn splice(new: &InputFile, old: &InputFile, race_ms0: i32, new_tick: usize, old_tick: usize) -> Option<InputFile> {
+pub fn splice(
+    new: &InputFile,
+    old: &InputFile,
+    race_ms0: i32,
+    new_tick: usize,
+    old_tick: usize,
+) -> Option<InputFile> {
     let mut out = new.clone();
     let cut = out.index(race_ms0 + 10 * new_tick as i32)?;
     out.controls.truncate(cut);
@@ -604,11 +659,15 @@ pub struct Reach {
 fn reach_from(g: &Goal, frames: &[Frame], from: usize) -> Option<(usize, i32)> {
     let fr = frames.get(from..)?;
     let cond = g.when.conditions();
-    let ok = |f: &Frame| cond.is_empty() || cond.shortfall(gearbox_search::Body(f.body), u32::from(f.waypoints)) == 0.0;
+    let ok = |f: &Frame| {
+        cond.is_empty() || cond.shortfall(gearbox_search::Body(f.body), u32::from(f.waypoints)) == 0.0
+    };
     let reached = match &g.kind {
         GoalKind::Point { pos, radius } => {
             let p = Vec3::from(*pos);
-            fr.iter().position(|f| Vec3::from(f.position()).distance(p) <= *radius && ok(f)).map(|i| (from + i, fr[i].race_ms))
+            fr.iter()
+                .position(|f| Vec3::from(f.position()).distance(p) <= *radius && ok(f))
+                .map(|i| (from + i, fr[i].race_ms))
         }
         GoalKind::Pose(spec) => {
             let goal = spec.goal();
@@ -617,22 +676,26 @@ fn reach_from(g: &Goal, frames: &[Frame], from: usize) -> Option<(usize, i32)> {
         GoalKind::Box { pos, size, ypr } => {
             let b = trigger_box(*pos, *size, *ypr);
             (from..frames.len())
-                .find(|&k| (b.touches_car(gearbox_search::Body(frames[k].body)) || (k > from && b.segment_hits(frames[k - 1].position(), frames[k].position()))) && ok(&frames[k]))
+                .find(|&k| {
+                    (b.touches_car(gearbox_search::Body(frames[k].body))
+                        || (k > from && b.segment_hits(frames[k - 1].position(), frames[k].position())))
+                        && ok(&frames[k])
+                })
                 .map(|k| (k, frames[k].race_ms))
         }
-        GoalKind::Gate(gate) => {
-            (from.max(1)..frames.len()).find_map(|k| {
-                let (a, b) = (&frames[k - 1], &frames[k]);
-                let new = b.waypoints > a.waypoints;
-                let ord_ok = gate.ordinal.is_none_or(|o| b.waypoints as usize >= o && (a.waypoints as usize) < o);
-                match b.last_crossing {
-                    Some((w, t)) if new && gate.has(w) && ord_ok => Some((k, t as i32)),
-                    _ => None,
-                }
-            })
-        }
+        GoalKind::Gate(gate) => (from.max(1)..frames.len()).find_map(|k| {
+            let (a, b) = (&frames[k - 1], &frames[k]);
+            let new = b.waypoints > a.waypoints;
+            let ord_ok = gate.ordinal.is_none_or(|o| b.waypoints as usize >= o && (a.waypoints as usize) < o);
+            match b.last_crossing {
+                Some((w, t)) if new && gate.has(w) && ord_ok => Some((k, t as i32)),
+                _ => None,
+            }
+        }),
     };
-    reached.filter(|(k, _)| matches!(g.kind, GoalKind::Gate(_)).then(|| frames.get(*k).is_some_and(ok)).unwrap_or(true))
+    reached.filter(|(k, _)| {
+        matches!(g.kind, GoalKind::Gate(_)).then(|| frames.get(*k).is_some_and(ok)).unwrap_or(true)
+    })
 }
 
 fn closest(g: &Goal, frames: &[Frame]) -> Option<(usize, f32)> {
@@ -640,8 +703,15 @@ fn closest(g: &Goal, frames: &[Frame]) -> Option<(usize, f32)> {
         match &g.kind {
             GoalKind::Point { pos, .. } => Vec3::from(f.position()).distance(Vec3::from(*pos)),
             GoalKind::Pose(spec) => spec.goal().error(frame_pose(f)) as f32,
-            GoalKind::Box { pos, size, ypr } => trigger_box(*pos, *size, *ypr).car_distance(gearbox_search::Body(f.body)) as f32,
-            GoalKind::Gate(gate) => gearbox_search::gate::Gate { waypoint: gate.waypoint, kind: gate.kind, boxes: gate.boxes.clone() }.distance(f.position()) as f32,
+            GoalKind::Box { pos, size, ypr } => {
+                trigger_box(*pos, *size, *ypr).car_distance(gearbox_search::Body(f.body)) as f32
+            }
+            GoalKind::Gate(gate) => gearbox_search::gate::Gate {
+                waypoint: gate.waypoint,
+                kind: gate.kind,
+                boxes: gate.boxes.clone(),
+            }
+            .distance(f.position()) as f32,
         }
     };
     frames.iter().enumerate().map(|(k, f)| (k, d(f))).min_by(|a, b| a.1.total_cmp(&b.1))
@@ -701,8 +771,11 @@ pub fn run_order(goals: &[Goal], reach: &[Reach], guides: &[Guide]) -> Vec<usize
     let finish = |i: usize| matches!(&goals[i].kind, GoalKind::Gate(g) if g.kind == 1);
     let mut far: Vec<usize> = (0..goals.len()).filter(|&i| placed_at(i).is_none()).collect();
     let on = |g: &Guide, i: usize| g.project(goals[i].pos()).filter(|p| p.1 <= ON_LINE_M).map(|p| p.0);
-    if let Some(g) = guides.iter().max_by_key(|g| far.iter().filter(|&&i| !finish(i) && on(g, i).is_some()).count()) {
-        let mut along: Vec<(f32, usize)> = far.iter().filter(|&&i| !finish(i)).filter_map(|&i| Some((on(g, i)?, i))).collect();
+    if let Some(g) =
+        guides.iter().max_by_key(|g| far.iter().filter(|&&i| !finish(i) && on(g, i).is_some()).count())
+    {
+        let mut along: Vec<(f32, usize)> =
+            far.iter().filter(|&&i| !finish(i)).filter_map(|&i| Some((on(g, i)?, i))).collect();
         along.sort_by(|a, b| a.0.total_cmp(&b.0));
         far.retain(|i| !along.iter().any(|a| a.1 == *i));
         order.extend(along.into_iter().map(|a| a.1));
@@ -710,7 +783,11 @@ pub fn run_order(goals: &[Goal], reach: &[Reach], guides: &[Guide]) -> Vec<usize
     let mut from = order.last().map(|&i| goals[i].pos());
     while !far.is_empty() {
         let key = |&&i: &&usize| (finish(i), from.map_or(0.0, |p| p.distance(goals[i].pos())));
-        let (k, _) = far.iter().enumerate().min_by(|a, b| key(&a.1).partial_cmp(&key(&b.1)).unwrap_or(std::cmp::Ordering::Equal)).expect("not empty");
+        let (k, _) = far
+            .iter()
+            .enumerate()
+            .min_by(|a, b| key(&a.1).partial_cmp(&key(&b.1)).unwrap_or(std::cmp::Ordering::Equal))
+            .expect("not empty");
         let i = far.remove(k);
         from = Some(goals[i].pos());
         order.push(i);
@@ -723,7 +800,13 @@ mod tests {
     use super::*;
 
     fn point(id: Id, x: f32) -> Goal {
-        Goal { id, name: format!("P{id}"), kind: GoalKind::Point { pos: [x, 0.0, 0.0], radius: 3.0 }, visible: true, when: When::default() }
+        Goal {
+            id,
+            name: format!("P{id}"),
+            kind: GoalKind::Point { pos: [x, 0.0, 0.0], radius: 3.0 },
+            visible: true,
+            when: When::default(),
+        }
     }
 
     #[test]
@@ -731,9 +814,24 @@ mod tests {
         let reached = |k: usize| Reach { tick: Some(k), closest: Some((k, 0.0)), ..Default::default() };
         let missed = |k: usize, d: f32| Reach { closest: Some((k, d)), ..Default::default() };
         let mut finish = point(5, 150.0);
-        finish.kind = GoalKind::Gate(GateGoal { waypoint: 7, kind: 1, boxes: vec![gearbox_search::gate::Bounds { min: [149.0, 0.0, 0.0], max: [151.0, 1.0, 1.0] }], ordinal: None, also: Vec::new(), parts: Vec::new() });
-        let goals = vec![point(1, 0.0), point(2, 100.0), point(3, 50.0), point(4, 200.0), finish, point(6, 300.0)];
-        let reach = vec![reached(10), reached(90), missed(50, 12.0), missed(5, 80.0), missed(20, 85.0), missed(95, 190.0)];
+        finish.kind = GoalKind::Gate(GateGoal {
+            waypoint: 7,
+            kind: 1,
+            boxes: vec![gearbox_search::gate::Bounds { min: [149.0, 0.0, 0.0], max: [151.0, 1.0, 1.0] }],
+            ordinal: None,
+            also: Vec::new(),
+            parts: Vec::new(),
+        });
+        let goals =
+            vec![point(1, 0.0), point(2, 100.0), point(3, 50.0), point(4, 200.0), finish, point(6, 300.0)];
+        let reach = vec![
+            reached(10),
+            reached(90),
+            missed(50, 12.0),
+            missed(5, 80.0),
+            missed(20, 85.0),
+            missed(95, 190.0),
+        ];
         let ids: Vec<Id> = run_order(&goals, &reach, &[]).iter().map(|&i| goals[i].id).collect();
         assert_eq!(ids, [1, 3, 2, 4, 6, 5]);
     }
@@ -746,7 +844,11 @@ mod tests {
         p4.kind = GoalKind::Point { pos: [120.0, 0.0, 60.0], radius: 3.0 };
         let goals = vec![point(1, 0.0), point(2, 100.0), point(3, 200.0), p4, point(5, 600.0)];
         let reach = vec![reached(10), reached(90), missed(95), missed(95), missed(95)];
-        let line = Guide { id: 9, name: "Line".into(), points: vec![[100.0, 0.0, 0.0], [200.0, 0.0, 0.0], [200.0, 0.0, 60.0], [120.0, 0.0, 60.0]] };
+        let line = Guide {
+            id: 9,
+            name: "Line".into(),
+            points: vec![[100.0, 0.0, 0.0], [200.0, 0.0, 0.0], [200.0, 0.0, 60.0], [120.0, 0.0, 60.0]],
+        };
         let ids: Vec<Id> = run_order(&goals, &reach, &[line]).iter().map(|&i| goals[i].id).collect();
         assert_eq!(ids, [1, 2, 3, 4, 5]);
     }
@@ -754,7 +856,11 @@ mod tests {
     #[test]
     fn a_spliced_section_keeps_the_old_inputs_after_it_moved_to_the_new_time() {
         let ms0 = -1550;
-        let old = InputFile { t0: ms0, seed: None, controls: (0..100).map(|k| Controls { gas: 1.0, brake: 0.0, steer: k as f32 }).collect() };
+        let old = InputFile {
+            t0: ms0,
+            seed: None,
+            controls: (0..100).map(|k| Controls { gas: 1.0, brake: 0.0, steer: k as f32 }).collect(),
+        };
         let mut new = old.clone();
         for c in &mut new.controls[10..45] {
             c.steer = -1.0;
@@ -770,7 +876,11 @@ mod tests {
 
     #[test]
     fn finish_blocks_in_a_row_are_one_finish_and_far_ones_another() {
-        let at = |w: u32, x: f32| gearbox_search::gate::Gate { waypoint: w, kind: 1, boxes: vec![gearbox_search::gate::Bounds { min: [x, 0.0, 0.0], max: [x + 32.0, 8.0, 2.0] }] };
+        let at = |w: u32, x: f32| gearbox_search::gate::Gate {
+            waypoint: w,
+            kind: 1,
+            boxes: vec![gearbox_search::gate::Bounds { min: [x, 0.0, 0.0], max: [x + 32.0, 8.0, 2.0] }],
+        };
         let gs = [at(7, 0.0), at(3, 500.0), at(8, 32.0), at(9, 64.5)];
         let refs: Vec<&gearbox_search::gate::Gate> = gs.iter().collect();
         assert_eq!(touching(&refs), vec![vec![7, 8, 9], vec![3]]);
@@ -778,7 +888,13 @@ mod tests {
 
     #[test]
     fn yaw_pitch_roll_round_trip_through_quaternions() {
-        for ypr in [[0.0, 0.0, 0.0], [90.0, 0.0, 0.0], [-135.0, 20.0, 0.0], [30.0, -10.0, 15.0], [170.0, 45.0, -60.0]] {
+        for ypr in [
+            [0.0, 0.0, 0.0],
+            [90.0, 0.0, 0.0],
+            [-135.0, 20.0, 0.0],
+            [30.0, -10.0, 15.0],
+            [170.0, 45.0, -60.0],
+        ] {
             let back = rot_ypr(ypr_rot(ypr));
             for k in 0..3 {
                 assert!((back[k] - ypr[k]).abs() < 1e-3, "{ypr:?} -> {back:?}");

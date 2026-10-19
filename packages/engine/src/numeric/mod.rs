@@ -26,7 +26,13 @@ pub fn floorf(x: f32) -> f32 {
     let neg = bits != a;
     if a < 0x4b80_0000 {
         if a < 0x3f80_0000 {
-            return if a == 0 { x } else if neg { -1.0 } else { 0.0 };
+            return if a == 0 {
+                x
+            } else if neg {
+                -1.0
+            } else {
+                0.0
+            };
         }
         let shift = 0x96u32.wrapping_sub(bits >> 23) & 31;
         let r = bits & (u32::MAX << shift);
@@ -42,7 +48,13 @@ pub fn ceilf(x: f32) -> f32 {
     let neg = bits != a;
     if a < 0x4b80_0000 {
         if a < 0x3f80_0000 {
-            return if a == 0 { x } else if neg { -0.0 } else { 1.0 };
+            return if a == 0 {
+                x
+            } else if neg {
+                -0.0
+            } else {
+                1.0
+            };
         }
         let shift = 0x96u32.wrapping_sub(bits >> 23) & 31;
         let r = bits & (u32::MAX << shift);
@@ -143,7 +155,13 @@ pub fn powf(x: f32, y: f32) -> f32 {
             return f(if (yb as i32) < 0 { 0 } else { inf });
         }
         if xb == 0xff80_0000 {
-            let mag = if (yb as i32) < 0 { 0 } else if (yb as i32) > 0 { inf } else { yb };
+            let mag = if (yb as i32) < 0 {
+                0
+            } else if (yb as i32) > 0 {
+                inf
+            } else {
+                yb
+            };
             let s = pow_sign(y, ay, 0x8000_0000).unwrap_or(0);
             return f(s | mag);
         }
@@ -156,7 +174,13 @@ pub fn powf(x: f32, y: f32) -> f32 {
     if (xb as i32) < 0x3f88_0000 {
         if (xb as i32) <= 0 {
             if ax == 0 {
-                let (mag, pole) = if (yb as i32) < 0 { (inf, true) } else if (yb as i32) > 0 { (0, false) } else { (yb, false) };
+                let (mag, pole) = if (yb as i32) < 0 {
+                    (inf, true)
+                } else if (yb as i32) > 0 {
+                    (0, false)
+                } else {
+                    (yb, false)
+                };
                 let s = pow_sign(y, ay, xb & 0x8000_0000).unwrap_or(0);
                 if pole {
                     todo!("powf: zero to a negative power (errno)");

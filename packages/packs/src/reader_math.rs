@@ -1,4 +1,4 @@
-pub use gearbox_engine::math::{angle_approx, cvtt, maxss, minss, sincos_precise, sincos as sincos_value};
+pub use gearbox_engine::math::{angle_approx, cvtt, maxss, minss, sincos as sincos_value, sincos_precise};
 
 pub fn matrix_to_quat_values(r: [f32; 9]) -> [f32; 4] {
     gearbox_engine::Quat::from_mat3(&gearbox_engine::Mat3::from_array(r)).to_array()

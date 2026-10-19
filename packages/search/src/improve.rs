@@ -2,9 +2,9 @@ use crate::Body;
 use std::ops::Range;
 
 use anyhow::Result;
+use gearbox_engine::Controls;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use gearbox_engine::Controls;
 
 use crate::follow::steer_toward;
 use crate::input::Timeline;
@@ -28,7 +28,8 @@ pub enum Change {
     Car,
 }
 
-pub const CHANGES: [Change; 6] = [Change::Ticks, Change::Timing, Change::Edit, Change::Turn, Change::Cut, Change::Car];
+pub const CHANGES: [Change; 6] =
+    [Change::Ticks, Change::Timing, Change::Edit, Change::Turn, Change::Cut, Change::Car];
 
 impl Change {
     pub fn label(self) -> &'static str {
@@ -69,18 +70,33 @@ pub struct Progress<'a> {
     pub changes: [(Change, u32, u32); 6],
 }
 
-pub fn improve(origin: &dyn Origin, objective: &Objective, start: Timeline, range: Range<usize>, until: usize, s: &Settings, mut round: impl FnMut(&Progress) -> bool) -> Result<Vec<Line>> {
+pub fn improve(
+    origin: &dyn Origin,
+    objective: &Objective,
+    start: Timeline,
+    range: Range<usize>,
+    until: usize,
+    s: &Settings,
+    mut round: impl FnMut(&Progress) -> bool,
+) -> Result<Vec<Line>> {
     anyhow::ensure!(range.start < range.end && range.end <= until, "the range must lie before Drive until");
     let from_ms = start.t0 + 10 * range.start as i32;
     let until_ms = start.t0 + 10 * until as i32;
     let judge = |inputs: &Timeline, car: Option<&Placement>| -> Result<(Score, Vec<[f32; 3]>)> {
         let mut n = native(origin, car)?;
         n.seed = inputs.seed;
-        let ev = evaluate_with(&mut n, inputs, objective, until_ms, EvalOptions { from_ms: Some(from_ms), path_every: 1, trace: false, ..s.eval })?;
+        let ev = evaluate_with(
+            &mut n,
+            inputs,
+            objective,
+            until_ms,
+            EvalOptions { from_ms: Some(from_ms), path_every: 1, trace: false, ..s.eval },
+        )?;
         Ok((ev.score, ev.path))
     };
     let (score, trail) = judge(&start, s.placement.as_ref())?;
-    let mut pool = vec![Line { inputs: start, score, trail, change: None, id: 0, placement: s.placement.clone() }];
+    let mut pool =
+        vec![Line { inputs: start, score, trail, change: None, id: 0, placement: s.placement.clone() }];
     let mut rng = StdRng::seed_from_u64(s.seed);
     let mut weight = [1.0f64; 6];
     let allowed = CHANGES.map(|c| c != Change::Car || s.placement.is_some());
@@ -105,13 +121,17 @@ pub fn improve(origin: &dyn Origin, objective: &Objective, start: Timeline, rang
                     scope.spawn(move || -> Result<Line> {
                         let parent = &pool_ref[p];
                         let mut rng = StdRng::seed_from_u64(seed);
-                        let (inputs, placement) = make(origin, parent, change, range, until, &s.constraints, &mut rng)?;
+                        let (inputs, placement) =
+                            make(origin, parent, change, range, until, &s.constraints, &mut rng)?;
                         let (score, trail) = judge(&inputs, placement.as_ref())?;
                         Ok(Line { inputs, score, trail, change: Some(change), id, placement })
                     })
                 })
                 .collect();
-            handles.into_iter().map(|h| h.join().unwrap_or_else(|_| Err(anyhow::anyhow!("a try panicked")))).collect()
+            handles
+                .into_iter()
+                .map(|h| h.join().unwrap_or_else(|_| Err(anyhow::anyhow!("a try panicked"))))
+                .collect()
         });
         let mut latest = Vec::new();
         for (child, &(_, change, _)) in children.into_iter().zip(&jobs) {
@@ -162,7 +182,8 @@ fn native<'o>(origin: &'o dyn Origin, car: Option<&Placement>) -> Result<gearbox
 }
 
 fn turn_car(p: &Placement, rng: &mut StdRng) -> Placement {
-    let mut angle = |max: f32| if rng.random_bool(0.5) { rng.random_range(-max..=max).to_radians() } else { 0.0 };
+    let mut angle =
+        |max: f32| if rng.random_bool(0.5) { rng.random_range(-max..=max).to_radians() } else { 0.0 };
     let (yaw, pitch, roll) = (angle(25.0), angle(15.0), angle(15.0));
     let speed = rng.random_range(0.8..=1.2f32);
     let mul = |a: [f32; 4], b: [f32; 4]| {
@@ -189,7 +210,12 @@ fn turn_car(p: &Placement, rng: &mut StdRng) -> Placement {
 }
 
 fn keep(pool: &mut Vec<Line>, child: Line) -> bool {
-    let (near, d) = pool.iter().enumerate().map(|(i, l)| (i, difference(&child.trail, &l.trail))).min_by(|a, b| a.1.total_cmp(&b.1)).unwrap_or((0, f32::INFINITY));
+    let (near, d) = pool
+        .iter()
+        .enumerate()
+        .map(|(i, l)| (i, difference(&child.trail, &l.trail)))
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .unwrap_or((0, f32::INFINITY));
     if d < DIFFERENT_M {
         if child.score.quality_cmp(&pool[near].score).is_gt() {
             pool[near] = child;
@@ -217,14 +243,25 @@ pub fn difference(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
         (0..SHAPE_POINTS)
             .map(|i| {
                 let p = a[i * (a.len() - 1) / (SHAPE_POINTS - 1)];
-                b.iter().map(|q| (0..3).map(|k| (p[k] - q[k]).powi(2)).sum::<f32>()).fold(f32::INFINITY, f32::min).sqrt()
+                b.iter()
+                    .map(|q| (0..3).map(|k| (p[k] - q[k]).powi(2)).sum::<f32>())
+                    .fold(f32::INFINITY, f32::min)
+                    .sqrt()
             })
             .fold(0.0, f32::max)
     };
     one_way(a, b).max(one_way(b, a))
 }
 
-fn make(origin: &dyn Origin, parent: &Line, change: Change, range: Range<usize>, until: usize, constraints: &Constraints, rng: &mut StdRng) -> Result<(Timeline, Option<Placement>)> {
+fn make(
+    origin: &dyn Origin,
+    parent: &Line,
+    change: Change,
+    range: Range<usize>,
+    until: usize,
+    constraints: &Constraints,
+    rng: &mut StdRng,
+) -> Result<(Timeline, Option<Placement>)> {
     let mut car = parent.placement.clone();
     let mut line = parent.inputs.clone();
     if line.controls.len() < until {
@@ -243,18 +280,51 @@ fn make(origin: &dyn Origin, parent: &Line, change: Change, range: Range<usize>,
             };
             line.controls[k..end].fill(held);
         }
-        Change::Timing => Mutation { max_changes: 2, max_shift_ticks: 10, ..Default::default() }.shift(&mut line.controls, range.clone(), rng),
-        Change::Edit => Mutation { max_changes: 3, max_span_ticks: 40, max_shift_ticks: 10, max_steer_delta: 0.6, ..Default::default() }.apply(&mut line.controls, range.clone(), rng),
+        Change::Timing => Mutation { max_changes: 2, max_shift_ticks: 10, ..Default::default() }.shift(
+            &mut line.controls,
+            range.clone(),
+            rng,
+        ),
+        Change::Edit => Mutation {
+            max_changes: 3,
+            max_span_ticks: 40,
+            max_shift_ticks: 10,
+            max_steer_delta: 0.6,
+            ..Default::default()
+        }
+        .apply(&mut line.controls, range.clone(), rng),
         Change::Turn => {
             let end = (k + rng.random_range(10..=100)).min(range.end);
             let steer = rng.random_range(-1.0..=1.0);
             let brake = if rng.random_bool(0.1) { rng.random_range(3..=10) } else { 0 };
             for (j, c) in line.controls[k..end].iter_mut().enumerate() {
-                *c = Controls { gas: if j < brake { 0.0 } else { 1.0 }, brake: if j < brake { 1.0 } else { 0.0 }, steer };
+                *c = Controls {
+                    gas: if j < brake { 0.0 } else { 1.0 },
+                    brake: if j < brake { 1.0 } else { 0.0 },
+                    steer,
+                };
             }
-            drive_on(origin, car.as_ref(), &mut line, &parent.trail, range.start, end, range.end.min(until), lookahead(rng))?;
+            drive_on(
+                origin,
+                car.as_ref(),
+                &mut line,
+                &parent.trail,
+                range.start,
+                end,
+                range.end.min(until),
+                lookahead(rng),
+            )?;
         }
-        Change::Cut => drive_on(origin, car.as_ref(), &mut line, &parent.trail, range.start, k, range.end.min(until), lookahead(rng))?,
+        Change::Cut => drive_on(
+            origin,
+            car.as_ref(),
+            &mut line,
+            &parent.trail,
+            range.start,
+            k,
+            range.end.min(until),
+            lookahead(rng),
+        )?,
         Change::Car => car = car.map(|p| turn_car(&p, rng)),
     }
     constraints.apply(&parent.inputs.controls, &mut line.controls, range);
@@ -266,7 +336,16 @@ fn lookahead(rng: &mut StdRng) -> f32 {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn drive_on(origin: &dyn Origin, car: Option<&Placement>, line: &mut Timeline, trail: &[[f32; 3]], trail_from: usize, from: usize, to: usize, ahead: f32) -> Result<()> {
+fn drive_on(
+    origin: &dyn Origin,
+    car: Option<&Placement>,
+    line: &mut Timeline,
+    trail: &[[f32; 3]],
+    trail_from: usize,
+    from: usize,
+    to: usize,
+    ahead: f32,
+) -> Result<()> {
     if trail.len() < 2 || from >= to {
         return Ok(());
     }
@@ -313,7 +392,8 @@ mod tests {
         let straight: Vec<[f32; 3]> = (0..100).map(|i| [0.0, 0.0, i as f32]).collect();
         let faster: Vec<[f32; 3]> = (0..50).map(|i| [0.0, 0.0, 2.0 * i as f32]).collect();
         assert!(difference(&straight, &faster) <= 1.0);
-        let bulge: Vec<[f32; 3]> = (0..100).map(|i| [if (40..60).contains(&i) { 6.0 } else { 0.0 }, 0.0, i as f32]).collect();
+        let bulge: Vec<[f32; 3]> =
+            (0..100).map(|i| [if (40..60).contains(&i) { 6.0 } else { 0.0 }, 0.0, i as f32]).collect();
         assert!(difference(&straight, &bulge) >= DIFFERENT_M);
     }
 
@@ -333,7 +413,15 @@ mod tests {
 
     #[test]
     fn a_turned_car_keeps_a_unit_rotation_and_its_speed_within_a_fifth() {
-        let p = Placement { pose: crate::pose::Pose { position: [0.0; 3], rotation: [1.0, 0.0, 0.0, 0.0], velocity: [0.0, 0.0, 30.0] }, angular_velocity: [0.0; 3], reset_contacts: false };
+        let p = Placement {
+            pose: crate::pose::Pose {
+                position: [0.0; 3],
+                rotation: [1.0, 0.0, 0.0, 0.0],
+                velocity: [0.0, 0.0, 30.0],
+            },
+            angular_velocity: [0.0; 3],
+            reset_contacts: false,
+        };
         let mut rng = StdRng::seed_from_u64(3);
         let mut turned = 0;
         for _ in 0..200 {

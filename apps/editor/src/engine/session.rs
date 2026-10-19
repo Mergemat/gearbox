@@ -8,8 +8,8 @@ use anyhow::Result;
 use gearbox_engine::{Controls, Savestate, Session};
 
 use super::frame::Frame;
-use crate::engine::input::InputFile;
 use crate::engine::display::{self, World};
+use crate::engine::input::InputFile;
 
 pub const SAVESTATE_EVERY: usize = 100;
 const CHUNK: usize = 250;
@@ -41,7 +41,8 @@ pub struct Source(pub PathBuf);
 
 impl Source {
     pub fn stem(&self) -> String {
-        crate::catalog::map_stem(&self.0).unwrap_or_else(|| self.0.file_name().unwrap_or_default().to_string_lossy().into_owned())
+        crate::catalog::map_stem(&self.0)
+            .unwrap_or_else(|| self.0.file_name().unwrap_or_default().to_string_lossy().into_owned())
     }
 }
 
@@ -85,8 +86,17 @@ pub enum Command {
 }
 
 pub enum Event {
-    Opened { info: SessionInfo, world: Arc<World>, inputs: InputFile, len: usize, world_error: Option<String>, origin: Savestate },
-    OpenFailed { error: String },
+    Opened {
+        info: SessionInfo,
+        world: Arc<World>,
+        inputs: InputFile,
+        len: usize,
+        world_error: Option<String>,
+        origin: Savestate,
+    },
+    OpenFailed {
+        error: String,
+    },
 }
 
 pub struct Engine {
@@ -101,7 +111,10 @@ impl Engine {
         let (etx, events) = mpsc::channel();
         let shared = Arc::new(Mutex::new(Shared::default()));
         let w = Worker { packs, rx, events: etx, shared: shared.clone(), notify };
-        std::thread::Builder::new().name("sim".into()).spawn(move || w.run()).expect("spawning the simulation thread");
+        std::thread::Builder::new()
+            .name("sim".into())
+            .spawn(move || w.run())
+            .expect("spawning the simulation thread");
         Self { tx, events, shared }
     }
 
@@ -189,7 +202,11 @@ impl Worker {
             InputSel::Memory(f, _) => Some(f.clone()),
         };
         self.set_busy(Some(format!("Building {stem} from the map and packs …")));
-        let session = gearbox_search::session::open(&self.packs, &source.0, given.as_ref().map(InputFile::timeline).as_ref())?;
+        let session = gearbox_search::session::open(
+            &self.packs,
+            &source.0,
+            given.as_ref().map(InputFile::timeline).as_ref(),
+        )?;
         let inputs = given.unwrap_or_else(|| InputFile::blank(session.race_ms()));
         self.set_busy(Some(format!("Reading the collision world of {stem} …")));
         let (world, world_error) = match catch_unwind(AssertUnwindSafe(|| display::extract(&session))) {
@@ -205,11 +222,7 @@ impl Worker {
         let race_ms0 = runner.race_ms();
         let stem = stem.to_string();
         let len = len.unwrap_or_else(|| default_len(&inputs, race_ms0)).clamp(1, MAX_TICKS);
-        let info = SessionInfo {
-            stem,
-            inputs_label: sel.label(),
-            race_ms0,
-        };
+        let info = SessionInfo { stem, inputs_label: sel.label(), race_ms0 };
         let mut s = Simulation {
             race_ms0,
             inputs: Arc::new(inputs.clone()),
@@ -232,7 +245,14 @@ impl Worker {
             sh.busy = None;
             sh.savestates = 1;
         }
-        let _ = self.events.send(Event::Opened { info, world: Arc::new(world), inputs, len, world_error, origin: origin.clone() });
+        let _ = self.events.send(Event::Opened {
+            info,
+            world: Arc::new(world),
+            inputs,
+            len,
+            world_error,
+            origin: origin.clone(),
+        });
         (self.notify)();
         self.session(s)
     }
@@ -257,7 +277,9 @@ impl Worker {
             for c in cmds {
                 match c {
                     Command::Open { source, inputs, len } => return Ok(Exit::Open(source, inputs, len)),
-                    Command::Simulate { inputs, from_tick, len, hold } => s.edit(&self.shared, inputs, from_tick, len, hold),
+                    Command::Simulate { inputs, from_tick, len, hold } => {
+                        s.edit(&self.shared, inputs, from_tick, len, hold)
+                    }
                     Command::Probe { tick, branches } => s.probe = Some((tick, branches)),
                     Command::SetStart { start } => s.set_start(&self.shared, start),
                 }
@@ -383,7 +405,14 @@ impl Simulation {
         have < self.end() + 1 || self.probe.is_some()
     }
 
-    fn edit(&mut self, shared: &Mutex<Shared>, inputs: Arc<InputFile>, from_tick: usize, len: usize, hold: Option<usize>) {
+    fn edit(
+        &mut self,
+        shared: &Mutex<Shared>,
+        inputs: Arc<InputFile>,
+        from_tick: usize,
+        len: usize,
+        hold: Option<usize>,
+    ) {
         let from_tick = if inputs.seed != self.runner.seed {
             self.runner.restore(&self.states[0]);
             self.runner.seed = inputs.seed;

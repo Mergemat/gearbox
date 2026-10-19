@@ -1,8 +1,6 @@
 use anyhow::{Result, ensure};
 use clap::{Parser, Subcommand};
 use gearbox_search::{Body, Controls};
-use serde_json::json;
-use std::path::PathBuf;
 use gearbox_search::{
     fan,
     goals::{Goal, Goals},
@@ -12,6 +10,8 @@ use gearbox_search::{
     pose::{Placement, Pose, PoseGoal},
     search::{Config, Method, search_from},
 };
+use serde_json::json;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 struct Args {
@@ -70,10 +70,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
     let args = Args::parse_from(std::iter::once("gearbox sandbox".to_string()).chain(args));
     let inputs = args.inputs.as_ref().map(|p| Timeline::read(p)).transpose()?;
     let mut s = gearbox_search::session::open(&crate::packs()?, &args.map, inputs.as_ref())?;
-    ensure!(
-        args.at_ms >= s.race_ms() && (args.at_ms - s.race_ms()) % 10 == 0,
-        "invalid --at-ms"
-    );
+    ensure!(args.at_ms >= s.race_ms() && (args.at_ms - s.race_ms()) % 10 == 0, "invalid --at-ms");
     let session_t0 = s.race_ms();
     let mut prefix = Vec::new();
     while s.race_ms() < args.at_ms {
@@ -81,10 +78,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
             .as_ref()
             .map(|t| {
                 t.index(s.race_ms()).and_then(|i| {
-                    t.controls
-                        .get(i)
-                        .copied()
-                        .ok_or_else(|| anyhow::anyhow!("prefix exceeds input coverage"))
+                    t.controls.get(i).copied().ok_or_else(|| anyhow::anyhow!("prefix exceeds input coverage"))
                 })
             })
             .transpose()?
@@ -98,10 +92,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
         controls: prefix.iter().chain(&t.controls).copied().collect(),
     };
     if let Some(p) = args.placement {
-        gearbox_search::pose::place(
-            &mut s,
-            &serde_json::from_slice::<Placement>(&std::fs::read(p)?)?,
-        )?;
+        gearbox_search::pose::place(&mut s, &serde_json::from_slice::<Placement>(&std::fs::read(p)?)?)?;
     }
     match args.command {
         Command::Pick { origin, direction } => println!(
@@ -127,16 +118,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
                 println!("{text}");
             }
         }
-        Command::Fan {
-            rollouts,
-            ticks,
-            sample_every,
-            threads,
-            seed,
-            output,
-            goal,
-            refine,
-        } => {
+        Command::Fan { rollouts, ticks, sample_every, threads, seed, output, goal, refine } => {
             let goal = goal
                 .map(|file| -> Result<PoseGoal> {
                     let goal: PoseGoal = serde_json::from_slice(&std::fs::read(file)?)?;
@@ -149,13 +131,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
             let origin = s.save();
             let fan = fan::generate(
                 &origin,
-                &fan::Config {
-                    rollouts,
-                    horizon_ticks: ticks,
-                    sample_every,
-                    threads,
-                    seed,
-                },
+                &fan::Config { rollouts, horizon_ticks: ticks, sample_every, threads, seed },
             )?;
             let rate = rollouts as f64 / fan.elapsed.as_secs_f64();
             println!(
@@ -172,10 +148,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
                     snap.rollout.index, snap.rollout.family, snap.tick, snap.error, snap.pose
                 );
                 from_start(&snap.inputs).write(&output.join("snap.in"))?;
-                std::fs::write(
-                    output.join("snap.json"),
-                    serde_json::to_vec_pretty(&snap.pose)?,
-                )?;
+                std::fs::write(output.join("snap.json"), serde_json::to_vec_pretty(&snap.pose)?)?;
                 if refine > 0 {
                     let t0 = s.race_ms();
                     let until_ms = snap.rollout.inputs.end_ms()?;
@@ -186,31 +159,21 @@ pub fn main(args: Vec<String>) -> Result<()> {
                         objective: Objective::Goals(Goals {
                             ordered: vec![Goal::Pose { target: goal }],
                             fastest: false,
-        speed_worth_ms: 0.0,
-        conditions: Vec::new(),
-        along: None,
-        stay_within: None,
-        track: None,
+                            speed_worth_ms: 0.0,
+                            conditions: Vec::new(),
+                            along: None,
+                            stay_within: None,
+                            track: None,
                         }),
                         iterations: refine,
                         threads,
                         batch_size: 64,
                         seed,
                         mutation: Mutation::default(),
-                        method: Method::Population {
-                            width: 8,
-                            curve_ticks: 10,
-                        },
-                        evaluation: EvalOptions {
-                            full_rollout: true,
-                            ..Default::default()
-                        },
+                        method: Method::Population { width: 8, curve_ticks: 10 },
+                        evaluation: EvalOptions { full_rollout: true, ..Default::default() },
                     };
-                    let blank = Timeline {
-                        t0,
-                        seed: s.seed,
-                        controls: vec![Controls::default(); ticks],
-                    };
+                    let blank = Timeline { t0, seed: s.seed, controls: vec![Controls::default(); ticks] };
                     let mut snapped = snap.inputs.clone();
                     snapped.controls.resize(ticks, Controls::default());
                     let scratch = search_from(&origin, blank, &config, |_| {})?;

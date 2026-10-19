@@ -139,7 +139,8 @@ pub fn read_surf(r: &mut Reader, surf_version: u32) -> Result<Option<SurfNode>> 
             let n = count(r, 1 << 16)?;
             let mut surfs = Vec::with_capacity(n);
             for _ in 0..n {
-                surfs.push(read_surf(r, surf_version)?.ok_or_else(|| anyhow::anyhow!("null compound child"))?);
+                surfs
+                    .push(read_surf(r, surf_version)?.ok_or_else(|| anyhow::anyhow!("null compound child"))?);
             }
             let mut locs = Vec::with_capacity(n);
             for _ in 0..n {
@@ -161,7 +162,12 @@ pub fn read_surf(r: &mut Reader, surf_version: u32) -> Result<Option<SurfNode>> 
         14 => Surf::SphereLocated { center: vec3(r)?, radius: r.f32()?, material: i16_(r)? },
         15 => Surf::CompoundInstance,
         16 => Surf::Cylinder { radius_y: r.f32()?, radius_xz: r.f32()?, material: i16_(r)? },
-        17 => Surf::SphericalShell { inner: r.f32()?, outer: r.f32()?, skip_in_to_out: r.bool32()?, material: i16_(r)? },
+        17 => Surf::SphericalShell {
+            inner: r.f32()?,
+            outer: r.f32()?,
+            skip_in_to_out: r.bool32()?,
+            material: i16_(r)?,
+        },
         18 => Surf::Voxel,
         19 => {
             let bounds = f6(r)?;
@@ -188,7 +194,11 @@ fn r_slice(r: &Reader, start: usize, end: usize) -> Vec<u8> {
     r.buf()[start..end].to_vec()
 }
 
-pub fn read_node(buf: &[u8], pos: usize, refs: &mut dyn FnMut(&mut Reader, u32) -> Result<()>) -> Result<(Surface, usize)> {
+pub fn read_node(
+    buf: &[u8],
+    pos: usize,
+    refs: &mut dyn FnMut(&mut Reader, u32) -> Result<()>,
+) -> Result<(Surface, usize)> {
     let mut r = Reader::new(buf);
     r.skip(pos)?;
     let mut out = None;
@@ -419,7 +429,11 @@ pub fn decode(b: &[u8]) -> Result<Surface> {
     let n = count(&mut r, 1 << 16)?;
     let mut materials = Vec::with_capacity(n);
     for _ in 0..n {
-        materials.push(if r.u32()? != 0 { SurfMaterial::Material(r.u32()?) } else { SurfMaterial::SurfaceId(r.i16()?) });
+        materials.push(if r.u32()? != 0 {
+            SurfMaterial::Material(r.u32()?)
+        } else {
+            SurfMaterial::SurfaceId(r.i16()?)
+        });
     }
     let k = count(&mut r, 1 << 16)?;
     let mut material_ids = Vec::with_capacity(k);
@@ -445,13 +459,21 @@ mod tests {
             },
             gameplay_main_dir: Some([0.0, 0.0, 1.0]),
         };
-        let sphere = SurfNode { kind: 0, surf: Surf::Sphere { radius: 2.0, material: Some(3) }, gameplay_main_dir: Some([1.0, 0.0, 0.0]) };
+        let sphere = SurfNode {
+            kind: 0,
+            surf: Surf::Sphere { radius: 2.0, material: Some(3) },
+            gameplay_main_dir: Some([1.0, 0.0, 0.0]),
+        };
         let s = Surface {
             version: 4,
             surf_version: 2,
             surf: Some(SurfNode {
                 kind: 13,
-                surf: Surf::Compound { surfs: vec![mesh, sphere], locs: vec![[1.0; 12], [2.0; 12]], joints: vec![0, 1] },
+                surf: Surf::Compound {
+                    surfs: vec![mesh, sphere],
+                    locs: vec![[1.0; 12], [2.0; 12]],
+                    joints: vec![0, 1],
+                },
                 gameplay_main_dir: Some([0.0, 1.0, 0.0]),
             }),
             materials: vec![SurfMaterial::Material(7), SurfMaterial::SurfaceId(16)],

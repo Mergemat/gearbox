@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use std::collections::HashMap;
 use gearbox_packs::{
     catalog::Source,
-    prefab::{Ctx, Model, Prefab, NodeLink},
+    prefab::{Ctx, Model, NodeLink, Prefab},
 };
+use std::collections::HashMap;
 
 pub struct Archives<'a> {
     packs: &'a gearbox_packs::packs::PackSet,
@@ -17,10 +17,7 @@ impl<'a> Archives<'a> {
         Self {
             packs,
             embedded: gearbox_packs::embedded::Files::new(
-                map.embedded
-                    .files
-                    .iter()
-                    .map(|f| (f.path.as_str(), f.data.as_slice())),
+                map.embedded.files.iter().map(|f| (f.path.as_str(), f.data.as_slice())),
                 packs,
             ),
             aliases: map
@@ -58,16 +55,8 @@ impl<'a> Archives<'a> {
         if !self.materials.contains_key(&key) {
             let buf = self.read(path)?;
             let layout = gearbox_packs::nodes::layout(&buf)?;
-            let ctx = Ctx {
-                buf: &buf,
-                layout: &layout,
-                path,
-            };
-            let start = if start == 0 {
-                layout.head.body_start
-            } else {
-                start
-            };
+            let ctx = Ctx { buf: &buf, layout: &layout, path };
+            let start = if start == 0 { layout.head.body_start } else { start };
             let materials = gearbox_packs::solid::external_materials(&ctx, start)
                 .with_context(|| format!("dynamic visual materials: {path}"))?;
             self.materials.insert(key.clone(), materials);
@@ -85,24 +74,14 @@ impl<'a> Archives<'a> {
     pub fn prefab(&mut self, path: &str) -> Result<Prefab> {
         if !self.prefabs.contains_key(path) {
             let owner = path.split('#').next().unwrap_or(path);
-            let buf = self
-                .read(owner)
-                .with_context(|| format!("dynamic prefab {path}"))?;
+            let buf = self.read(owner).with_context(|| format!("dynamic prefab {path}"))?;
             let layout = gearbox_packs::nodes::layout(&buf)?;
-            let ctx = Ctx {
-                buf: &buf,
-                layout: &layout,
-                path: owner,
-            };
+            let ctx = Ctx { buf: &buf, layout: &layout, path: owner };
             if layout.head.class_id == 0x09145000 {
                 self.store(owner, gearbox_packs::prefab::read_prefab(&buf, &layout, owner)?);
             } else {
                 let mut end = 0;
-                for node in layout
-                    .nodes
-                    .iter()
-                    .filter(|n| n.class_id == 0x09145000 && n.index != 0)
-                {
+                for node in layout.nodes.iter().filter(|n| n.class_id == 0x09145000 && n.index != 0) {
                     if node.start < end {
                         continue;
                     }
@@ -114,9 +93,6 @@ impl<'a> Archives<'a> {
                 }
             }
         }
-        self.prefabs
-            .get(path)
-            .cloned()
-            .with_context(|| format!("dynamic prefab not found: {path}"))
+        self.prefabs.get(path).cloned().with_context(|| format!("dynamic prefab not found: {path}"))
     }
 }

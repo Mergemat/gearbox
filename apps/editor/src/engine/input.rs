@@ -40,9 +40,11 @@ impl InputFile {
         Ok(Self {
             t0: timeline.t0,
             seed: timeline.seed,
-            controls: timeline.controls.into_iter().map(|c| Controls {
-                gas: c.gas, brake: c.brake, steer: c.steer,
-            }).collect(),
+            controls: timeline
+                .controls
+                .into_iter()
+                .map(|c| Controls { gas: c.gas, brake: c.brake, steer: c.steer })
+                .collect(),
         })
     }
 

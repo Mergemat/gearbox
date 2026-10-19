@@ -1,24 +1,24 @@
-pub mod forces;
-pub mod model;
-pub mod tuning;
-pub mod integrate;
 pub mod absorb;
-pub mod effects;
-pub mod impacts;
+pub mod before;
 pub mod contact_response;
 pub mod contacts;
-pub mod step;
-pub mod vis;
-pub mod post;
-pub mod before;
-pub mod maintenance;
+pub mod effects;
 pub mod flags;
+pub mod forces;
+pub mod impacts;
+pub mod integrate;
+pub mod maintenance;
+pub mod model;
+pub mod post;
+pub mod step;
+pub mod tuning;
+pub mod vis;
 pub use effects::surface_effects;
+pub use model::{CarShape, SurfaceMaterial};
 pub use post::post;
-pub use model::{SurfaceMaterial, CarShape};
 pub use tuning::Tuning;
 
-use crate::{DynamicItemId, ItemId, Iso, Mat3, Quat, ShapeId, Vec3};
+use crate::{DynamicItemId, Iso, ItemId, Mat3, Quat, ShapeId, Vec3};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct VisualWheel {
@@ -444,9 +444,9 @@ pub struct VisGeom {
     pub impact_event_threshold: f32,
 }
 
+pub mod defaults;
 pub mod race_flags;
 pub mod spawn;
-pub mod defaults;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct VehicleInputs {

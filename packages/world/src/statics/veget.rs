@@ -42,11 +42,8 @@ pub fn placement(mut iso: Iso, params: Params) -> (Iso, f32) {
     let scale = 1.0 - (bin as f32 / 7.0) * params.scale_variation;
     let tilt = (params.tilt_degrees * std::f32::consts::PI) / 180.0;
     if params.random_y || tilt != 0.0 {
-        let yaw = if params.random_y {
-            range(&mut seed, 0.0, (360.0 * std::f32::consts::PI) / 180.0)
-        } else {
-            0.0
-        };
+        let yaw =
+            if params.random_y { range(&mut seed, 0.0, (360.0 * std::f32::consts::PI) / 180.0) } else { 0.0 };
         let pitch = range(&mut seed, -tilt, tilt);
         let roll = range(&mut seed, -tilt, tilt);
         iso.q = rotate(iso.q, yaw, 2);

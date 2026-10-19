@@ -68,7 +68,10 @@ fn track(n: &mut Session, goals: &[Goal], reach: i32) -> Arc<gearbox_search::tra
                 scope.spawn(move || match g {
                     Goal::Gate { gate, .. } => {
                         let g = gate.clone();
-                        let c = g.boxes.first().map_or([0.0; 3], |b| std::array::from_fn(|k| (b.min[k] + b.max[k]) * 0.5));
+                        let c = g
+                            .boxes
+                            .first()
+                            .map_or([0.0; 3], |b| std::array::from_fn(|k| (b.min[k] + b.max[k]) * 0.5));
                         Some(gearbox_search::track::GoalField::build(cells, c, move |p| g.distance(p) <= 1.5))
                     }
                     _ => None,
@@ -84,8 +87,11 @@ fn main() -> Result<()> {
     let args: Args = clap::Parser::parse();
     let packs = gearbox_packs::install::Game::locate(args.game.as_deref())?.packs;
     let inputs = Timeline::read(&args.inputs)?;
-    let s = gearbox_world::open_file(&args.map, &packs,
-        gearbox_world::OpenOptions { t0: inputs.t0, seed: inputs.seed, car: None })?;
+    let s = gearbox_world::open_file(
+        &args.map,
+        &packs,
+        gearbox_world::OpenOptions { t0: inputs.t0, seed: inputs.seed, car: None },
+    )?;
     let sections = args.mode == "sections";
     let mut config = BeamConfig::default();
     if let Some(w) = args.width {
@@ -136,7 +142,8 @@ fn main() -> Result<()> {
         let race = n.race().unwrap_or_default();
         while crossings.len() < race.checkpoints.len() {
             let ordinal = crossings.len() + 1;
-            let w = gearbox_search::gate::crossing_waypoint(&mut n, ordinal).context("crossing without a waypoint")?;
+            let w = gearbox_search::gate::crossing_waypoint(&mut n, ordinal)
+                .context("crossing without a waypoint")?;
             crossings.push((w, race.checkpoints[ordinal - 1] as i32, k + 1));
         }
         if let Some(f) = race.finish {
@@ -154,7 +161,8 @@ fn main() -> Result<()> {
         .enumerate()
         .map(|(i, &(w, _, _))| {
             let mut gate = gates.iter().find(|g| g.waypoint == w).cloned().expect("crossed gate exists");
-            let same: Vec<_> = gates.iter().filter(|g| g.kind == 1 && gate.kind == 1 && g.waypoint != w).collect();
+            let same: Vec<_> =
+                gates.iter().filter(|g| g.kind == 1 && gate.kind == 1 && g.waypoint != w).collect();
             gate.boxes.extend(same.iter().flat_map(|g| g.boxes.clone()));
             Goal::Gate { ordinal: i + 1, gate, also: same.iter().map(|g| g.waypoint).collect() }
         })
@@ -175,7 +183,15 @@ fn main() -> Result<()> {
                 let b = gearbox_search::Body::from(m.body());
                 let p = b.position();
                 let d = fields.goals[done].as_ref().and_then(|f| f.distance(p));
-                println!("trace {:6} goal {done} pos {:7.1} {:6.1} {:7.1}  track {:?} v {:?}", m.race_ms(), p[0], p[1], p[2], d.map(|d| d as i32), b.local_velocity());
+                println!(
+                    "trace {:6} goal {done} pos {:7.1} {:6.1} {:7.1}  track {:?} v {:?}",
+                    m.race_ms(),
+                    p[0],
+                    p[1],
+                    p[2],
+                    d.map(|d| d as i32),
+                    b.local_velocity()
+                );
             }
             if done == goal_list.len() {
                 break;
@@ -221,16 +237,46 @@ fn main() -> Result<()> {
     let all = Instant::now();
     for (from, to) in ranges {
         let from_k = if from == 0 { first } else { crossings[from - 1].2 };
-        let goals = Goals { ordered: goal_list[..to].to_vec(), along: None, stay_within: None, track: Some(fields.clone()), fastest: false, speed_worth_ms: 0.0, conditions: Vec::new() };
-        let goals = if config.first_arrival && to == goal_list.len() { Goals { ordered: vec![Goal::Finish], track: None, ..goals } } else { goals };
+        let goals = Goals {
+            ordered: goal_list[..to].to_vec(),
+            along: None,
+            stay_within: None,
+            track: Some(fields.clone()),
+            fastest: false,
+            speed_worth_ms: 0.0,
+            conditions: Vec::new(),
+        };
+        let goals = if config.first_arrival && to == goal_list.len() {
+            Goals { ordered: vec![Goal::Finish], track: None, ..goals }
+        } else {
+            goals
+        };
         let goals = if args.finish_only {
             let cps = goal_list.len() as u32 - 1;
-            Goals { ordered: vec![Goal::Finish], conditions: vec![gearbox_search::goals::Conditions { min_crossings: Some(cps), ..Default::default() }], ..goals }
+            Goals {
+                ordered: vec![Goal::Finish],
+                conditions: vec![gearbox_search::goals::Conditions {
+                    min_crossings: Some(cps),
+                    ..Default::default()
+                }],
+                ..goals
+            }
         } else {
             goals
         };
         let (goals, base) = match &guide {
-            Some((g, line)) => (Goals { along: Some(gearbox_search::objective::ReferencePath { points: line.clone(), deviation_penalty: args.off, stay_within: None }), track: None, ..goals }, g.clone()),
+            Some((g, line)) => (
+                Goals {
+                    along: Some(gearbox_search::objective::ReferencePath {
+                        points: line.clone(),
+                        deviation_penalty: args.off,
+                        stay_within: None,
+                    }),
+                    track: None,
+                    ..goals
+                },
+                g.clone(),
+            ),
             None => (goals, base_from(from_k)),
         };
         let t = Instant::now();
@@ -240,7 +286,10 @@ fn main() -> Result<()> {
             chunks += 1;
             if chunks % 5 == 0 {
                 let (g, pos, kmh) = p.lead.unwrap_or_default();
-                eprintln!("  pass {} {:6} ms  kept {:4}  lead eta {:7.0} goals {g} at {:7.1} {:6.1} {:7.1} {kmh:3.0} km/h  best {:?}", p.pass, p.race_ms, p.kept, p.lead_eta_ms, pos[0], pos[1], pos[2], p.best);
+                eprintln!(
+                    "  pass {} {:6} ms  kept {:4}  lead eta {:7.0} goals {g} at {:7.1} {:6.1} {:7.1} {kmh:3.0} km/h  best {:?}",
+                    p.pass, p.race_ms, p.kept, p.lead_eta_ms, pos[0], pos[1], pos[2], p.best
+                );
             }
         })?;
         total_ticks += ticks;
@@ -249,7 +298,12 @@ fn main() -> Result<()> {
         match built {
             Some(b) => {
                 let at = *b.times.last().unwrap();
-                println!("section {from}->{to}: built {at} ms at {:.0} km/h, WR {wr_at} ms: {:+} ms ({secs:.0} s, {} M ticks)", b.speed_kmh, at - wr_at, ticks / 1_000_000);
+                println!(
+                    "section {from}->{to}: built {at} ms at {:.0} km/h, WR {wr_at} ms: {:+} ms ({secs:.0} s, {} M ticks)",
+                    b.speed_kmh,
+                    at - wr_at,
+                    ticks / 1_000_000
+                );
             }
             None => println!("section {from}->{to}: nothing reached it (WR {wr_at} ms; {secs:.0} s)"),
         }

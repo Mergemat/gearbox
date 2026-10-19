@@ -1,6 +1,9 @@
-use crate::{Iso, Mat3, Vec3};
+use super::{
+    ForceCtx,
+    common::{KMH, PedalMode, TINY, clamp01},
+};
 use crate::math::maxss;
-use super::{ForceCtx, common::{KMH, TINY, PedalMode, clamp01}};
+use crate::{Iso, Mat3, Vec3};
 
 const SPIN_WRAP: f32 = 1608.4955;
 const VISUAL_STEERING_RATE: f32 = 3.0;
@@ -19,7 +22,8 @@ pub fn wheel_visual(ctx: &mut ForceCtx<'_>, index: usize, speed: f32) {
     }
     wheel.spin_angle = angle;
     let squared = wheel.contact_normal_x * wheel.contact_normal_x
-        + wheel.contact_normal_y * wheel.contact_normal_y + wheel.contact_normal_z * wheel.contact_normal_z;
+        + wheel.contact_normal_y * wheel.contact_normal_y
+        + wheel.contact_normal_z * wheel.contact_normal_z;
     if squared > TINY && f32::MAX > squared {
         let inverse = 1.0 / squared.sqrt();
         wheel.contact_normal_x = wheel.contact_normal_x * inverse;
@@ -84,18 +88,10 @@ fn visual_steering(ctx: &mut ForceCtx<'_>, index: usize, speed: f32) {
     let step = rate * ctx.dt;
     wheel.steering_angle = if angle > current {
         let next = current + step;
-        if next > angle {
-            angle
-        } else {
-            next
-        }
+        if next > angle { angle } else { next }
     } else {
         let next = current - step;
-        if angle > next {
-            angle
-        } else {
-            next
-        }
+        if angle > next { angle } else { next }
     };
 }
 
@@ -126,8 +122,8 @@ fn visual_suspension(ctx: &mut ForceCtx<'_>, index: usize) {
         2 => {
             let previous = wheel.suspension_length;
             let length = previous - wheel.suspension_delta;
-            let recovery = (tuning.suspension_rest_length - length) * ctx.dt
-                * tuning.suspension_recovery_rate;
+            let recovery =
+                (tuning.suspension_rest_length - length) * ctx.dt * tuning.suspension_recovery_rate;
             wheel.suspension_delta = 0.0;
             let position = length + recovery;
             wheel.suspension_length = position;
@@ -145,8 +141,14 @@ pub fn wheels_engine_step(ctx: &mut ForceCtx<'_>) {
     let forward_speed = ctx.body.local_velocity().z;
     let (mut steering_sum, mut contacts) = (0.0, 0);
     for index in 0..ctx.geometry.wheels.len() {
-        ctx.vehicle.update_wheel_spin(ctx.tuning, &ctx.geometry.wheels[index], index,
-            forward_speed, ctx.dt, ctx.tick);
+        ctx.vehicle.update_wheel_spin(
+            ctx.tuning,
+            &ctx.geometry.wheels[index],
+            index,
+            forward_speed,
+            ctx.dt,
+            ctx.tick,
+        );
         wheel_visual(ctx, index, forward_speed);
         let wheel = &ctx.vehicle.wheels[index];
         if wheel.contact != 0 {
@@ -154,11 +156,7 @@ pub fn wheels_engine_step(ctx: &mut ForceCtx<'_>) {
             contacts += 1;
         }
     }
-    let mean_steering = if contacts != 0 {
-        steering_sum / contacts as f32
-    } else {
-        1.0
-    };
+    let mean_steering = if contacts != 0 { steering_sum / contacts as f32 } else { 1.0 };
     let vehicle = &mut *ctx.vehicle;
     let gas = if vehicle.effect_mode_is(PedalMode::Full) {
         1.0
@@ -170,25 +168,13 @@ pub fn wheels_engine_step(ctx: &mut ForceCtx<'_>) {
         vehicle.controls.gas
     };
     vehicle.update_engine_gearbox(ctx.tuning, gas, ctx.dt);
-    let mut steer = if vehicle.has_effect_flag(8) {
-        0.0
-    } else {
-        vehicle.controls.steer
-    };
+    let mut steer = if vehicle.has_effect_flag(8) { 0.0 } else { vehicle.controls.steer };
     let rate = mean_steering * ctx.tuning.steering_rate;
     if !(0.0 >= rate) {
         let current = vehicle.steering;
-        let sign = if 0.0 > current - steer {
-            1.0
-        } else {
-            -1.0
-        };
+        let sign = if 0.0 > current - steer { 1.0 } else { -1.0 };
         let next = sign * rate * ctx.dt + current;
-        let past = if steer > current {
-            next > steer
-        } else {
-            steer > next
-        };
+        let past = if steer > current { next > steer } else { steer > next };
         if !past {
             steer = next;
         }

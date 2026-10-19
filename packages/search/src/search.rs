@@ -4,12 +4,15 @@ use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail, ensure};
-use gearbox_engine::{Session, Savestate};
+use gearbox_engine::{Savestate, Session};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
 use crate::input::Timeline;
 use crate::mutation::Mutation;
-use crate::objective::{Checkpoint, EvalOptions, Evaluation, Objective, Recorder, Resume, Score, evaluate_resumable, evaluate_with};
+use crate::objective::{
+    Checkpoint, EvalOptions, Evaluation, Objective, Recorder, Resume, Score, evaluate_resumable,
+    evaluate_with,
+};
 
 const FOCUS_BEFORE: usize = 300;
 const FOCUS_AFTER: usize = 50;
@@ -34,23 +37,12 @@ pub fn default_threads() -> usize {
 #[derive(Clone, Debug)]
 pub enum Method {
     HillClimb,
-    Population {
-        width: usize,
-        curve_ticks: usize,
-    },
-    Receding {
-        horizon_ticks: usize,
-        commit_ticks: usize,
-        width: usize,
-        curve_ticks: usize,
-    },
+    Population { width: usize, curve_ticks: usize },
+    Receding { horizon_ticks: usize, commit_ticks: usize, width: usize, curve_ticks: usize },
 }
 impl Default for Method {
     fn default() -> Self {
-        Self::Population {
-            width: 8,
-            curve_ticks: 20,
-        }
+        Self::Population { width: 8, curve_ticks: 20 }
     }
 }
 
@@ -114,11 +106,15 @@ pub trait Origin: Sync {
 }
 
 impl Origin for Session {
-    fn native(&self) -> Result<Session> { Ok(self.clone()) }
+    fn native(&self) -> Result<Session> {
+        Ok(self.clone())
+    }
 }
 
 impl Origin for Savestate {
-    fn native(&self) -> Result<Session> { Ok(self.fork()) }
+    fn native(&self) -> Result<Session> {
+        Ok(self.fork())
+    }
 }
 
 pub fn search_from(
@@ -137,10 +133,7 @@ pub fn search_seeded(
     config: &Config,
     mut progress: impl FnMut(Progress<'_>),
 ) -> Result<SearchResult> {
-    ensure!(
-        (1..=MAX_THREADS).contains(&config.threads),
-        "threads must be in 1..={MAX_THREADS}"
-    );
+    ensure!((1..=MAX_THREADS).contains(&config.threads), "threads must be in 1..={MAX_THREADS}");
     ensure!(
         config.evaluation.trick_bonus.is_finite() && config.evaluation.trick_bonus >= 0.0,
         "invalid trick bonus"
@@ -150,20 +143,12 @@ pub fn search_seeded(
         trace: !matches!(config.method, Method::HillClimb) || config.evaluation.trace,
         ..config.evaluation
     };
-    ensure!(
-        config.iterations > 0 && config.batch_size > 0,
-        "iterations and batch size must be positive"
-    );
+    ensure!(config.iterations > 0 && config.batch_size > 0, "iterations and batch size must be positive");
     config.mutation.validate()?;
-    config
-        .objective
-        .validate(config.window_start_ms, config.until_ms)?;
+    config.objective.validate(config.window_start_ms, config.until_ms)?;
     let window = base.index(config.window_start_ms)?..base.index(config.window_end_ms)?;
     ensure!(window.start < window.end, "input window must be nonempty");
-    ensure!(
-        config.window_end_ms <= config.until_ms,
-        "input window extends past evaluation end"
-    );
+    ensure!(config.window_end_ms <= config.until_ms, "input window extends past evaluation end");
     base.index(config.until_ms)?;
     if let Method::Receding { .. } = config.method {
         return receding(origin, base, config, &mut progress);
@@ -173,23 +158,15 @@ pub fn search_seeded(
         Method::Population { width, curve_ticks } => (width, curve_ticks),
         Method::Receding { .. } => unreachable!(),
     };
-    ensure!(
-        width > 0 && curve_ticks > 0,
-        "population and curve size must be positive"
-    );
+    ensure!(width > 0 && curve_ticks > 0, "population and curve size must be positive");
 
     let mut native = origin.native()?;
     native.seed = base.seed;
     let start = base.index(native.race_ms())?;
-    ensure!(
-        start <= window.start,
-        "window starts before the start state's race time {}",
-        native.race_ms()
-    );
+    ensure!(start <= window.start, "window starts before the start state's race time {}", native.race_ms());
     let ticks_to_end = (i64::from(config.until_ms) - i64::from(native.race_ms())) / 10;
     ensure!(
-        ticks_to_end >= 0
-            && u64::from(native.clock.now) + ticks_to_end as u64 * 10 <= u64::from(u32::MAX),
+        ticks_to_end >= 0 && u64::from(native.clock.now) + ticks_to_end as u64 * 10 <= u64::from(u32::MAX),
         "native clock would overflow"
     );
     if !matches!(config.objective, Objective::Goals(_)) {
@@ -226,13 +203,30 @@ pub fn search_seeded(
     }];
     if !matches!(config.method, Method::HillClimb) {
         for (i, s) in seeds.into_iter().take(width.saturating_sub(1)).enumerate() {
-            if s.t0 != incumbent.t0 || s.controls.len() != incumbent.controls.len() || s.controls == incumbent.controls {
+            if s.t0 != incumbent.t0
+                || s.controls.len() != incumbent.controls.len()
+                || s.controls == incumbent.controls
+            {
                 continue;
             }
             native.restore(&prefix);
             let mut rec = Recorder { from: window.start, to: window.end, every, out: Vec::new() };
-            let evaluation = evaluate_resumable(&mut native, &s, &config.objective, config.until_ms, evaluation, None, None, (every > 0).then_some(&mut rec))?;
-            first.push(Candidate { attempt: usize::MAX - 1 - i, inputs: s, evaluation, checkpoints: rec.out.into_iter().map(Arc::new).collect() });
+            let evaluation = evaluate_resumable(
+                &mut native,
+                &s,
+                &config.objective,
+                config.until_ms,
+                evaluation,
+                None,
+                None,
+                (every > 0).then_some(&mut rec),
+            )?;
+            first.push(Candidate {
+                attempt: usize::MAX - 1 - i,
+                inputs: s,
+                evaluation,
+                checkpoints: rec.out.into_iter().map(Arc::new).collect(),
+            });
         }
     }
     let mut parents = Arc::new(first);
@@ -253,38 +247,32 @@ pub fn search_seeded(
                 let mut native = origin.native()?;
                 while let Ok(job) = rx.recv() {
                     native.seed = job.parents[0].inputs.seed;
-                    let mut result = Batch {
-                        candidates: Vec::new(),
-                        ticks: 0,
-                    };
+                    let mut result = Batch { candidates: Vec::new(), ticks: 0 };
                     loop {
                         let attempt = job.next.fetch_add(1, AtomicOrdering::Relaxed);
                         if attempt >= job.end {
                             break;
                         }
-                        let parent_index = if attempt % 2 == 0 {
-                            0
-                        } else {
-                            (attempt / 2) % job.parents.len()
-                        };
+                        let parent_index =
+                            if attempt % 2 == 0 { 0 } else { (attempt / 2) % job.parents.len() };
                         let parent = &job.parents[parent_index];
                         let mut inputs = parent.inputs.clone();
-                        let mut rng =
-                            StdRng::seed_from_u64(config.seed.wrapping_add(attempt as u64));
+                        let mut rng = StdRng::seed_from_u64(config.seed.wrapping_add(attempt as u64));
                         let frontier = parent
                             .evaluation
                             .frontier_ms
                             .and_then(|ms| parent.inputs.index(ms).ok())
-                            .map(|f| f.saturating_sub(FOCUS_BEFORE).max(window.start)..(f + FOCUS_AFTER).min(window.end))
+                            .map(|f| {
+                                f.saturating_sub(FOCUS_BEFORE).max(window.start)
+                                    ..(f + FOCUS_AFTER).min(window.end)
+                            })
                             .filter(|r| window.len() >= FOCUS_MIN_WINDOW && r.len() > 10);
                         let edit = match frontier {
                             Some(f) if rng.random_bool(FOCUS_SHARE) => f,
                             _ => window.clone(),
                         };
                         if matches!(config.method, Method::HillClimb) {
-                            config
-                                .mutation
-                                .apply(&mut inputs.controls, edit, &mut rng);
+                            config.mutation.apply(&mut inputs.controls, edit, &mut rng);
                         } else {
                             config.mutation.explore(
                                 &mut inputs,
@@ -305,7 +293,8 @@ pub fn search_seeded(
                             .unwrap_or(window.end);
                         let at = parent.checkpoints.iter().rposition(|c| c.k <= first);
                         let mut rec = Recorder { from: window.start, to: window.end, every, out: Vec::new() };
-                        let resume = at.map(|i| Resume { cp: &parent.checkpoints[i], parent: &parent.evaluation });
+                        let resume =
+                            at.map(|i| Resume { cp: &parent.checkpoints[i], parent: &parent.evaluation });
                         if resume.is_none() {
                             native.restore(prefix);
                         }
@@ -320,14 +309,10 @@ pub fn search_seeded(
                             (every > 0).then_some(&mut rec),
                         )?;
                         result.ticks += evaluation.ticks;
-                        let mut checkpoints: Vec<Arc<Checkpoint>> = at.map_or(Vec::new(), |i| parent.checkpoints[..=i].to_vec());
+                        let mut checkpoints: Vec<Arc<Checkpoint>> =
+                            at.map_or(Vec::new(), |i| parent.checkpoints[..=i].to_vec());
                         checkpoints.extend(rec.out.into_iter().map(Arc::new));
-                        let candidate = Candidate {
-                            attempt,
-                            inputs,
-                            evaluation,
-                            checkpoints,
-                        };
+                        let candidate = Candidate { attempt, inputs, evaluation, checkpoints };
                         result.candidates.push(candidate);
                     }
                     if result_tx.send(result).is_err() {
@@ -355,9 +340,7 @@ pub fn search_seeded(
                 }
                 let mut candidates = (*parents).clone();
                 for (_, rx) in &workers[..active] {
-                    let batch = rx
-                        .recv()
-                        .context("search worker failed during evaluation")?;
+                    let batch = rx.recv().context("search worker failed during evaluation")?;
                     evaluated_ticks += batch.ticks;
                     candidates.extend(batch.candidates);
                 }
@@ -433,15 +416,12 @@ pub fn search_seeded(
     })?;
     let elapsed = began.elapsed();
 
-    verify_replay(
-        origin,
-        &incumbent,
-        &config.objective,
-        config.until_ms,
-        evaluation,
-        &after,
-    )?;
-    let survivors = parents.iter().filter(|c| c.inputs.controls != incumbent.controls).map(|c| c.inputs.clone()).collect();
+    verify_replay(origin, &incumbent, &config.objective, config.until_ms, evaluation, &after)?;
+    let survivors = parents
+        .iter()
+        .filter(|c| c.inputs.controls != incumbent.controls)
+        .map(|c| c.inputs.clone())
+        .collect();
     Ok(SearchResult {
         inputs: incumbent,
         before,
@@ -460,13 +440,7 @@ fn receding(
     config: &Config,
     progress: &mut dyn FnMut(Progress<'_>),
 ) -> Result<SearchResult> {
-    let Method::Receding {
-        horizon_ticks,
-        commit_ticks,
-        width,
-        curve_ticks,
-    } = config.method
-    else {
+    let Method::Receding { horizon_ticks, commit_ticks, width, curve_ticks } = config.method else {
         unreachable!()
     };
     ensure!(
@@ -475,27 +449,18 @@ fn receding(
     );
     ensure!(
         config.objective.is_race()
-            || matches!(
-                config.objective,
-                Objective::Path { .. } | Objective::Goals(_)
-            ),
+            || matches!(config.objective, Objective::Path { .. } | Objective::Goals(_)),
         "receding search requires goals, a gate, race or path target"
     );
     let start = base.index(config.window_start_ms)?;
     let end = base.index(config.window_end_ms)?;
     ensure!(start < end, "empty receding window");
     let segments = (end - start).div_ceil(commit_ticks);
-    ensure!(
-        config.iterations >= segments,
-        "need at least one attempt per committed segment"
-    );
+    ensure!(config.iterations >= segments, "need at least one attempt per committed segment");
     let mut n = origin.native()?;
     n.seed = base.seed;
     let original = n.save();
-    let eval = EvalOptions {
-        from_ms: Some(config.window_start_ms),
-        ..config.evaluation
-    };
+    let eval = EvalOptions { from_ms: Some(config.window_start_ms), ..config.evaluation };
     let before = evaluate_with(&mut n, &base, &config.objective, config.until_ms, eval)?;
     n.restore(&original);
     let initial = base.index(n.race_ms())?;
@@ -504,17 +469,14 @@ fn receding(
         n.step(*c);
     }
     ensure!(
-        n.race()
-            .is_none_or(|r| config.objective.race_time(&r).is_none()),
+        n.race().is_none_or(|r| config.objective.race_time(&r).is_none()),
         "target already reached before the mutable window"
     );
     let began = Instant::now();
     let mut inputs = base.clone();
     let (mut iterations, mut improvements, mut evaluated_ticks) = (0, 0, 0);
     for (segment, at) in (start..end).step_by(commit_ticks).enumerate() {
-        if n.race()
-            .is_some_and(|r| config.objective.race_time(&r).is_some())
-        {
+        if n.race().is_some_and(|r| config.objective.race_time(&r).is_some()) {
             break;
         }
         let mut local = config.clone();
@@ -525,16 +487,9 @@ fn receding(
         if let Objective::Path { at_ms, .. } = &mut local.objective {
             *at_ms = local.until_ms;
         }
-        local.iterations =
-            config.iterations / segments + usize::from(segment < config.iterations % segments);
-        local.seed = config
-            .seed
-            .wrapping_add((segment as u64).wrapping_mul(0x9e3779b97f4a7c15));
-        let saved = if matches!(config.objective, Objective::Goals(_)) {
-            original.clone()
-        } else {
-            n.save()
-        };
+        local.iterations = config.iterations / segments + usize::from(segment < config.iterations % segments);
+        local.seed = config.seed.wrapping_add((segment as u64).wrapping_mul(0x9e3779b97f4a7c15));
+        let saved = if matches!(config.objective, Objective::Goals(_)) { original.clone() } else { n.save() };
         let result = search_from(&saved, inputs, &local, |p| {
             progress(Progress {
                 iterations: iterations + p.iterations,
@@ -559,14 +514,7 @@ fn receding(
         after = before.clone();
         improvements = 0;
     }
-    verify_replay(
-        origin,
-        &inputs,
-        &config.objective,
-        config.until_ms,
-        eval,
-        &after,
-    )?;
+    verify_replay(origin, &inputs, &config.objective, config.until_ms, eval, &after)?;
     Ok(SearchResult {
         inputs,
         before,

@@ -1,6 +1,6 @@
-use crate::Vec3;
-use super::{VehicleBody, ForceRays};
 use super::super::{Tuning, Vehicle, model::ForceGeometry};
+use super::{ForceRays, VehicleBody};
+use crate::Vec3;
 
 pub struct ForceCtx<'a> {
     pub vehicle: &'a mut Vehicle,

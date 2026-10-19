@@ -4,9 +4,9 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use anyhow::Result;
 use crate::engine::frame::Frame;
 use crate::engine::input::InputFile;
+use anyhow::Result;
 use gearbox_engine::{Controls, Savestate, Session};
 use gearbox_search::pose::Placement;
 
@@ -40,8 +40,10 @@ pub struct Aux {
 }
 
 pub fn panic_message(p: &(dyn std::any::Any + Send)) -> String {
-    p.downcast_ref::<&str>().map(|s| s.to_string())
-        .or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_else(|| "panic".into())
+    p.downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| p.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "panic".into())
 }
 
 impl Aux {
@@ -49,7 +51,9 @@ impl Aux {
         let (tx, rx) = channel();
         let done = Arc::new(Mutex::new(Vec::new()));
         let out = done.clone();
-        std::thread::Builder::new().name("aux".into()).spawn(move || run(origin, rx, out, wake))
+        std::thread::Builder::new()
+            .name("aux".into())
+            .spawn(move || run(origin, rx, out, wake))
             .expect("spawning the aux thread");
         Self { tx, done }
     }
@@ -89,8 +93,10 @@ fn run(origin: Savestate, rx: Receiver<Job>, out: Arc<Mutex<Vec<Done>>>, wake: W
         let Some(job) = it.next() else { continue };
         queue.extend(it);
         let done = match job {
-            Job::Gates => Done::Gates(catch_unwind(AssertUnwindSafe(|| gates(&mut runner)))
-                .unwrap_or_else(|p| Err(panic_message(&*p)))),
+            Job::Gates => Done::Gates(
+                catch_unwind(AssertUnwindSafe(|| gates(&mut runner)))
+                    .unwrap_or_else(|p| Err(panic_message(&*p))),
+            ),
             Job::Simulate { key, inputs, len, start } => {
                 let t = Instant::now();
                 runner.restore(&base);
@@ -106,9 +112,12 @@ fn run(origin: Savestate, rx: Receiver<Job>, out: Arc<Mutex<Vec<Done>>>, wake: W
     }
 }
 
-pub fn simulate(runner: &mut Session, inputs: &InputFile, len: usize,
-    start: Option<&(usize, Placement)>) -> (Vec<Frame>, Option<String>)
-{
+pub fn simulate(
+    runner: &mut Session,
+    inputs: &InputFile,
+    len: usize,
+    start: Option<&(usize, Placement)>,
+) -> (Vec<Frame>, Option<String>) {
     runner.seed = inputs.seed;
     let race_ms0 = runner.race_ms();
     let mut frames = Vec::with_capacity(len + 1);
@@ -143,16 +152,19 @@ fn gates(runner: &mut Session) -> Result<Vec<GateInfo>, String> {
     Ok(gates
         .into_iter()
         .map(|g| {
-            let order = (g.kind != 1).then(|| runner.waypoint_order(g.waypoint)).flatten()
-                .filter(|o| *o != u32::MAX);
+            let order =
+                (g.kind != 1).then(|| runner.waypoint_order(g.waypoint)).flatten().filter(|o| *o != u32::MAX);
             GateInfo { gate: g, order }
         })
         .collect())
 }
 
-pub fn reach(origin: &Savestate, inputs: &InputFile, tick: usize,
-    start: Option<&(usize, Placement)>) -> Result<Savestate>
-{
+pub fn reach(
+    origin: &Savestate,
+    inputs: &InputFile,
+    tick: usize,
+    start: Option<&(usize, Placement)>,
+) -> Result<Savestate> {
     let mut n = origin.fork();
     n.seed = inputs.seed;
     let race_ms0 = n.race_ms();
@@ -169,4 +181,3 @@ pub fn reach(origin: &Savestate, inputs: &InputFile, tick: usize,
     }
     Ok(n.save())
 }
-

@@ -1,10 +1,17 @@
 use super::{Vehicle, Wheel, race_flags::RaceFlags};
-use crate::{Aabb, DynamicItemId, Iso, Mat3, Quat, ShapeId, Vec3, dyna::{BodyHandle, Dyna}, math::minss};
+use crate::{
+    Aabb, DynamicItemId, Iso, Mat3, Quat, ShapeId, Vec3,
+    dyna::{BodyHandle, Dyna},
+    math::minss,
+};
 #[path = "spawn_fields.rs"]
 mod fields;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct WheelModel { pub position: Vec3, pub shape: u32 }
+pub struct WheelModel {
+    pub position: Vec3,
+    pub shape: u32,
+}
 #[derive(Clone, Debug, PartialEq)]
 pub struct Assets {
     pub wheels: Vec<WheelModel>,
@@ -45,8 +52,7 @@ impl<V: Visuals> Services<'_, V> {
         let half = bounds.half.y.abs();
         let point = Vec3::new(bounds.center.x, bounds.center.y - half, bounds.center.z);
         let mut depth = 0.0;
-        crate::water::WaterManager::new(&self.world.water)
-            .query(point, half + half, Some(&mut depth), None)
+        crate::water::WaterManager::new(&self.world.water).query(point, half + half, Some(&mut depth), None)
     }
 
     fn place_item(&mut self, id: DynamicItemId, pose: Iso) {
@@ -62,18 +68,29 @@ impl<V: Visuals> Services<'_, V> {
     }
 }
 
-pub fn arena_pose(initial: Iso, parent: Option<Iso>, landmarks: &[super::super::race::RaceWaypoint],
-    landmark: u32) -> Iso {
+pub fn arena_pose(
+    initial: Iso,
+    parent: Option<Iso>,
+    landmarks: &[super::super::race::RaceWaypoint],
+    landmark: u32,
+) -> Iso {
     if landmark == crate::race::INITIAL_SPAWN {
-        parent.map_or(initial, |parent| Iso::new(transpose_product(initial.rot, parent.rot),
-            parent.rot.transform_y_first(initial.pos) + parent.pos))
-    } else { landmarks[landmark as usize].pose }
+        parent.map_or(initial, |parent| {
+            Iso::new(
+                transpose_product(initial.rot, parent.rot),
+                parent.rot.transform_y_first(initial.pos) + parent.pos,
+            )
+        })
+    } else {
+        landmarks[landmark as usize].pose
+    }
 }
 
 pub fn clear_inputs(vehicle: &mut Vehicle) {
     clear_current_inputs(vehicle);
     fields::clear_previous_controls(vehicle);
-    vehicle.previous_controls.control_word = super::race_flags::InputFlags(vehicle.previous_controls.control_word).cleared().0;
+    vehicle.previous_controls.control_word =
+        super::race_flags::InputFlags(vehicle.previous_controls.control_word).cleared().0;
 }
 
 pub fn clear_current_inputs(vehicle: &mut Vehicle) {
@@ -82,23 +99,45 @@ pub fn clear_current_inputs(vehicle: &mut Vehicle) {
 }
 
 pub fn wheel_state(wheel: &mut Wheel) {
-    wheel.suspension_length = 0.0; wheel.suspension_rate = 0.0; wheel.suspension_delta = 0.0;
+    wheel.suspension_length = 0.0;
+    wheel.suspension_rate = 0.0;
+    wheel.suspension_delta = 0.0;
     wheel.contact_point_x = 0.0;
-    wheel.contact_point_y = 0.0; wheel.contact_point_z = 0.0; wheel.spin = 0.0;
-    wheel.previous_contact = 0; wheel.contact = 0; wheel.last_impact_time_ns = u64::MAX;
+    wheel.contact_point_y = 0.0;
+    wheel.contact_point_z = 0.0;
+    wheel.spin = 0.0;
+    wheel.previous_contact = 0;
+    wheel.contact = 0;
+    wheel.last_impact_time_ns = u64::MAX;
     wheel.material = 0;
     wheel.surface = 0;
-    wheel.contact_normal_x = 0.0; wheel.contact_normal_y = 0.0; wheel.contact_normal_z = 0.0; wheel.hover_depth = 0.0;
-    wheel.boost_contact = 0; wheel.surface_normal.x = 0.0; wheel.surface_normal.y = 0.0; wheel.surface_normal.z = 0.0;
-    wheel.surface_item = None; wheel.slipping = 0;
-    wheel.slip = 0.0; wheel.spin_angle = 0.0; wheel.steering_angle = 0.0;
-    wheel.sample_time = 0; wheel.sample_count = 0; wheel.sample_sum = 0.0; wheel.drive_coefficient = 1.0;
-    wheel.effect_mode = 0; wheel.effect_start = u32::MAX;
-    wheel.effect_level = 0.0; wheel.effect_floor = 0.0; wheel.ground_pull_distance = 0.0;
+    wheel.contact_normal_x = 0.0;
+    wheel.contact_normal_y = 0.0;
+    wheel.contact_normal_z = 0.0;
+    wheel.hover_depth = 0.0;
+    wheel.boost_contact = 0;
+    wheel.surface_normal.x = 0.0;
+    wheel.surface_normal.y = 0.0;
+    wheel.surface_normal.z = 0.0;
+    wheel.surface_item = None;
+    wheel.slipping = 0;
+    wheel.slip = 0.0;
+    wheel.spin_angle = 0.0;
+    wheel.steering_angle = 0.0;
+    wheel.sample_time = 0;
+    wheel.sample_count = 0;
+    wheel.sample_sum = 0.0;
+    wheel.drive_coefficient = 1.0;
+    wheel.effect_mode = 0;
+    wheel.effect_start = u32::MAX;
+    wheel.effect_level = 0.0;
+    wheel.effect_floor = 0.0;
+    wheel.ground_pull_distance = 0.0;
 }
 
 pub fn transpose_product(left: Mat3, right: Mat3) -> Mat3 {
-    let left = left.to_array(); let right = right.to_array();
+    let left = left.to_array();
+    let right = right.to_array();
     Mat3::from_array(std::array::from_fn(|index| {
         let (row, column) = (index / 3, index % 3);
         (left[3 + column] * right[3 * row + 1] + left[column] * right[3 * row])
@@ -107,12 +146,12 @@ pub fn transpose_product(left: Mat3, right: Mat3) -> Mat3 {
 }
 
 pub fn post_product(left: Mat3, right: Mat3) -> Mat3 {
-    let left = left.to_array(); let right = right.to_array();
+    let left = left.to_array();
+    let right = right.to_array();
     Mat3::from_array(std::array::from_fn(|index| {
         let (row, column) = (index / 3, index % 3);
         let term = |axis: usize| right[3 * axis + row] * left[3 * axis + column];
-        if column == 0 || index == 7 { (term(1) + term(0)) + term(2) }
-        else { (term(0) + term(1)) + term(2) }
+        if column == 0 || index == 7 { (term(1) + term(0)) + term(2) } else { (term(0) + term(1)) + term(2) }
     }))
 }
 
@@ -125,10 +164,16 @@ fn effect_state(vehicle: &mut Vehicle, assets: &Assets, keep: bool, services: &m
     vehicle.vehicle_effect_thrust = assets.effect_defaults[0];
     vehicle.vehicle_effect_speed_scale = assets.effect_defaults[1];
     vehicle.vehicle_effect_gravity = assets.effect_defaults[2];
-    vehicle.gravity_effect_scale = 1.0; vehicle.post_force_effect_active = 0;
+    vehicle.gravity_effect_scale = 1.0;
+    vehicle.post_force_effect_active = 0;
     if !keep {
-        vehicle.gear_effect_active = 0; vehicle.gravity_effect_active = 0; vehicle.jump_kind = 0;
-        vehicle.axis_torque_enabled = 0; vehicle.vehicle_effect_active = 0; vehicle.gravity_effect_thrust = 1.0; vehicle.vehicle_effect_amplified = 0;
+        vehicle.gear_effect_active = 0;
+        vehicle.gravity_effect_active = 0;
+        vehicle.jump_kind = 0;
+        vehicle.axis_torque_enabled = 0;
+        vehicle.vehicle_effect_active = 0;
+        vehicle.gravity_effect_thrust = 1.0;
+        vehicle.vehicle_effect_amplified = 0;
         vehicle.external_jump = 0;
     }
 }
@@ -156,15 +201,28 @@ fn wheels(vehicle: &mut Vehicle, assets: &Assets, airborne: bool, services: &mut
         wheel_state(wheel);
         wheel.suspension_length = height;
         let position = model.position;
-        let pose = Iso::new(Mat3::IDENTITY, Vec3::new(position.x + -height * 0.0,
-            (position.y + travel) + -height, position.z + -height * 0.0));
+        let pose = Iso::new(
+            Mat3::IDENTITY,
+            Vec3::new(
+                position.x + -height * 0.0,
+                (position.y + travel) + -height,
+                position.z + -height * 0.0,
+            ),
+        );
         vehicle.wheel_poses[index].transform = pose;
-        if model.shape != u32::MAX { services.wheel_pose(vehicle.shape, model.shape, pose); }
+        if model.shape != u32::MAX {
+            services.wheel_pose(vehicle.shape, model.shape, pose);
+        }
     }
 }
 
-pub fn reset(vehicle: &mut Vehicle, assets: &Assets, dyna: &mut Dyna, params: Reset,
-    services: &mut Services<impl Visuals>) {
+pub fn reset(
+    vehicle: &mut Vehicle,
+    assets: &Assets,
+    dyna: &mut Dyna,
+    params: Reset,
+    services: &mut Services<impl Visuals>,
+) {
     clear_inputs(vehicle);
     fields::clear_reset_state(vehicle);
     let sequences = [vehicle.state_sequence, vehicle.respawn_sequence];
@@ -173,25 +231,40 @@ pub fn reset(vehicle: &mut Vehicle, assets: &Assets, dyna: &mut Dyna, params: Re
     super::defaults::reset_wheel_coefficients(vehicle);
     vehicle.slow_motion_gate = u32::MAX;
     super::defaults::reset_state(vehicle);
-    if !params.full { restore_history(vehicle, history); }
-    vehicle.state_sequence = sequences[0]; vehicle.respawn_sequence = sequences[1];
-    vehicle.spin_up_torque = params.spin_up_torque; vehicle.spin_up_duration = params.airborne as u32;
+    if !params.full {
+        restore_history(vehicle, history);
+    }
+    vehicle.state_sequence = sequences[0];
+    vehicle.respawn_sequence = sequences[1];
+    vehicle.spin_up_torque = params.spin_up_torque;
+    vehicle.spin_up_duration = params.airborne as u32;
     vehicle.flags = RaceFlags(vehicle.flags).reset().0;
-    vehicle.quat = quat; vehicle.pos = pos; vehicle.engine_flags = count;
+    vehicle.quat = quat;
+    vehicle.pos = pos;
+    vehicle.engine_flags = count;
     if params.full {
         vehicle.control_entity = u32::MAX;
-        if vehicle.detached_wheel_count != 0 { todo!("detached wheel bodies"); }
+        if vehicle.detached_wheel_count != 0 {
+            todo!("detached wheel bodies");
+        }
     }
     vehicle.control_flags = crate::race::countdown::ControlFlags(vehicle.control_flags).after_reset().0;
     let mut shapes = [u32::MAX; 4];
-    for (index, model) in assets.wheels.iter().enumerate() { shapes[index] = model.shape; }
-    [vehicle.wheel_transform_0, vehicle.wheel_transform_1,
-        vehicle.wheel_transform_2, vehicle.wheel_transform_3] = shapes;
+    for (index, model) in assets.wheels.iter().enumerate() {
+        shapes[index] = model.shape;
+    }
+    [
+        vehicle.wheel_transform_0,
+        vehicle.wheel_transform_1,
+        vehicle.wheel_transform_2,
+        vehicle.wheel_transform_3,
+    ] = shapes;
     wheels(vehicle, assets, params.airborne, services);
     if vehicle.body != u32::MAX {
         let handle = BodyHandle(vehicle.body);
         let body = dyna.body_mut(handle);
-        body.state.vel = Vec3::ZERO; body.state.ang_vel = Vec3::ZERO;
+        body.state.vel = Vec3::ZERO;
+        body.state.ang_vel = Vec3::ZERO;
         dyna.clear_acc(handle);
     }
     let gravity = assets.model_gravity * vehicle.gravity_scale;
@@ -201,7 +274,8 @@ pub fn reset(vehicle: &mut Vehicle, assets: &Assets, dyna: &mut Dyna, params: Re
         dyna.body_mut(BodyHandle(vehicle.body)).record.coefficient = vehicle.gravity;
     }
     let rotation = Mat3::from_quat(quat);
-    vehicle.world_inverse_inertia = post_product(transpose_product(rotation, assets.inverse_inertia), rotation);
+    vehicle.world_inverse_inertia =
+        post_product(transpose_product(rotation, assets.inverse_inertia), rotation);
     effect_state(vehicle, assets, params.keep_effects, services);
     reset_sentinels(vehicle);
     contact_state(vehicle, params.full);
@@ -209,39 +283,66 @@ pub fn reset(vehicle: &mut Vehicle, assets: &Assets, dyna: &mut Dyna, params: Re
     vehicle.visual[0] = vehicle.visual[1].clone();
 }
 
-fn history(vehicle: &Vehicle) -> [u32; 9] { vehicle.wear.map(f32::to_bits) }
-fn restore_history(vehicle: &mut Vehicle, history: [u32; 9]) { vehicle.wear = history.map(f32::from_bits); }
+fn history(vehicle: &Vehicle) -> [u32; 9] {
+    vehicle.wear.map(f32::to_bits)
+}
+fn restore_history(vehicle: &mut Vehicle, history: [u32; 9]) {
+    vehicle.wear = history.map(f32::from_bits);
+}
 fn reset_sentinels(vehicle: &mut Vehicle) {
     vehicle.sound_speed = -1.0;
 }
 
-pub fn reset_at_pose(vehicle: &mut Vehicle, assets: &Assets, dyna: &mut Dyna, params: Reset,
-    services: &mut Services<impl Visuals>) {
-    if params.keep_effects && vehicle.effect_flags != 0 { todo!("respawn event"); }
+pub fn reset_at_pose(
+    vehicle: &mut Vehicle,
+    assets: &Assets,
+    dyna: &mut Dyna,
+    params: Reset,
+    services: &mut Services<impl Visuals>,
+) {
+    if params.keep_effects && vehicle.effect_flags != 0 {
+        todo!("respawn event");
+    }
     reset(vehicle, assets, dyna, params, services);
     vehicle.visual[1] = super::defaults::VISUAL_STATE.clone();
     services.visuals.visual(vehicle, dyna, true);
     vehicle.visual[0] = vehicle.visual[1].clone();
-    if vehicle.replica != 0 { todo!("replica reset"); }
+    if vehicle.replica != 0 {
+        todo!("replica reset");
+    }
 }
 
-pub fn respawn(vehicle: &mut Vehicle, assets: &Assets, dyna: &mut Dyna, pose: Iso, params: Reset,
-    services: &mut Services<impl Visuals>) {
+pub fn respawn(
+    vehicle: &mut Vehicle,
+    assets: &Assets,
+    dyna: &mut Dyna,
+    pose: Iso,
+    params: Reset,
+    services: &mut Services<impl Visuals>,
+) {
     vehicle.respawn_sequence = vehicle.respawn_sequence.wrapping_add(1);
     vehicle.pos = pose.pos;
     vehicle.quat = Quat::from_mat3(&pose.rot);
     if vehicle.body != u32::MAX {
         dyna.set_pose(BodyHandle(vehicle.body), pose);
     }
-    if let Some(item) = vehicle.item { services.place_item(item, pose); }
+    if let Some(item) = vehicle.item {
+        services.place_item(item, pose);
+    }
     reset_at_pose(vehicle, assets, dyna, params, services);
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct EffectRing { pub values: Vec<u32>, pub head: u32, pub len: u32 }
+pub struct EffectRing {
+    pub values: Vec<u32>,
+    pub head: u32,
+    pub len: u32,
+}
 impl EffectRing {
     pub fn reset(&mut self) {
-        if self.values.is_empty() { self.values.push(0); }
+        if self.values.is_empty() {
+            self.values.push(0);
+        }
         self.len = 1;
         self.head = self.values.len() as u32 - 1;
         self.values[self.head as usize] = u32::MAX;

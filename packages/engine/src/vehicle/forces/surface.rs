@@ -1,5 +1,8 @@
+use super::{
+    ForceCtx,
+    common::{KMH, TINY},
+};
 use crate::Vec3;
-use super::{ForceCtx, common::{KMH, TINY}};
 
 const THRUST_FLOOR: f32 = 1.5;
 const THRUST_EASE_START: f32 = 90.0;
@@ -58,12 +61,7 @@ pub fn surface_factors(ctx: &ForceCtx<'_>) -> SurfaceFactors {
         count += 1;
     }
     if count == 0 {
-        return SurfaceFactors {
-            steering: 1.0,
-            thrust: 1.0,
-            grip: 1.0,
-            alignment: 0.0,
-        };
+        return SurfaceFactors { steering: 1.0, thrust: 1.0, grip: 1.0, alignment: 0.0 };
     }
     result.steering = result.steering / count as f32;
     result.thrust = result.thrust / count as f32;
@@ -148,8 +146,8 @@ pub fn average_surfaces(ctx: &mut ForceCtx<'_>) -> (SurfaceResponse, SurfaceFact
 
 fn ease_surface_thrust(response: &mut SurfaceResponse, velocity: Vec3) {
     if response.thrust > THRUST_FLOOR {
-        let speed = ((velocity.x * velocity.x + velocity.y * velocity.y)
-            + velocity.z * velocity.z).sqrt() * KMH;
+        let speed =
+            ((velocity.x * velocity.x + velocity.y * velocity.y) + velocity.z * velocity.z).sqrt() * KMH;
         let fraction = if THRUST_EASE_START > speed {
             0.0
         } else if speed > THRUST_EASE_END {
@@ -163,11 +161,7 @@ fn ease_surface_thrust(response: &mut SurfaceResponse, velocity: Vec3) {
 
 fn sum_optional(sum: &mut f32, value: f32) {
     if !(0.0 >= value) {
-        *sum = if 0.0 > *sum {
-            value
-        } else {
-            *sum + value
-        };
+        *sum = if 0.0 > *sum { value } else { *sum + value };
     }
 }
 
@@ -216,11 +210,7 @@ pub fn drain_meter(ctx: &mut ForceCtx<'_>, response: &SurfaceResponse) {
     let input = if vehicle.controls.brake > PEDAL_THRESHOLD && forward > EPS {
         Some(vehicle.controls.brake)
     } else if vehicle.controls.gas > PEDAL_THRESHOLD && -EPS > forward {
-        Some(if forward > EPS {
-            vehicle.controls.brake
-        } else {
-            vehicle.controls.gas
-        })
+        Some(if forward > EPS { vehicle.controls.brake } else { vehicle.controls.gas })
     } else {
         None
     };

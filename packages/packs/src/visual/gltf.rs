@@ -77,7 +77,8 @@ pub fn export(path: &std::path::Path, scene: &Scene, cache: &VisualCache) -> Res
                         let bc5 = matches!(
                             tex.data,
                             TextureData::Dds {
-                                format: image_dds::ImageFormat::BC5RgUnorm | image_dds::ImageFormat::BC5RgSnorm,
+                                format: image_dds::ImageFormat::BC5RgUnorm
+                                    | image_dds::ImageFormat::BC5RgSnorm,
                                 ..
                             }
                         );
@@ -139,10 +140,8 @@ pub fn export(path: &std::path::Path, scene: &Scene, cache: &VisualCache) -> Res
         materials.push(material);
     }
     for instance in &scene.instances {
-        let key = (
-            instance.mesh_id,
-            instance.material_overrides.iter().map(|(a, b)| (*a, *b)).collect::<Vec<_>>(),
-        );
+        let key =
+            (instance.mesh_id, instance.material_overrides.iter().map(|(a, b)| (*a, *b)).collect::<Vec<_>>());
         let mesh_index = if let Some(&i) = mesh_variants.get(&key) {
             i
         } else {
@@ -170,7 +169,9 @@ pub fn export(path: &std::path::Path, scene: &Scene, cache: &VisualCache) -> Res
                 let mat = instance.material_overrides.get(&s.material).copied().unwrap_or(s.material);
                 let first = s.first_index as usize;
                 let indices = b.indices(&m.indices[first..first + s.index_count as usize]);
-                primitives.push(json!({"attributes":attrs,"indices":indices,"material":material_map[&mat],"mode":4}));
+                primitives.push(
+                    json!({"attributes":attrs,"indices":indices,"material":material_map[&mat],"mode":4}),
+                );
             }
             let i = meshes.len();
             meshes.push(json!({"name":m.name,"primitives":primitives}));

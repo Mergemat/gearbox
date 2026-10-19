@@ -26,7 +26,9 @@ fn wait_for(engine: &Engine, wake: &mpsc::Receiver<()>, ready: impl Fn(&Shared) 
         {
             let shared = engine.shared.lock().unwrap();
             assert!(shared.stop.is_none(), "simulation stopped: {:?}", shared.stop);
-            if ready(&shared) { return; }
+            if ready(&shared) {
+                return;
+            }
         }
         let remaining = deadline.saturating_duration_since(Instant::now());
         assert!(!remaining.is_zero(), "editor session timed out");
@@ -37,10 +39,8 @@ fn wait_for(engine: &Engine, wake: &mpsc::Receiver<()>, ready: impl Fn(&Shared) 
     }
 }
 
-
 fn compare(frame: &Frame, expected: &gearbox_trace::TickState) {
-    assert_eq!(gearbox_trace::Body::from_floats(frame.body), expected.body,
-        "body at {} ms", frame.race_ms);
+    assert_eq!(gearbox_trace::Body::from_floats(frame.body), expected.body, "body at {} ms", frame.race_ms);
     assert_eq!(frame.race_ms, expected.race_ms);
     for (wheel, expected) in frame.wheels.iter().zip(expected.vehicle.wheels) {
         assert_eq!(wheel.contact, expected.contact != 0);
@@ -61,7 +61,9 @@ fn check_frames(frames: &[Frame], origin: &gearbox_engine::Savestate, inputs: &I
     golden.seed = inputs.seed;
     for (tick, frame) in frames.iter().enumerate() {
         compare(frame, &gearbox_trace::typed::state(&golden));
-        if tick + 1 < frames.len() { golden.step(inputs.at(golden.race_ms())); }
+        if tick + 1 < frames.len() {
+            golden.step(inputs.at(golden.race_ms()));
+        }
     }
 }
 
@@ -74,36 +76,61 @@ fn project_session_scrub_record_and_search_match_golden_typed_engine() {
     let factory = gearbox_trace::typed::TypedFactory::new(game.packs.clone());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let map = root.join("tests/golden/maps/pf-364816.Map.Gbx").canonicalize().unwrap();
-    let trace = gearbox_trace::Trace::read(
-        &root.join("tests/golden/pf-364816/rec-pf364816.trace.zst")).unwrap();
+    let trace =
+        gearbox_trace::Trace::read(&root.join("tests/golden/pf-364816/rec-pf364816.trace.zst")).unwrap();
     assert!(trace.states.len() > TICKS);
     let inputs = InputFile {
         t0: trace.case.start_ms,
         seed: trace.case.seed,
-        controls: trace.case.steps.iter().map(|c| gearbox_engine::Controls {
-            gas: c.gas, brake: c.brake, steer: c.steer,
-        }).collect(),
+        controls: trace
+            .case
+            .steps
+            .iter()
+            .map(|c| gearbox_engine::Controls { gas: c.gas, brake: c.brake, steer: c.steer })
+            .collect(),
     };
-    let temp = ProjectDir(std::env::temp_dir().join(format!("gearbox-editor-headless-{}", std::process::id())));
+    let temp =
+        ProjectDir(std::env::temp_dir().join(format!("gearbox-editor-headless-{}", std::process::id())));
     let home = temp.0.join("editor");
     let path = project::new_path(&home, "Typed session");
     let document = doc::Doc::new(inputs, TICKS, doc::Origin::Blank);
     let spec = optimize::Spec {
-        window: 150..230, by_time: false, attempts: 16, threads: 1, seed: 42,
+        window: 150..230,
+        by_time: false,
+        attempts: 16,
+        threads: 1,
+        seed: 42,
         ..Default::default()
     };
-    project::save(&path, &home, "Typed session", &project::Finishes::default(), &map,
-        &document, &spec, &crate::lab::RouteSpec::default(), &[]).unwrap();
+    project::save(
+        &path,
+        &home,
+        "Typed session",
+        &project::Finishes::default(),
+        &map,
+        &document,
+        &spec,
+        &crate::lab::RouteSpec::default(),
+        &[],
+    )
+    .unwrap();
     let loaded = project::load(&path, &home).unwrap();
     let mut inputs = loaded.doc.inputs.as_ref().clone();
     let (tx, wake) = mpsc::channel();
-    let engine = Engine::spawn(game.packs.clone(), Arc::new(move || { let _ = tx.send(()); }));
+    let engine = Engine::spawn(
+        game.packs.clone(),
+        Arc::new(move || {
+            let _ = tx.send(());
+        }),
+    );
     engine.send(Command::Open {
-        source: Source(loaded.map.clone()), inputs: InputSel::Memory(inputs.clone(), loaded.name),
+        source: Source(loaded.map.clone()),
+        inputs: InputSel::Memory(inputs.clone(), loaded.name),
         len: Some(loaded.doc.len),
     });
-    let Event::Opened { origin, world, world_error, .. } = engine.events.recv_timeout(WAIT).unwrap()
-        else { panic!("editor failed to open project map") };
+    let Event::Opened { origin, world, world_error, .. } = engine.events.recv_timeout(WAIT).unwrap() else {
+        panic!("editor failed to open project map")
+    };
     assert!(world_error.is_none(), "{world_error:?}");
     assert!(!world.tris.is_empty());
     let golden = factory.session(&map, inputs.t0, inputs.seed, None).unwrap().save();
@@ -112,7 +139,9 @@ fn project_session_scrub_record_and_search_match_golden_typed_engine() {
         let shared = engine.shared.lock().unwrap();
         assert_eq!(shared.savestates, 6);
         check_frames(&shared.frames, &golden, &inputs);
-        for (frame, expected) in shared.frames.iter().zip(&trace.states) { compare(frame, expected); }
+        for (frame, expected) in shared.frames.iter().zip(&trace.states) {
+            compare(frame, expected);
+        }
     }
     engine.send(Command::Probe { tick: SCRUB_TICK, branches: true });
     wait_for(&engine, &wake, |s| s.probe.is_some());
@@ -133,34 +162,47 @@ fn project_session_scrub_record_and_search_match_golden_typed_engine() {
         }
     }
     let mut recorder = crate::engine::record::Recorder::new(EDIT_TICK);
-    recorder.write(&mut inputs, trace.case.start_ms, EDIT_TICK + 20,
-        crate::engine::record::Keys { brake: true, right: true, ..Default::default() });
+    recorder.write(
+        &mut inputs,
+        trace.case.start_ms,
+        EDIT_TICK + 20,
+        crate::engine::record::Keys { brake: true, right: true, ..Default::default() },
+    );
     engine.send(Command::Simulate {
-        inputs: Arc::new(inputs.clone()), from_tick: EDIT_TICK, len: TICKS, hold: None,
+        inputs: Arc::new(inputs.clone()),
+        from_tick: EDIT_TICK,
+        len: TICKS,
+        hold: None,
     });
-    wait_for(&engine, &wake, |s| s.frames.len() == TICKS + 1 && s.generation > 3
-        && s.frames[EDIT_TICK + 1].controls.brake == 1.0);
+    wait_for(&engine, &wake, |s| {
+        s.frames.len() == TICKS + 1 && s.generation > 3 && s.frames[EDIT_TICK + 1].controls.brake == 1.0
+    });
     check_frames(&engine.shared.lock().unwrap().frames, &golden, &inputs);
     inputs.seed = Some(inputs.seed.unwrap_or(0) ^ 12345);
     engine.send(Command::Simulate {
-        inputs: Arc::new(inputs.clone()), from_tick: TICKS, len: TICKS, hold: Some(0),
+        inputs: Arc::new(inputs.clone()),
+        from_tick: TICKS,
+        len: TICKS,
+        hold: Some(0),
     });
     wait_for(&engine, &wake, |s| s.frames.len() == 1);
-    engine.send(Command::Simulate {
-        inputs: Arc::new(inputs.clone()), from_tick: 0, len: TICKS, hold: None,
-    });
+    engine.send(Command::Simulate { inputs: Arc::new(inputs.clone()), from_tick: 0, len: TICKS, hold: None });
     wait_for(&engine, &wake, |s| s.frames.len() == TICKS + 1);
     check_frames(&engine.shared.lock().unwrap().frames, &golden, &inputs);
     let start = doc::StartState {
-        tick: 245, pos: [500.0, 30.0, 500.0], ypr: [10.0, 0.0, 0.0],
-        velocity: [0.0, 0.0, 20.0], angular: [0.0; 3], reset_contacts: true,
+        tick: 245,
+        pos: [500.0, 30.0, 500.0],
+        ypr: [10.0, 0.0, 0.0],
+        velocity: [0.0, 0.0, 20.0],
+        angular: [0.0; 3],
+        reset_contacts: true,
     };
     engine.send(Command::SetStart { start: Some((start.tick, start.placement())) });
     engine.send(Command::Probe { tick: TICKS, branches: false });
     wait_for(&engine, &wake, |s| s.probe.as_ref().is_some_and(|p| p.tick == TICKS));
     let mut compare_runner = origin.fork();
-    let (compared, error) = background::simulate(&mut compare_runner, &inputs, TICKS,
-        Some(&(start.tick, start.placement())));
+    let (compared, error) =
+        background::simulate(&mut compare_runner, &inputs, TICKS, Some(&(start.tick, start.placement())));
     assert!(error.is_none(), "{error:?}");
     let actual = engine.shared.lock().unwrap().frames.clone();
     for (a, b) in actual.iter().zip(&compared) {
@@ -168,16 +210,31 @@ fn project_session_scrub_record_and_search_match_golden_typed_engine() {
     }
     let (tx, updates) = mpsc::channel();
     let mut search = optimize::Search::default();
-    search.start(optimize::Request {
-        origin: origin.clone(), inputs: inputs.clone(), race_ms0: trace.case.start_ms,
-        spec: loaded.search.unwrap(), objective: gearbox_search::objective::Objective::Position {
-            at_ms: trace.case.start_ms + 3000, point: [500.0, 20.0, 500.0],
-        }, until_ms: trace.case.start_ms + 3000, locks: Vec::new(), start: None,
-        origin_tick: 150, start_line: None, world: None,
-    }, Arc::new(move || { let _ = tx.send(()); }));
+    search.start(
+        optimize::Request {
+            origin: origin.clone(),
+            inputs: inputs.clone(),
+            race_ms0: trace.case.start_ms,
+            spec: loaded.search.unwrap(),
+            objective: gearbox_search::objective::Objective::Position {
+                at_ms: trace.case.start_ms + 3000,
+                point: [500.0, 20.0, 500.0],
+            },
+            until_ms: trace.case.start_ms + 3000,
+            locks: Vec::new(),
+            start: None,
+            origin_tick: 150,
+            start_line: None,
+            world: None,
+        },
+        Arc::new(move || {
+            let _ = tx.send(());
+        }),
+    );
     let deadline = Instant::now() + WAIT;
     while search.running() {
-        updates.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        updates
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
             .expect("editor search timed out");
     }
     let live = search.live.lock().unwrap();
@@ -190,7 +247,10 @@ fn project_session_scrub_record_and_search_match_golden_typed_engine() {
         assert!(error.is_none(), "{error:?}");
         check_frames(&frames, &golden, &candidate.inputs);
     }
-    eprintln!("EXACT: 501 golden frames; scrub + 3 branches; recording + seed edits; \
+    eprintln!(
+        "EXACT: 501 golden frames; scrub + 3 branches; recording + seed edits; \
         placed compare run; {} search tries, {} candidate replays",
-        live.attempts, live.candidates.len());
+        live.attempts,
+        live.candidates.len()
+    );
 }

@@ -4,14 +4,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use anyhow::{Result, bail, ensure};
 use crate::engine::input::InputFile;
+use anyhow::{Result, bail, ensure};
 use gearbox_engine::Savestate;
-use serde::{Deserialize, Serialize};
 use gearbox_search::objective::{Objective, Score};
 use gearbox_search::pose::Placement;
+use serde::{Deserialize, Serialize};
 
-use crate::background::{reach, Wake, panic_message};
+use crate::background::{Wake, panic_message, reach};
 use crate::doc::{Goal, GoalKind, Id};
 use crate::fmt::{fmt_ms, fmt_s};
 
@@ -41,8 +41,12 @@ impl ObjKind {
 
     pub fn about(self) -> &'static str {
         match self {
-            Self::ReachGoals => "Lines must reach the goals in order. Getting further wins (more goals, then closer to the next one, measured along the track); among those that reach them all, the last goal's Time, Both or Speed decides.",
-            Self::Moment => "One moment counts: the measure there (or at its best tick of the range), as long as every condition holds; then the tie-break.",
+            Self::ReachGoals => {
+                "Lines must reach the goals in order. Getting further wins (more goals, then closer to the next one, measured along the track); among those that reach them all, the last goal's Time, Both or Speed decides."
+            }
+            Self::Moment => {
+                "One moment counts: the measure there (or at its best tick of the range), as long as every condition holds; then the tie-break."
+            }
         }
     }
     pub fn fixed_time(self) -> bool {
@@ -144,7 +148,10 @@ pub fn aim_sentence(aim: &gearbox_search::aim::Aim, at: &str) -> String {
     use gearbox_search::aim::{Condition, Quantity, Wheels};
     let q = |q: &Quantity| match q {
         Quantity::Angle { yaw, pitch, roll } => {
-            let axes: Vec<String> = [("yaw", yaw), ("pitch", pitch), ("roll", roll)].iter().filter_map(|(n, v)| v.map(|v| format!("{n} {v:.0}\u{00b0}"))).collect();
+            let axes: Vec<String> = [("yaw", yaw), ("pitch", pitch), ("roll", roll)]
+                .iter()
+                .filter_map(|(n, v)| v.map(|v| format!("{n} {v:.0}\u{00b0}")))
+                .collect();
             format!("the car's {}", if axes.is_empty() { "angle".into() } else { axes.join(", ") })
         }
         Quantity::Trick(k) => format!("a {}", trick_name(*k)),
@@ -154,7 +161,11 @@ pub fn aim_sentence(aim: &gearbox_search::aim::Aim, at: &str) -> String {
     let measure = match aim.measure.quantity {
         Quantity::Angle { .. } => format!("get {} as close as possible", q(&aim.measure.quantity)),
         Quantity::Trick(_) => format!("hold {} as long as possible", q(&aim.measure.quantity)),
-        _ => format!("{} {}", if aim.measure.higher { "maximise" } else { "minimise" }, q(&aim.measure.quantity)),
+        _ => format!(
+            "{} {}",
+            if aim.measure.higher { "maximise" } else { "minimise" },
+            q(&aim.measure.quantity)
+        ),
     };
     let when = match aim.judged {
         gearbox_search::aim::Judged::End => format!("At {at}"),
@@ -237,7 +248,11 @@ impl Spec {
         let old = v.get("kind").and_then(|k| k.as_str()).map(str::to_owned);
         if let Some(k @ ("GateTime" | "GateSpeed" | "MatchPose" | "Finish")) = old.as_deref() {
             let target = v.get("target").and_then(|t| t.as_u64()).map(|t| t as Id);
-            let one = if k == "Finish" { goals.iter().find(|g| matches!(&g.kind, GoalKind::Gate(x) if x.kind == 1)).map(|g| g.id) } else { target };
+            let one = if k == "Finish" {
+                goals.iter().find(|g| matches!(&g.kind, GoalKind::Gate(x) if x.kind == 1)).map(|g| g.id)
+            } else {
+                target
+            };
             v["kind"] = "ReachGoals".into();
             if let Some(id) = one {
                 v["goals"] = serde_json::json!([id]);
@@ -253,7 +268,11 @@ impl Spec {
             let aim = if k == "SpeedAt" {
                 gearbox_search::aim::Aim::fastest()
             } else {
-                let trick = v.get("trick").cloned().and_then(|t| serde_json::from_value(t).ok()).unwrap_or(gearbox_search::tricks::TrickKind::Nosebug);
+                let trick = v
+                    .get("trick")
+                    .cloned()
+                    .and_then(|t| serde_json::from_value(t).ok())
+                    .unwrap_or(gearbox_search::tricks::TrickKind::Nosebug);
                 gearbox_search::aim::Aim::longest_trick(trick)
             };
             (v["kind"], v["aim"]) = ("Moment".into(), serde_json::to_value(aim)?);
@@ -266,8 +285,16 @@ impl Spec {
             return self.at_tick.unwrap_or(self.window.end).max(self.window.end);
         }
         let n = self.ordered_goals(c.goals).len();
-        let idx: Vec<usize> = self.ordered_goals(c.goals).iter().filter_map(|g| c.goals.iter().position(|x| x.id == g.id)).collect();
-        let last = if n > 0 && idx.len() == n { idx.last().and_then(|&i| c.reach.get(i).copied().flatten()) } else { None };
+        let idx: Vec<usize> = self
+            .ordered_goals(c.goals)
+            .iter()
+            .filter_map(|g| c.goals.iter().position(|x| x.id == g.id))
+            .collect();
+        let last = if n > 0 && idx.len() == n {
+            idx.last().and_then(|&i| c.reach.get(i).copied().flatten())
+        } else {
+            None
+        };
         if let Some(u) = self.until {
             return u.max(self.window.end).max(last.map_or(0, |k| k + 150));
         }
@@ -289,19 +316,34 @@ impl Spec {
             ObjKind::ReachGoals => {
                 let gs = self.ordered_goals(c.goals);
                 if gs.is_empty() {
-                    return "Place a goal first (1\u{2013}4: gate, point, box, pose); the search aims for it".into();
+                    return "Place a goal first (1\u{2013}4: gate, point, box, pose); the search aims for it"
+                        .into();
                 }
                 let last = gs[gs.len() - 1];
-                let tie = if gs.iter().all(|g| g.is_gate()) { "" } else { " \u{00b7} then closest to the next goal" };
+                let tie = if gs.iter().all(|g| g.is_gate()) {
+                    ""
+                } else {
+                    " \u{00b7} then closest to the next goal"
+                };
                 if gs.len() == 1 {
                     match judged(last) {
-                        "speed" => format!("Maximise speed at {} \u{00b7} then minimise time to reach it{tie}", last.name),
+                        "speed" => format!(
+                            "Maximise speed at {} \u{00b7} then minimise time to reach it{tie}",
+                            last.name
+                        ),
                         "time" => format!("Minimise time to reach {}{tie}", last.name),
-                        _ => format!("Minimise time to reach {}, less what its speed saves later{tie}", last.name),
+                        _ => format!(
+                            "Minimise time to reach {}, less what its speed saves later{tie}",
+                            last.name
+                        ),
                     }
                 } else {
                     let names: Vec<String> = gs.iter().map(|g| g.name.clone()).collect();
-                    format!("Reach {} in order \u{00b7} as far as possible, then by {} at the last{tie}", names.join(" \u{2192} "), judged(last))
+                    format!(
+                        "Reach {} in order \u{00b7} as far as possible, then by {} at the last{tie}",
+                        names.join(" \u{2192} "),
+                        judged(last)
+                    )
                 }
             }
             ObjKind::Moment => aim_sentence(&self.aim, &t(self.until_tick(c))),
@@ -309,7 +351,8 @@ impl Spec {
     }
 
     pub fn constraint_sentence(&self, c: &Ctx<'_>) -> String {
-        let ch: Vec<&str> = ["gas", "brake", "steer"].iter().zip(self.channels).filter(|x| x.1).map(|x| *x.0).collect();
+        let ch: Vec<&str> =
+            ["gas", "brake", "steer"].iter().zip(self.channels).filter(|x| x.1).map(|x| *x.0).collect();
         let s = |k: usize| fmt_s(c.race_ms0 + 10 * k as i32);
         let mut out = format!(
             "Changing {} from {} to {} s, each try driven to {} s",
@@ -361,13 +404,24 @@ impl Spec {
                     None => (c.waypoints_at)(self.window.start) + 1 + before,
                 },
             };
-            Ok((ordinal, gearbox_search::gate::Gate { waypoint: gate.waypoint, kind: gate.kind, boxes: gate.boxes.clone() }))
+            Ok((
+                ordinal,
+                gearbox_search::gate::Gate {
+                    waypoint: gate.waypoint,
+                    kind: gate.kind,
+                    boxes: gate.boxes.clone(),
+                },
+            ))
         };
         let goal = |g: &Goal, before: usize| -> Result<gearbox_search::goals::Goal> {
             Ok(match &g.kind {
-                GoalKind::Point { pos, radius } => gearbox_search::goals::Goal::Point { point: *pos, radius: *radius },
+                GoalKind::Point { pos, radius } => {
+                    gearbox_search::goals::Goal::Point { point: *pos, radius: *radius }
+                }
                 GoalKind::Pose(p) => gearbox_search::goals::Goal::Pose { target: p.goal() },
-                GoalKind::Box { pos, size, ypr } => gearbox_search::goals::Goal::Box { trigger: crate::doc::trigger_box(*pos, *size, *ypr) },
+                GoalKind::Box { pos, size, ypr } => {
+                    gearbox_search::goals::Goal::Box { trigger: crate::doc::trigger_box(*pos, *size, *ypr) }
+                }
                 GoalKind::Gate(_) => {
                     let (ordinal, gate) = gate_of(g, before)?;
                     let GoalKind::Gate(x) = &g.kind else { unreachable!() };
@@ -400,7 +454,15 @@ impl Spec {
                     }
                 }
                 let fastest = gs_last.is_some_and(|id| self.by_speed.contains(&id));
-                Objective::Goals(gearbox_search::goals::Goals { ordered, fastest, speed_worth_ms: 0.0, conditions, along: None, stay_within: None, track: None })
+                Objective::Goals(gearbox_search::goals::Goals {
+                    ordered,
+                    fastest,
+                    speed_worth_ms: 0.0,
+                    conditions,
+                    along: None,
+                    stay_within: None,
+                    track: None,
+                })
             }
             ObjKind::Moment => Objective::Aim { at_ms: until_ms, aim: self.aim.clone() },
         };
@@ -422,28 +484,90 @@ pub fn metric(s: &Score) -> Metric {
         Score::Goals { times, total, error, .. } => {
             if times.len() == *total {
                 let t = *times.last().unwrap_or(&0);
-                let text = if *total == 1 { format!("reached at {} s", fmt_ms(t)) } else { format!("all {total} reached, last at {} s", fmt_ms(t)) };
+                let text = if *total == 1 {
+                    format!("reached at {} s", fmt_ms(t))
+                } else {
+                    format!("all {total} reached, last at {} s", fmt_ms(t))
+                };
                 Metric { value: t as f64 / 1000.0, unit: "s", reached: true, lower: true, text }
             } else {
-                let text = if times.is_empty() { "not reached yet".to_string() } else { format!("{} of {total} reached", times.len()) };
+                let text = if times.is_empty() {
+                    "not reached yet".to_string()
+                } else {
+                    format!("{} of {total} reached", times.len())
+                };
                 Metric { value: *error, unit: "off", reached: false, lower: true, text }
             }
         }
-        Score::Unreached => Metric { value: f64::NAN, unit: "", reached: false, lower: true, text: "not reached".into() },
-        Score::Race { time_ms, speed_squared } => Metric { value: *time_ms as f64 / 1000.0, unit: "s", reached: true, lower: true, text: format!("{} \u{00b7} {:.1} km/h", fmt_ms(*time_ms as i32), speed_squared.sqrt() * 3.6) },
-        Score::Position { distance_squared, speed_squared } => Metric { value: distance_squared.sqrt(), unit: "m", reached: true, lower: true, text: format!("{:.3} m \u{00b7} {:.1} km/h", distance_squared.sqrt(), speed_squared.sqrt() * 3.6) },
-        Score::Trick { ticks, speed_squared } => Metric { value: f64::from(*ticks) / 100.0, unit: "s", reached: *ticks > 0, lower: false, text: format!("held {:.2} s \u{00b7} {:.1} km/h", f64::from(*ticks) / 100.0, speed_squared.sqrt() * 3.6) },
-        Score::Aim { held, value, tie } => Metric { value: *value, unit: "", reached: *held, lower: false, text: format!("{value:.2}{}{}", if *tie != 0.0 { format!(" \u{00b7} {tie:.1}") } else { String::new() }, if *held { "" } else { " \u{00b7} conditions not met" }) },
-        Score::Speed { speed_squared } => Metric { value: speed_squared.sqrt() * 3.6, unit: "km/h", reached: true, lower: false, text: format!("{:.2} km/h", speed_squared.sqrt() * 3.6) },
+        Score::Unreached => {
+            Metric { value: f64::NAN, unit: "", reached: false, lower: true, text: "not reached".into() }
+        }
+        Score::Race { time_ms, speed_squared } => Metric {
+            value: *time_ms as f64 / 1000.0,
+            unit: "s",
+            reached: true,
+            lower: true,
+            text: format!("{} \u{00b7} {:.1} km/h", fmt_ms(*time_ms as i32), speed_squared.sqrt() * 3.6),
+        },
+        Score::Position { distance_squared, speed_squared } => Metric {
+            value: distance_squared.sqrt(),
+            unit: "m",
+            reached: true,
+            lower: true,
+            text: format!("{:.3} m \u{00b7} {:.1} km/h", distance_squared.sqrt(), speed_squared.sqrt() * 3.6),
+        },
+        Score::Trick { ticks, speed_squared } => Metric {
+            value: f64::from(*ticks) / 100.0,
+            unit: "s",
+            reached: *ticks > 0,
+            lower: false,
+            text: format!(
+                "held {:.2} s \u{00b7} {:.1} km/h",
+                f64::from(*ticks) / 100.0,
+                speed_squared.sqrt() * 3.6
+            ),
+        },
+        Score::Aim { held, value, tie } => Metric {
+            value: *value,
+            unit: "",
+            reached: *held,
+            lower: false,
+            text: format!(
+                "{value:.2}{}{}",
+                if *tie != 0.0 { format!(" \u{00b7} {tie:.1}") } else { String::new() },
+                if *held { "" } else { " \u{00b7} conditions not met" }
+            ),
+        },
+        Score::Speed { speed_squared } => Metric {
+            value: speed_squared.sqrt() * 3.6,
+            unit: "km/h",
+            reached: true,
+            lower: false,
+            text: format!("{:.2} km/h", speed_squared.sqrt() * 3.6),
+        },
         Score::Guided { time_ms: Some(t), cost, speed_squared, .. } => {
             let speed = speed_squared.sqrt() * 3.6;
             if *cost < 0.0 {
-                Metric { value: speed, unit: "km/h", reached: true, lower: false, text: format!("through at {speed:.1} km/h ({} s)", fmt_ms(*t as i32)) }
+                Metric {
+                    value: speed,
+                    unit: "km/h",
+                    reached: true,
+                    lower: false,
+                    text: format!("through at {speed:.1} km/h ({} s)", fmt_ms(*t as i32)),
+                }
             } else {
-                Metric { value: *t as f64 / 1000.0, unit: "s", reached: true, lower: true, text: format!("reached at {} s, {speed:.0} km/h", fmt_ms(*t as i32)) }
+                Metric {
+                    value: *t as f64 / 1000.0,
+                    unit: "s",
+                    reached: true,
+                    lower: true,
+                    text: format!("reached at {} s, {speed:.0} km/h", fmt_ms(*t as i32)),
+                }
             }
         }
-        Score::Guided { time_ms: None, cost, .. } => Metric { value: *cost, unit: "off", reached: false, lower: true, text: "not reached yet".into() },
+        Score::Guided { time_ms: None, cost, .. } => {
+            Metric { value: *cost, unit: "off", reached: false, lower: true, text: "not reached yet".into() }
+        }
     }
 }
 
@@ -518,30 +642,57 @@ const TRACK_REACH: i32 = 8;
 
 static TRACK_CACHE: Mutex<Option<(String, Arc<gearbox_search::track::TrackFields>)>> = Mutex::new(None);
 
-fn track_fields(world: &Arc<crate::engine::display::World>, min: [f32; 3], max: [f32; 3], goals: &[gearbox_search::goals::Goal]) -> Arc<gearbox_search::track::TrackFields> {
+fn track_fields(
+    world: &Arc<crate::engine::display::World>,
+    min: [f32; 3],
+    max: [f32; 3],
+    goals: &[gearbox_search::goals::Goal],
+) -> Arc<gearbox_search::track::TrackFields> {
     use gearbox_search::goals::Goal;
-    let key = format!("{:p} {min:?} {max:?} {}", Arc::as_ptr(world), serde_json::to_string(goals).unwrap_or_default());
+    let key = format!(
+        "{:p} {min:?} {max:?} {}",
+        Arc::as_ptr(world),
+        serde_json::to_string(goals).unwrap_or_default()
+    );
     if let Some((k, f)) = TRACK_CACHE.lock().unwrap().as_ref()
         && *k == key
     {
         return f.clone();
     }
-    let inside = |t: &[[f32; 3]; 3]| (0..3).all(|a| t.iter().any(|v| v[a] >= min[a]) && t.iter().any(|v| v[a] <= max[a]));
-    let dry = |t: &&crate::engine::display::Tri| crate::materials::family(t.surface) != crate::materials::Family::Water;
-    let cells = Arc::new(gearbox_search::track::Cells::build(world.tris.iter().filter(dry).map(|t| t.v).filter(inside), TRACK_CELL, TRACK_CLEARANCE));
+    let inside = |t: &[[f32; 3]; 3]| {
+        (0..3).all(|a| t.iter().any(|v| v[a] >= min[a]) && t.iter().any(|v| v[a] <= max[a]))
+    };
+    let dry = |t: &&crate::engine::display::Tri| {
+        crate::materials::family(t.surface) != crate::materials::Family::Water
+    };
+    let cells = Arc::new(gearbox_search::track::Cells::build(
+        world.tris.iter().filter(dry).map(|t| t.v).filter(inside),
+        TRACK_CELL,
+        TRACK_CLEARANCE,
+    ));
     let near = TRACK_CELL * 0.5;
     let fields = goals
         .iter()
         .map(|g| {
             let (center, test): ([f32; 3], Box<dyn Fn([f32; 3]) -> bool>) = match g.clone() {
-                Goal::Point { point, radius } => (point, Box::new(move |p| gearbox_search::objective::distance(p, point) <= f64::from(radius + near))),
-                Goal::Box { trigger } => (trigger.center, Box::new(move |p| trigger.distance(p) <= f64::from(near))),
+                Goal::Point { point, radius } => (
+                    point,
+                    Box::new(move |p| {
+                        gearbox_search::objective::distance(p, point) <= f64::from(radius + near)
+                    }),
+                ),
+                Goal::Box { trigger } => {
+                    (trigger.center, Box::new(move |p| trigger.distance(p) <= f64::from(near)))
+                }
                 Goal::Pose { target } => {
                     let (c, tol) = (target.pose.position, target.position_tolerance);
                     (c, Box::new(move |p| (0..3).all(|a| (p[a] - c[a]).abs() <= tol[a] + near)))
                 }
                 Goal::Gate { gate, .. } => {
-                    let c = gate.boxes.first().map_or([0.0; 3], |b| std::array::from_fn(|k| (b.min[k] + b.max[k]) * 0.5));
+                    let c = gate
+                        .boxes
+                        .first()
+                        .map_or([0.0; 3], |b| std::array::from_fn(|k| (b.min[k] + b.max[k]) * 0.5));
                     (c, Box::new(move |p| gate.distance(p) <= f64::from(near)))
                 }
                 Goal::Waypoint { .. } | Goal::Finish => return None,
@@ -580,10 +731,16 @@ impl Search {
     pub fn start(&mut self, req: Request, wake: Wake) {
         self.cancel.store(true, Ordering::Relaxed);
         self.cancel = Arc::new(AtomicBool::new(false));
-        self.live = Arc::new(Mutex::new(Live { running: true, message: "starting \u{2026}".into(), until_tick: ((req.until_ms - req.race_ms0) / 10).max(0) as usize, aim: match &req.objective {
-            Objective::Aim { aim, .. } => Some(aim.clone()),
-            _ => None,
-        }, ..Default::default() }));
+        self.live = Arc::new(Mutex::new(Live {
+            running: true,
+            message: "starting \u{2026}".into(),
+            until_tick: ((req.until_ms - req.race_ms0) / 10).max(0) as usize,
+            aim: match &req.objective {
+                Objective::Aim { aim, .. } => Some(aim.clone()),
+                _ => None,
+            },
+            ..Default::default()
+        }));
         let (live, cancel, ids) = (self.live.clone(), self.cancel.clone(), self.next_id.clone());
         std::thread::Builder::new()
             .name("search".into())
@@ -594,7 +751,9 @@ impl Search {
                 match r {
                     Ok(Ok(())) => {}
                     Ok(Err(e)) => l.error = Some(format!("{e:#}")),
-                    Err(p) if p.is::<Cancelled>() => l.message = format!("stopped after {} attempts", l.attempts),
+                    Err(p) if p.is::<Cancelled>() => {
+                        l.message = format!("stopped after {} attempts", l.attempts)
+                    }
                     Err(p) => l.error = Some(format!("search panicked: {}", panic_message(&*p))),
                 }
                 drop(l);
@@ -604,19 +763,36 @@ impl Search {
     }
 }
 
-fn run(req: &Request, live: &Mutex<Live>, cancel: &AtomicBool, ids: &std::sync::atomic::AtomicU64, wake: &Wake) -> Result<()> {
+fn run(
+    req: &Request,
+    live: &Mutex<Live>,
+    cancel: &AtomicBool,
+    ids: &std::sync::atomic::AtomicU64,
+    wake: &Wake,
+) -> Result<()> {
     let s = &req.spec;
     let ms = |k: usize| req.race_ms0 + 10 * k as i32;
-    ensure!(s.window.start < s.window.end, "the search range is empty: set it on the timeline or with From \u{2192} to");
+    ensure!(
+        s.window.start < s.window.end,
+        "the search range is empty: set it on the timeline or with From \u{2192} to"
+    );
     if let Some((p, _)) = &req.start {
-        ensure!(s.window.start >= *p, "the window starts before the start state (tick {p}); inputs before a placed start can't be searched");
+        ensure!(
+            s.window.start >= *p,
+            "the window starts before the start state (tick {p}); inputs before a placed start can't be searched"
+        );
     }
     ensure!(s.channels.iter().any(|c| *c), "no channel may change");
     let car = match &req.start {
         Some((t, p)) if s.vary_car && *t == req.origin_tick => Some((*t, p.clone())),
         _ => None,
     };
-    let origin = reach(&req.origin, &req.inputs, req.origin_tick, if car.is_some() { None } else { req.start.as_ref() })?;
+    let origin = reach(
+        &req.origin,
+        &req.inputs,
+        req.origin_tick,
+        if car.is_some() { None } else { req.start.as_ref() },
+    )?;
     let mut objective = req.objective.clone();
     if let Objective::Goals(g) = &mut objective
         && let Some((world, min, max)) = &req.world
@@ -634,19 +810,31 @@ fn run(req: &Request, live: &Mutex<Live>, cancel: &AtomicBool, ids: &std::sync::
         fixed: s.channels.map(|c| !c),
         digital_steer: s.digital_steer,
         steer_limit: (s.steer_limit < 1.0).then_some(s.steer_limit.clamp(0.0, 1.0)),
-        locked: if s.honour_locks { req.locks.iter().map(|r| at(ms(r.start))..at(ms(r.end))).collect() } else { Vec::new() },
+        locked: if s.honour_locks {
+            req.locks.iter().map(|r| at(ms(r.start))..at(ms(r.end))).collect()
+        } else {
+            Vec::new()
+        },
     };
-    let threads = if s.threads == 0 { gearbox_search::search::default_threads() } else { s.threads.clamp(1, gearbox_search::search::MAX_THREADS) };
+    let threads = if s.threads == 0 {
+        gearbox_search::search::default_threads()
+    } else {
+        s.threads.clamp(1, gearbox_search::search::MAX_THREADS)
+    };
     let range = at(ms(s.window.start))..at(ms(s.window.end));
     let until = at(req.until_ms).max(range.end);
-    let start = gearbox_search::input::Timeline { t0, seed: req.inputs.seed, controls: req.inputs.controls.clone() };
+    let start =
+        gearbox_search::input::Timeline { t0, seed: req.inputs.seed, controls: req.inputs.controls.clone() };
     let base = {
         let mut n = origin.fork();
         if let Some((_, p)) = &car {
             gearbox_search::pose::place(&mut n, p)?;
         }
         n.seed = start.seed;
-        let opts = gearbox_search::objective::EvalOptions { from_ms: Some(t0 + 10 * range.start as i32), ..Default::default() };
+        let opts = gearbox_search::objective::EvalOptions {
+            from_ms: Some(t0 + 10 * range.start as i32),
+            ..Default::default()
+        };
         gearbox_search::objective::evaluate_with(&mut n, &start, &objective, req.until_ms, opts)?.score
     };
     live.lock().unwrap().base = Some(base);
@@ -660,7 +848,13 @@ fn run(req: &Request, live: &Mutex<Live>, cancel: &AtomicBool, ids: &std::sync::
         }
         None => start,
     };
-    let settings = gearbox_search::improve::Settings { threads, seed: s.seed, constraints, eval: Default::default(), placement: car.as_ref().map(|c| c.1.clone()) };
+    let settings = gearbox_search::improve::Settings {
+        threads,
+        seed: s.seed,
+        constraints,
+        eval: Default::default(),
+        placement: car.as_ref().map(|c| c.1.clone()),
+    };
     let car_tick = car.as_ref().map(|c| c.0);
     let began = Instant::now();
     let mut listed: std::collections::HashMap<usize, u64> = Default::default();
@@ -679,10 +873,16 @@ fn run(req: &Request, live: &Mutex<Live>, cancel: &AtomicBool, ids: &std::sync::
             .filter(|x| x.change.is_some())
             .map(|x| Candidate {
                 id: *listed.entry(x.id).or_insert_with(|| ids.fetch_add(1, Ordering::Relaxed)),
-                start: car_tick.zip(x.placement.as_ref()).map(|(tick, p)| crate::doc::StartState::from_placement(tick, p)),
+                start: car_tick
+                    .zip(x.placement.as_ref())
+                    .map(|(tick, p)| crate::doc::StartState::from_placement(tick, p)),
                 attempts: p.tries,
                 score: x.score.clone(),
-                inputs: Arc::new(InputFile { t0: x.inputs.t0, seed: x.inputs.seed, controls: x.inputs.controls.clone() }),
+                inputs: Arc::new(InputFile {
+                    t0: x.inputs.t0,
+                    seed: x.inputs.seed,
+                    controls: x.inputs.controls.clone(),
+                }),
                 elapsed,
             })
             .collect();
@@ -698,11 +898,21 @@ fn run(req: &Request, live: &Mutex<Live>, cancel: &AtomicBool, ids: &std::sync::
         l.message = format!("{} tries \u{00b7} {} lines", p.tries, l.candidates.len());
         drop(l);
         wake();
-        let spent = if s.by_time { s.seconds > 0.0 && elapsed >= s.seconds } else { p.tries >= s.attempts.max(1) };
+        let spent =
+            if s.by_time { s.seconds > 0.0 && elapsed >= s.seconds } else { p.tries >= s.attempts.max(1) };
         !cancel.load(Ordering::Relaxed) && !spent
     })?;
     let mut l = live.lock().unwrap();
-    l.message = if cancel.load(Ordering::Relaxed) { format!("stopped after {} tries", l.attempts) } else { format!("done \u{00b7} {} tries in {:.1} s \u{00b7} {} lines", l.attempts, began.elapsed().as_secs_f32(), l.candidates.len()) };
+    l.message = if cancel.load(Ordering::Relaxed) {
+        format!("stopped after {} tries", l.attempts)
+    } else {
+        format!(
+            "done \u{00b7} {} tries in {:.1} s \u{00b7} {} lines",
+            l.attempts,
+            began.elapsed().as_secs_f32(),
+            l.candidates.len()
+        )
+    };
     Ok(())
 }
 
@@ -722,24 +932,58 @@ mod tests {
     }
 
     fn gate(id: Id, name: &str, wp: u32) -> Goal {
-        Goal { id, name: name.into(), kind: GoalKind::Gate(crate::doc::GateGoal { waypoint: wp, kind: 2, boxes: vec![gearbox_search::gate::Bounds { min: [0.0; 3], max: [1.0; 3] }], ordinal: None, also: Vec::new(), parts: Vec::new() }), visible: true, when: Default::default() }
+        Goal {
+            id,
+            name: name.into(),
+            kind: GoalKind::Gate(crate::doc::GateGoal {
+                waypoint: wp,
+                kind: 2,
+                boxes: vec![gearbox_search::gate::Bounds { min: [0.0; 3], max: [1.0; 3] }],
+                ordinal: None,
+                also: Vec::new(),
+                parts: Vec::new(),
+            }),
+            visible: true,
+            when: Default::default(),
+        }
     }
 
     #[test]
     fn sentences_name_the_goals_and_the_tie_break() {
-        let goals = vec![gate(1, "CP2", 7), Goal { id: 2, name: "P1".into(), kind: GoalKind::Point { pos: [1.0, 2.0, 3.0], radius: 3.0 }, visible: true, when: Default::default() }];
+        let goals = vec![
+            gate(1, "CP2", 7),
+            Goal {
+                id: 2,
+                name: "P1".into(),
+                kind: GoalKind::Point { pos: [1.0, 2.0, 3.0], radius: 3.0 },
+                visible: true,
+                when: Default::default(),
+            },
+        ];
         let reach = [Some(800), None];
         let w = |_| 1usize;
         let c = ctx(&goals, &reach, &w);
         let s = Spec { kind: ObjKind::ReachGoals, goals: vec![1], window: 300..700, ..Default::default() };
         assert_eq!(s.sentence(&c), "Minimise time to reach CP2");
-        let s = Spec { kind: ObjKind::ReachGoals, goals: vec![1], by_speed: vec![1], window: 300..700, ..Default::default() };
+        let s = Spec {
+            kind: ObjKind::ReachGoals,
+            goals: vec![1],
+            by_speed: vec![1],
+            window: 300..700,
+            ..Default::default()
+        };
         assert_eq!(s.sentence(&c), "Maximise speed at CP2 \u{00b7} then minimise time to reach it");
         let s = Spec { kind: ObjKind::ReachGoals, window: 300..700, ..Default::default() };
-        assert_eq!(s.sentence(&c), "Reach CP2 \u{2192} P1 in order \u{00b7} as far as possible, then by time at the last \u{00b7} then closest to the next goal");
+        assert_eq!(
+            s.sentence(&c),
+            "Reach CP2 \u{2192} P1 in order \u{00b7} as far as possible, then by time at the last \u{00b7} then closest to the next goal"
+        );
         let s = Spec { kind: ObjKind::ReachGoals, goals: vec![1], window: 300..700, ..Default::default() };
         assert_eq!(s.until_tick(&c), 950);
-        assert_eq!(s.constraint_sentence(&c), "Changing gas, brake, steer from 1.500 to 5.500 s, each try driven to 8.000 s");
+        assert_eq!(
+            s.constraint_sentence(&c),
+            "Changing gas, brake, steer from 1.500 to 5.500 s, each try driven to 8.000 s"
+        );
     }
 
     #[test]
@@ -751,13 +995,30 @@ mod tests {
         let s = Spec { kind: ObjKind::ReachGoals, window: 300..700, ..Default::default() };
         let (o, _) = s.objective(&c).unwrap();
         let Objective::Goals(g) = o else { panic!() };
-        let ords: Vec<usize> = g.ordered.iter().map(|g| if let gearbox_search::goals::Goal::Gate { ordinal, .. } = g { *ordinal } else { 0 }).collect();
+        let ords: Vec<usize> = g
+            .ordered
+            .iter()
+            .map(|g| if let gearbox_search::goals::Goal::Gate { ordinal, .. } = g { *ordinal } else { 0 })
+            .collect();
         assert_eq!(ords, [2, 3]);
     }
 
     #[test]
     fn older_single_goal_and_finish_objectives_load_as_goals() {
-        let fin = Goal { id: 9, name: "Finish".into(), kind: GoalKind::Gate(crate::doc::GateGoal { waypoint: 4, kind: 1, boxes: vec![gearbox_search::gate::Bounds { min: [0.0; 3], max: [1.0; 3] }], ordinal: None, also: vec![5], parts: Vec::new() }), visible: true, when: Default::default() };
+        let fin = Goal {
+            id: 9,
+            name: "Finish".into(),
+            kind: GoalKind::Gate(crate::doc::GateGoal {
+                waypoint: 4,
+                kind: 1,
+                boxes: vec![gearbox_search::gate::Bounds { min: [0.0; 3], max: [1.0; 3] }],
+                ordinal: None,
+                also: vec![5],
+                parts: Vec::new(),
+            }),
+            visible: true,
+            when: Default::default(),
+        };
         let goals = vec![gate(1, "CP1", 3), fin];
         let saved = |kind: &str| {
             let mut v = serde_json::to_value(Spec::default()).unwrap();
@@ -770,13 +1031,17 @@ mod tests {
         let s = saved("GateTime");
         assert_eq!((s.goals, s.by_speed), (vec![1], vec![]));
         assert_eq!(saved("Finish").goals, vec![9]);
-        assert_eq!((saved("SpeedAt").kind, saved("SpeedAt").aim), (ObjKind::Moment, gearbox_search::aim::Aim::fastest()));
+        assert_eq!(
+            (saved("SpeedAt").kind, saved("SpeedAt").aim),
+            (ObjKind::Moment, gearbox_search::aim::Aim::fastest())
+        );
         assert_eq!(saved("GoalByGoal").kind, ObjKind::ReachGoals);
     }
 
     #[test]
     fn metrics_say_which_way_is_better() {
-        let m = metric(&Score::Goals { times: vec![1200, 3400], total: 2, error: 0.0, strayed: false, cuts: 0 });
+        let m =
+            metric(&Score::Goals { times: vec![1200, 3400], total: 2, error: 0.0, strayed: false, cuts: 0 });
         assert!(m.reached && m.lower && (m.value - 3.4).abs() < 1e-9);
         let m = metric(&Score::Speed { speed_squared: 100.0 });
         assert!(!m.lower && (m.value - 36.0).abs() < 1e-9);

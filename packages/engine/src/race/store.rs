@@ -4,9 +4,14 @@ pub const ENTRIES_PER_CHUNK: usize = 32;
 const RECORD_ID_NAMESPACE: u32 = 0x0100_0000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Entry { pub time: u32, pub waypoint: u16 }
+pub struct Entry {
+    pub time: u32,
+    pub waypoint: u16,
+}
 impl Default for Entry {
-    fn default() -> Self { Self { time: NO_RUN, waypoint: u16::MAX } }
+    fn default() -> Self {
+        Self { time: NO_RUN, waypoint: u16::MAX }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,7 +37,9 @@ impl IdSequence {
         let id = self.first.min(self.second).wrapping_add(self.used as u32) | RECORD_ID_NAMESPACE;
         self.used = self.used.wrapping_add(1);
         let limit = if self.first < self.second { self.first_limit } else { self.second_limit };
-        if self.used >= limit { todo!("refill a race id block"); }
+        if self.used >= limit {
+            todo!("refill a race id block");
+        }
         id
     }
 }
@@ -49,13 +56,19 @@ impl Store {
     }
 
     pub fn chunk_indices(&self, run: u32) -> Vec<usize> {
-        let mut indices: Vec<_> = if run == NO_RUN { Vec::new() } else {
-            self.chunks.iter().enumerate().filter(|(_, chunk)| chunk.run == run)
-                .map(|(index, _)| index).collect()
+        let mut indices: Vec<_> = if run == NO_RUN {
+            Vec::new()
+        } else {
+            self.chunks
+                .iter()
+                .enumerate()
+                .filter(|(_, chunk)| chunk.run == run)
+                .map(|(index, _)| index)
+                .collect()
         };
         crate::numeric::quicksort(&mut indices, |&left, &right| {
-            let order = self.chunks[left].sequence.cmp(&self.chunks[right].sequence)
-                .then_with(|| left.cmp(&right));
+            let order =
+                self.chunks[left].sequence.cmp(&self.chunks[right].sequence).then_with(|| left.cmp(&right));
             match order {
                 std::cmp::Ordering::Less => -1,
                 std::cmp::Ordering::Equal => 0,
@@ -66,29 +79,34 @@ impl Store {
     }
 
     pub fn entries(&self, run: u32) -> impl Iterator<Item = &Entry> {
-        self.chunk_indices(run).into_iter().flat_map(|index| {
-            self.chunks[index].entries.iter().take_while(|entry| entry.time != NO_RUN)
-        })
+        self.chunk_indices(run)
+            .into_iter()
+            .flat_map(|index| self.chunks[index].entries.iter().take_while(|entry| entry.time != NO_RUN))
     }
 
     pub fn entry_count(&self, run: u32) -> u32 {
         let indices = self.chunk_indices(run);
-        let Some(&last) = indices.last() else { return 0; };
-        let last_count = self.chunks[last].entries.iter()
-            .take_while(|entry| entry.time != NO_RUN).count() as u32;
+        let Some(&last) = indices.last() else {
+            return 0;
+        };
+        let last_count =
+            self.chunks[last].entries.iter().take_while(|entry| entry.time != NO_RUN).count() as u32;
         (indices.len() as u32 - 1).wrapping_mul(ENTRIES_PER_CHUNK as u32).wrapping_add(last_count)
     }
 
     fn next_id(&mut self, owner: u8) -> u32 {
-        self.ids.iter_mut().find(|block| block.owner == owner)
-            .expect("player has a race id block").take()
+        self.ids.iter_mut().find(|block| block.owner == owner).expect("player has a race id block").take()
     }
 
     pub fn record(&mut self, owner: u8, runs: [u32; 2], entry: Entry, finish: bool) {
         if finish {
             for key in runs {
-                if key == NO_RUN { continue; }
-                if let Some(run) = self.runs.iter_mut().find(|run| run.id == key) { run.finish = entry.time; }
+                if key == NO_RUN {
+                    continue;
+                }
+                if let Some(run) = self.runs.iter_mut().find(|run| run.id == key) {
+                    run.finish = entry.time;
+                }
             }
         }
         let lasts = runs.map(|key| self.chunk_indices(key).last().copied());
@@ -110,7 +128,11 @@ impl Store {
         let id = self.next_id(owner);
         let index = self.chunks.len();
         self.chunks.push(Chunk {
-            id, run, sequence, count: 0, entries: [Entry::default(); ENTRIES_PER_CHUNK],
+            id,
+            run,
+            sequence,
+            count: 0,
+            entries: [Entry::default(); ENTRIES_PER_CHUNK],
         });
         (index, 0)
     }
@@ -118,7 +140,9 @@ impl Store {
 
 impl Racer {
     pub fn close_lap(&mut self, store: &Store) {
-        let index = if self.player.lap_run == NO_RUN { None } else {
+        let index = if self.player.lap_run == NO_RUN {
+            None
+        } else {
             store.runs.iter().position(|run| run.id == self.player.lap_run)
         };
         self.closed_lap = index;

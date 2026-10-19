@@ -1,5 +1,5 @@
-use gearbox_search::Body;
 use gearbox_engine::Savestate;
+use gearbox_search::Body;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -55,8 +55,11 @@ fn main() -> Result<()> {
     let args: Args = clap::Parser::parse();
     let packs = gearbox_packs::install::Game::locate(args.game.as_deref())?.packs;
     let inputs = Timeline::read(&args.inputs)?;
-    let s = gearbox_world::open_file(&args.map, &packs,
-        gearbox_world::OpenOptions { t0: inputs.t0, seed: inputs.seed, car: None })?;
+    let s = gearbox_world::open_file(
+        &args.map,
+        &packs,
+        gearbox_world::OpenOptions { t0: inputs.t0, seed: inputs.seed, car: None },
+    )?;
     let (ahead, every) = (args.ahead, args.every);
     let mut config = BeamConfig { explore: 128, ..Default::default() };
     if let Some(w) = args.width {
@@ -91,7 +94,11 @@ fn main() -> Result<()> {
         let m = start.native()?;
         let world = m.static_triangles();
         let dry = |t: &&gearbox_engine::consumer::PhysicalTriangle| t.surface != 13;
-        Some(std::sync::Arc::new(gearbox_search::track::Cells::build(world.iter().filter(dry).map(|t| t.v), 3.0, 4)))
+        Some(std::sync::Arc::new(gearbox_search::track::Cells::build(
+            world.iter().filter(dry).map(|t| t.v),
+            3.0,
+            4,
+        )))
     } else {
         None
     };
@@ -112,10 +119,20 @@ fn main() -> Result<()> {
         }
         let track = cells.as_ref().map(|c| {
             let (at, tol) = (goal.pose.position, goal.position_tolerance);
-            let field = gearbox_search::track::GoalField::build(c.clone(), at, move |p| (0..3).all(|i| (p[i] - at[i]).abs() <= tol[i] + 1.5));
+            let field = gearbox_search::track::GoalField::build(c.clone(), at, move |p| {
+                (0..3).all(|i| (p[i] - at[i]).abs() <= tol[i] + 1.5)
+            });
             std::sync::Arc::new(gearbox_search::track::TrackFields { goals: vec![Some(field)], reach: 2 })
         });
-        let goals = Goals { ordered: vec![Goal::Pose { target: goal }], along: None, stay_within: None, track, fastest: false, speed_worth_ms: 0.0, conditions: Vec::new() };
+        let goals = Goals {
+            ordered: vec![Goal::Pose { target: goal }],
+            along: None,
+            stay_within: None,
+            track,
+            fastest: false,
+            speed_worth_ms: 0.0,
+            conditions: Vec::new(),
+        };
         let origin = state;
         let until_k = k + 3 * ahead_k;
         let mut base = run.clone();
@@ -128,7 +145,15 @@ fn main() -> Result<()> {
             if trace && let Some((_, pos, kmh)) = p.lead {
                 let tp = Pose::from_body(goal_body).position;
                 let d = (0..3).map(|i| (pos[i] - tp[i]).powi(2)).sum::<f32>().sqrt();
-                println!("  {:6} ms  lead {d:6.1} m off ({:+.1} {:+.1} {:+.1}) at {kmh:4.0} km/h (target {:4.0} km/h)  eta {:.0}", p.race_ms, pos[0] - tp[0], pos[1] - tp[1], pos[2] - tp[2], want_v.iter().map(|v| v * v).sum::<f32>().sqrt() * 3.6, p.lead_eta_ms);
+                println!(
+                    "  {:6} ms  lead {d:6.1} m off ({:+.1} {:+.1} {:+.1}) at {kmh:4.0} km/h (target {:4.0} km/h)  eta {:.0}",
+                    p.race_ms,
+                    pos[0] - tp[0],
+                    pos[1] - tp[1],
+                    pos[2] - tp[2],
+                    want_v.iter().map(|v| v * v).sum::<f32>().sqrt() * 3.6,
+                    p.lead_eta_ms
+                );
             }
         })?;
         let secs = t.elapsed().as_secs_f64();
@@ -138,15 +163,30 @@ fn main() -> Result<()> {
                 let took = i64::from(*b.times.last().context("no time")?) - i64::from(ms);
                 let mut m = origin.native()?;
                 m.seed = b.inputs.seed;
-                let check = evaluate_with(&mut m, &b.inputs, &Objective::Goals(goals.clone()), ms + 10 * (3 * ahead_k) as i32, EvalOptions::default())?;
+                let check = evaluate_with(
+                    &mut m,
+                    &b.inputs,
+                    &Objective::Goals(goals.clone()),
+                    ms + 10 * (3 * ahead_k) as i32,
+                    EvalOptions::default(),
+                )?;
                 let ok = matches!(check.score, Score::Goals { ref times, total, .. } if times.len() == total);
                 reached += usize::from(ok);
                 late_sum += took - want;
-                println!("from {:6.2} s: reached in {took:5} ms (run {want}) {:+5} ms{}  {secs:.1} s", f64::from(ms) / 1000.0, took - want, if ok { "" } else { "  REPLAY MISSES" });
+                println!(
+                    "from {:6.2} s: reached in {took:5} ms (run {want}) {:+5} ms{}  {secs:.1} s",
+                    f64::from(ms) / 1000.0,
+                    took - want,
+                    if ok { "" } else { "  REPLAY MISSES" }
+                );
             }
             None => println!("from {:6.2} s: missed (run {want} ms)  {secs:.1} s", f64::from(ms) / 1000.0),
         }
     }
-    println!("reached {reached} of {total}; mean vs run {:+.0} ms; {:.0} s", if reached > 0 { late_sum as f64 / reached as f64 } else { 0.0 }, all.elapsed().as_secs_f64());
+    println!(
+        "reached {reached} of {total}; mean vs run {:+.0} ms; {:.0} s",
+        if reached > 0 { late_sum as f64 / reached as f64 } else { 0.0 },
+        all.elapsed().as_secs_f64()
+    );
     Ok(())
 }

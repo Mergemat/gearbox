@@ -3,8 +3,9 @@ use std::time::Instant;
 use glam::{Quat, Vec2, Vec3};
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Bounds, Context, DispatchPhase, FontWeight, Hitbox, HitboxBehavior, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement,
-    PinchEvent, Pixels, ScrollWheelEvent, StatefulInteractiveElement, Styled, Window, canvas, div, px,
+    AnyElement, Bounds, Context, DispatchPhase, FontWeight, Hitbox, HitboxBehavior, InteractiveElement,
+    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, PinchEvent,
+    Pixels, ScrollWheelEvent, StatefulInteractiveElement, Styled, Window, canvas, div, px,
 };
 
 use crate::app::*;
@@ -35,16 +36,24 @@ impl Editor {
     }
 
     fn car_focus(&self) -> Option<Car> {
-        self.display_frame().map(|f| Car { pos: Vec3::from(f.position()), forward: Vec3::from(f.axis(2)), vel: Vec3::from(f.velocity()) })
+        self.display_frame().map(|f| Car {
+            pos: Vec3::from(f.position()),
+            forward: Vec3::from(f.axis(2)),
+            vel: Vec3::from(f.velocity()),
+        })
     }
 
     pub fn gizmo(&self) -> Option<(Gizmo, GizmoTarget)> {
         let eye = self.camera.eye();
         let (target, pos, rot, rotatable) = match self.sel {
             Sel::Goal(id) => match &self.doc.goal(id)?.kind {
-                GoalKind::Point { pos, .. } => (GizmoTarget::Goal(id), Vec3::from(*pos), Quat::IDENTITY, false),
+                GoalKind::Point { pos, .. } => {
+                    (GizmoTarget::Goal(id), Vec3::from(*pos), Quat::IDENTITY, false)
+                }
                 GoalKind::Pose(p) => (GizmoTarget::Goal(id), Vec3::from(p.pos), doc::ypr_rot(p.ypr), true),
-                GoalKind::Box { pos, ypr, .. } => (GizmoTarget::Goal(id), Vec3::from(*pos), doc::ypr_rot(*ypr), true),
+                GoalKind::Box { pos, ypr, .. } => {
+                    (GizmoTarget::Goal(id), Vec3::from(*pos), doc::ypr_rot(*ypr), true)
+                }
                 GoalKind::Gate(_) => return None,
             },
             Sel::Start => {
@@ -142,7 +151,8 @@ impl Editor {
 
     fn velocity_hit(&self, m: Vec2) -> bool {
         let Some(s) = self.doc.start.as_ref().filter(|_| self.sel == Sel::Start) else { return false };
-        camera::project(&self.vp, self.vsize(), crate::scene::velocity_tip(s)).is_some_and(|q| q.distance(m) < 14.0)
+        camera::project(&self.vp, self.vsize(), crate::scene::velocity_tip(s))
+            .is_some_and(|q| q.distance(m) < 14.0)
     }
 
     fn drag_velocity(&mut self, m: Vec2, vy: f32, shift: bool) {
@@ -188,7 +198,9 @@ impl Editor {
             self.error("pick", e.clone());
         }
         match p.purpose {
-            Purpose::Hover => self.hover_hit = p.hit.map(|h| (self.mouse, Vec3::from(h.point), Instant::now())),
+            Purpose::Hover => {
+                self.hover_hit = p.hit.map(|h| (self.mouse, Vec3::from(h.point), Instant::now()))
+            }
             Purpose::Wheel { tick, index } => {
                 if let Some(f) = self.sim.frames.get(tick) {
                     let centers = wheel_centers(f);
@@ -203,32 +215,38 @@ impl Editor {
                 Some(h) => self.add_line_point(Vec3::from(h.point)),
                 None => self.log(LogLevel::Warn, "goal", "nothing under the cursor"),
             },
-            Purpose::Place { what, eye } => match p.hit {
-                Some(h) => {
-                    let at = Vec3::from(h.point);
-                    let yaw = self.heading_near(at).unwrap_or_else(|| {
-                        let f = at - eye;
-                        f.x.atan2(f.z).to_degrees()
-                    });
-                    let kind = match what {
-                        PlaceWhat::Pose => GoalKind::Pose(PoseSpec::at(at, yaw)),
-                        PlaceWhat::Point => GoalKind::Point { pos: at.into(), radius: 3.0 },
-                        PlaceWhat::Box => GoalKind::Box { pos: (at + Vec3::Y * 4.0).into(), size: [16.0, 8.0, 2.0], ypr: [yaw, 0.0, 0.0] },
-                        PlaceWhat::Line => return,
-                    };
-                    let id = self.add_goal(kind);
-                    self.auto_search(id);
-                    let surf = crate::materials::surface_name(h.surface);
-                    let label = match what {
-                        PlaceWhat::Pose => "pose goal",
-                        PlaceWhat::Point => "point goal",
-                        PlaceWhat::Box => "box trigger",
-                        PlaceWhat::Line => "line point",
-                    };
-                    self.info("goal", format!("placed a {label} on {surf} at {:.2} {:.2} {:.2} (engine raycast {} \u{00b5}s)", at.x, at.y, at.z, p.micros));
+            Purpose::Place { what, eye } => {
+                match p.hit {
+                    Some(h) => {
+                        let at = Vec3::from(h.point);
+                        let yaw = self.heading_near(at).unwrap_or_else(|| {
+                            let f = at - eye;
+                            f.x.atan2(f.z).to_degrees()
+                        });
+                        let kind = match what {
+                            PlaceWhat::Pose => GoalKind::Pose(PoseSpec::at(at, yaw)),
+                            PlaceWhat::Point => GoalKind::Point { pos: at.into(), radius: 3.0 },
+                            PlaceWhat::Box => GoalKind::Box {
+                                pos: (at + Vec3::Y * 4.0).into(),
+                                size: [16.0, 8.0, 2.0],
+                                ypr: [yaw, 0.0, 0.0],
+                            },
+                            PlaceWhat::Line => return,
+                        };
+                        let id = self.add_goal(kind);
+                        self.auto_search(id);
+                        let surf = crate::materials::surface_name(h.surface);
+                        let label = match what {
+                            PlaceWhat::Pose => "pose goal",
+                            PlaceWhat::Point => "point goal",
+                            PlaceWhat::Box => "box trigger",
+                            PlaceWhat::Line => "line point",
+                        };
+                        self.info("goal", format!("placed a {label} on {surf} at {:.2} {:.2} {:.2} (engine raycast {} \u{00b5}s)", at.x, at.y, at.z, p.micros));
+                    }
+                    None => self.log(LogLevel::Warn, "goal", "nothing under the cursor"),
                 }
-                None => self.log(LogLevel::Warn, "goal", "nothing under the cursor"),
-            },
+            }
             Purpose::Car { eye, commit } => {
                 let Some(h) = p.hit else {
                     self.car_preview = None;
@@ -275,7 +293,12 @@ impl Editor {
                     let hit = Vec3::from(h.point);
                     let eye = self.camera.eye();
                     let d = (hit - eye).normalize_or_zero();
-                    self.camera.go(camera::View { pivot: hit, yaw: d.x.atan2(d.z), pitch: -d.y.asin(), distance: hit.distance(eye) });
+                    self.camera.go(camera::View {
+                        pivot: hit,
+                        yaw: d.x.atan2(d.z),
+                        pitch: -d.y.asin(),
+                        distance: hit.distance(eye),
+                    });
                 }
             }
         }
@@ -283,7 +306,13 @@ impl Editor {
     }
 
     fn heading_near(&self, p: Vec3) -> Option<f32> {
-        let (k, d) = self.sim.frames.iter().enumerate().map(|(k, f)| (k, Vec3::from(f.position()).distance(p))).min_by(|a, b| a.1.total_cmp(&b.1))?;
+        let (k, d) = self
+            .sim
+            .frames
+            .iter()
+            .enumerate()
+            .map(|(k, f)| (k, Vec3::from(f.position()).distance(p)))
+            .min_by(|a, b| a.1.total_cmp(&b.1))?;
         if d > 40.0 {
             return None;
         }
@@ -295,7 +324,14 @@ impl Editor {
         let (o, d) = camera::ray(&self.vp, self.vsize(), m);
         self.gates
             .iter()
-            .filter_map(|g| g.gate.boxes.iter().filter_map(|b| ray_box(o, d, Vec3::from(b.min), Vec3::from(b.max))).fold(None, |a: Option<f32>, t| Some(a.map_or(t, |a| a.min(t)))).map(|t| (g.gate.waypoint, t)))
+            .filter_map(|g| {
+                g.gate
+                    .boxes
+                    .iter()
+                    .filter_map(|b| ray_box(o, d, Vec3::from(b.min), Vec3::from(b.max)))
+                    .fold(None, |a: Option<f32>, t| Some(a.map_or(t, |a| a.min(t))))
+                    .map(|t| (g.gate.waypoint, t))
+            })
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|x| x.0)
     }
@@ -379,7 +415,8 @@ impl Editor {
                     let start = match h {
                         Handle::Axis(k) => gz.axis_param(k, &self.vp, self.vsize(), m),
                         Handle::Ring(k) => gz.ring_angle(k, &self.vp, self.vsize(), m),
-                        Handle::Center if scale => crate::camera::project(&self.vp, self.vsize(), gz.center).map(|c| c.distance(m).max(4.0)),
+                        Handle::Center if scale => crate::camera::project(&self.vp, self.vsize(), gz.center)
+                            .map(|c| c.distance(m).max(4.0)),
                         Handle::Center => Some(0.0),
                     };
                     if let Some(start) = start {
@@ -429,14 +466,25 @@ impl Editor {
             Some(Drag::Gizmo { handle, target, start, size0, .. }) if self.tool == Tool::Scale => {
                 if let Some((gz, _)) = self.gizmo() {
                     let point = matches!(target, GizmoTarget::Goal(id) if matches!(self.doc.goal(id).map(|g| &g.kind), Some(GoalKind::Point { .. })));
-                    let snap = |x: f32| if e.modifiers.shift { ((x * 2.0).round() / 2.0).max(0.5) } else { x };
+                    let snap =
+                        |x: f32| if e.modifiers.shift { ((x * 2.0).round() / 2.0).max(0.5) } else { x };
                     let f = match handle {
-                        Handle::Axis(k) => gz.axis_param(k, &self.vp, size, m).filter(|_| start.abs() > 1e-3).map(|t| (k, (t / start).max(0.02))),
-                        Handle::Center => crate::camera::project(&self.vp, size, gz.center).map(|c| (3, (c.distance(m) / start).max(0.02))),
+                        Handle::Axis(k) => gz
+                            .axis_param(k, &self.vp, size, m)
+                            .filter(|_| start.abs() > 1e-3)
+                            .map(|t| (k, (t / start).max(0.02))),
+                        Handle::Center => crate::camera::project(&self.vp, size, gz.center)
+                            .map(|c| (3, (c.distance(m) / start).max(0.02))),
                         Handle::Ring(_) => None,
                     };
                     if let Some((k, f)) = f {
-                        let s = if k == 3 || point { (size0 * f).map(snap) } else { let mut s = size0; s[k] = snap(size0[k] * f); s };
+                        let s = if k == 3 || point {
+                            (size0 * f).map(snap)
+                        } else {
+                            let mut s = size0;
+                            s[k] = snap(size0[k] * f);
+                            s
+                        };
                         self.set_target_size(target, s);
                     }
                 }
@@ -445,7 +493,10 @@ impl Editor {
                 if let Some((gz, _)) = self.gizmo() {
                     match handle {
                         Handle::Axis(k) => {
-                            let gz0 = Gizmo { center: pos0 + (gz.center - self.target_pose(target).map_or(pos0, |t| t.0)), ..gz };
+                            let gz0 = Gizmo {
+                                center: pos0 + (gz.center - self.target_pose(target).map_or(pos0, |t| t.0)),
+                                ..gz
+                            };
                             if let Some(t) = gz0.axis_param(k, &self.vp, size, m) {
                                 let mut step = t - start;
                                 if e.modifiers.shift {
@@ -462,7 +513,11 @@ impl Editor {
                                     d = (d.to_degrees() / 5.0).round() * 5.0f32.to_radians();
                                 }
                                 let axis = gz0.ring_axis(k);
-                                self.set_target_pose(target, pos0, (Quat::from_axis_angle(axis, d) * rot0).normalize());
+                                self.set_target_pose(
+                                    target,
+                                    pos0,
+                                    (Quat::from_axis_angle(axis, d) * rot0).normalize(),
+                                );
                             }
                         }
                         Handle::Center => {
@@ -494,7 +549,11 @@ impl Editor {
                         Tool::PlaceCar => self.request_pick(m, Purpose::Car { eye, commit: false }),
                         _ => self.request_pick(m, Purpose::Hover),
                     }
-                    let g = if self.tool == Tool::GateGoal || self.tool == Tool::Select { self.gate_under(m) } else { None };
+                    let g = if self.tool == Tool::GateGoal || self.tool == Tool::Select {
+                        self.gate_under(m)
+                    } else {
+                        None
+                    };
                     if g != self.hover_gate {
                         self.hover_gate = g;
                         self.dirty = true;
@@ -574,7 +633,11 @@ impl Editor {
                 Some(w) => {
                     if let Some(gate) = self.gate_goal(w) {
                         if self.doc.goals.iter().any(|x| matches!(&x.kind, GoalKind::Gate(gg) if gg.has(w))) {
-                            self.log(LogLevel::Warn, "goal", format!("{} is already a goal", self.gate_name(w)));
+                            self.log(
+                                LogLevel::Warn,
+                                "goal",
+                                format!("{} is already a goal", self.gate_name(w)),
+                            );
                         } else {
                             let id = self.add_goal(GoalKind::Gate(gate));
                             self.auto_search(id);
@@ -583,13 +646,11 @@ impl Editor {
                 }
                 None => self.log(LogLevel::Warn, "goal", "no checkpoint or finish trigger under the cursor"),
             },
-            Tool::Select | Tool::Move | Tool::Rotate | Tool::Scale => {
-                match self.object_under(at) {
-                    Some(s) => self.select(s),
-                    None if !shift => self.select(Sel::None),
-                    None => {}
-                }
-            }
+            Tool::Select | Tool::Move | Tool::Rotate | Tool::Scale => match self.object_under(at) {
+                Some(s) => self.select(s),
+                None if !shift => self.select(Sel::None),
+                None => {}
+            },
         }
     }
 
@@ -640,8 +701,21 @@ impl Editor {
     pub fn fly_input(&self) -> Option<(Vec3, camera::FlySpeed)> {
         matches!(self.drag, Some(Drag::Fly { .. })).then(|| {
             let k = self.fly_keys;
-            let d = Vec3::new((k[3] as i8 - k[2] as i8) as f32, (k[4] as i8 - k[5] as i8) as f32, (k[0] as i8 - k[1] as i8) as f32);
-            (d, if self.shift_down { camera::FlySpeed::Fast } else if self.alt_down { camera::FlySpeed::Slow } else { camera::FlySpeed::Normal })
+            let d = Vec3::new(
+                (k[3] as i8 - k[2] as i8) as f32,
+                (k[4] as i8 - k[5] as i8) as f32,
+                (k[0] as i8 - k[1] as i8) as f32,
+            );
+            (
+                d,
+                if self.shift_down {
+                    camera::FlySpeed::Fast
+                } else if self.alt_down {
+                    camera::FlySpeed::Slow
+                } else {
+                    camera::FlySpeed::Normal
+                },
+            )
         })
     }
 
@@ -653,7 +727,13 @@ impl Editor {
         self.camera.update(dt, self.car_focus(), self.fly_input());
     }
 
-    fn paint_viewport(&mut self, bounds: Bounds<Pixels>, hitbox: &Hitbox, window: &mut Window, cx: &mut Context<Self>) {
+    fn paint_viewport(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        hitbox: &Hitbox,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let start = Instant::now();
         self.viewport = bounds;
         self.scale = window.scale_factor();
@@ -699,13 +779,17 @@ impl Editor {
                 _ => self.hover_handle,
             };
             let reached: Vec<bool> = self.reach.iter().map(|r| r.tick.is_some()).collect();
-            let preview_frames = self.preview.and_then(|id| self.runs_frames.get(&crate::background::Key::Candidate(id)).cloned());
+            let preview_frames = self
+                .preview
+                .and_then(|id| self.runs_frames.get(&crate::background::Key::Candidate(id)).cloned());
             let b_frames = match self.compare.1 {
                 RunRef::Ghost(_) | RunRef::Current => None,
                 r if self.layout.bottom_tab == 1 => {
                     let key = match r {
                         RunRef::Run(id) => Some(crate::background::Key::Run(id)),
-                        RunRef::Previous => self.doc.history.last().map(|h| crate::background::Key::Run(h.id)),
+                        RunRef::Previous => {
+                            self.doc.history.last().map(|h| crate::background::Key::Run(h.id))
+                        }
                         RunRef::Candidate(id) => Some(crate::background::Key::Candidate(id)),
                         _ => None,
                     };
@@ -713,7 +797,12 @@ impl Editor {
                 }
                 _ => None,
             };
-            let probe_branches = self.sim.probe.as_ref().filter(|p| self.show.branches && p.tick == self.cursor).map(|p| p.branches.clone());
+            let probe_branches = self
+                .sim
+                .probe
+                .as_ref()
+                .filter(|p| self.show.branches && p.tick == self.cursor)
+                .map(|p| p.branches.clone());
             let mut scene = self.scene.borrow_mut();
             let mut refs = Vec::new();
             if let Some(f) = &preview_frames {
@@ -722,7 +811,8 @@ impl Editor {
             if let Some(f) = &b_frames {
                 refs.push(RefRun { frames: f, alpha: 150, car: true });
             }
-            let pivot = matches!(self.drag, Some(Drag::Orbit { .. }) | Some(Drag::Pan { .. })).then_some(self.camera.cur.pivot);
+            let pivot = matches!(self.drag, Some(Drag::Orbit { .. }) | Some(Drag::Pan { .. }))
+                .then_some(self.camera.cur.pivot);
             let input = SceneInput {
                 frames: &self.sim.frames,
                 frames_gen: self.frames_gen,
@@ -739,7 +829,11 @@ impl Editor {
                 hover_gate: self.hover_gate.filter(|_| matches!(self.tool, Tool::GateGoal | Tool::Select)),
                 selected_gate: if let Sel::Gate(w) = self.sel { Some(w) } else { None },
                 gizmo: gizmo.as_ref().map(|g| (&g.0, active)),
-                ghosts: if self.show.ghosts { self.ghosts.iter().filter(|g| g.visible).map(|g| &g.track).collect() } else { Vec::new() },
+                ghosts: if self.show.ghosts {
+                    self.ghosts.iter().filter(|g| g.visible).map(|g| &g.track).collect()
+                } else {
+                    Vec::new()
+                },
                 refs,
                 tries: if self.show.tries { &self.tries } else { &[] },
                 branches: probe_branches.as_deref(),
@@ -752,16 +846,30 @@ impl Editor {
                 surroundings: self.show.stadium,
                 view_proj: vp,
                 car,
-                contacts: if self.show.contacts || self.show.physics { self.contacts.as_ref().filter(|c| c.0 == self.cursor).map(|c| c.1) } else { None },
-                start_handle: (self.sel == Sel::Start).then_some(self.hover_velocity || matches!(self.drag, Some(Drag::Velocity { .. }))),
+                contacts: if self.show.contacts || self.show.physics {
+                    self.contacts.as_ref().filter(|c| c.0 == self.cursor).map(|c| c.1)
+                } else {
+                    None
+                },
+                start_handle: (self.sel == Sel::Start)
+                    .then_some(self.hover_velocity || matches!(self.drag, Some(Drag::Velocity { .. }))),
                 tricks: if self.show.tricks { &self.trick_spans } else { &[] },
-                setups: if self.show.setups { self.doc.setups.iter().map(|st| (st, self.sel == Sel::Setup(st.id))).collect() } else { Vec::new() },
+                setups: if self.show.setups {
+                    self.doc.setups.iter().map(|st| (st, self.sel == Sel::Setup(st.id))).collect()
+                } else {
+                    Vec::new()
+                },
                 stretch: (self.sel == Sel::Route).then(|| self.route_ticks()).flatten(),
             };
             let draw = scene.draw_list(&input);
             let dev = [(size.x * self.scale).round() as u32, (size.y * self.scale).round() as u32];
             let realistic = !self.show.physics && self.visual_state.is_none();
-            let view = View { view_proj: vp_rel, eye, fog: [900.0, 4200.0], exposure: if realistic { 0.66 } else { 1.0 } };
+            let view = View {
+                view_proj: vp_rel,
+                eye,
+                fog: [900.0, 4200.0],
+                exposure: if realistic { 0.66 } else { 1.0 },
+            };
             match scene.renderer.render(dev, &view, &draw) {
                 Ok((out, times)) => {
                     if let (Some(Output::Image(old)), Output::Image(_)) = (&self.last_output, &out) {
@@ -831,27 +939,60 @@ impl Editor {
         let this = cx.entity();
         let canvas_el = canvas(
             |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
-            move |bounds, hitbox, window, cx| this.update(cx, |app, cx| app.paint_viewport(bounds, &hitbox, window, cx)),
+            move |bounds, hitbox, window, cx| {
+                this.update(cx, |app, cx| app.paint_viewport(bounds, &hitbox, window, cx))
+            },
         )
         .absolute()
         .size_full();
-        let mut m = div().id("viewport").flex_1().min_h_0().w_full().relative().overflow_hidden().child(canvas_el);
+        let mut m =
+            div().id("viewport").flex_1().min_h_0().w_full().relative().overflow_hidden().child(canvas_el);
         m = m.children(self.labels());
         if self.map.is_some() && self.open_error.is_none() {
             m = m.child(self.tool_rail(cx));
         }
         m = m.child(self.hud());
         if let Some(l) = &self.loading {
-            m = m.child(div().absolute().size_full().flex().items_center().justify_center().child(muted(l.clone()).text_size(px(theme::FS_EMPH))));
+            m = m.child(
+                div()
+                    .absolute()
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(muted(l.clone()).text_size(px(theme::FS_EMPH))),
+            );
         }
         if let Some(e) = &self.open_error {
-            m = m.child(div().absolute().size_full().flex().items_center().justify_center().p(px(24.0)).child(open_error_card(e)));
+            m = m.child(
+                div()
+                    .absolute()
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .p(px(24.0))
+                    .child(open_error_card(e)),
+            );
         }
         div().size_full().flex().flex_col().child(self.view_header(cx)).child(m)
     }
 
     fn tool_rail(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let mut col = div().id("tool-rail").occlude().absolute().top(px(theme::SP3)).left(px(theme::SP3)).p(px(theme::SP1)).flex().flex_col().gap(px(theme::SP1)).rounded(px(theme::R_CTL + 2.0)).bg(theme::alpha(theme::PANEL, 0.94)).border_1().border_color(c(theme::HAIRLINE));
+        let mut col = div()
+            .id("tool-rail")
+            .occlude()
+            .absolute()
+            .top(px(theme::SP3))
+            .left(px(theme::SP3))
+            .p(px(theme::SP1))
+            .flex()
+            .flex_col()
+            .gap(px(theme::SP1))
+            .rounded(px(theme::R_CTL + 2.0))
+            .bg(theme::alpha(theme::PANEL, 0.94))
+            .border_1()
+            .border_color(c(theme::HAIRLINE));
         for (gi, group) in self.tool_groups().into_iter().enumerate() {
             if gi > 0 {
                 col = col.child(div().h(px(1.0)).mx(px(theme::SP1)).my(px(2.0)).bg(c(theme::HAIRLINE)));
@@ -871,7 +1012,11 @@ impl Editor {
                         .cursor_pointer()
                         .when(on, |d| d.bg(c(theme::SELECT)))
                         .when(!on, |d| d.hover(|s| s.bg(c(theme::RAISED))))
-                        .child(gpui::svg().path(t.icon()).size(px(16.0)).text_color(c(if on { theme::TEXT } else { theme::MUTED })))
+                        .child(gpui::svg().path(t.icon()).size(px(16.0)).text_color(c(if on {
+                            theme::TEXT
+                        } else {
+                            theme::MUTED
+                        })))
                         .tooltip(tip(format!("{}  {}", t.label(), t.key()), Some(t.hint())))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.set_tool(t);
@@ -919,10 +1064,19 @@ impl Editor {
         if let Some(st) = &self.doc.start {
             let kmh = Vec3::from(st.velocity).length() * 3.6;
             if self.sel == Sel::Start {
-                if let Some(s) = camera::project(&vp, size, crate::scene::velocity_tip(st)).filter(|s| inside(*s)) {
-                    out.push(tag(s + Vec2::new(8.0, 0.0), format!("{kmh:.0} km/h"), theme::PIN, matches!(self.drag, Some(Drag::Velocity { .. })) || self.hover_velocity));
+                if let Some(s) =
+                    camera::project(&vp, size, crate::scene::velocity_tip(st)).filter(|s| inside(*s))
+                {
+                    out.push(tag(
+                        s + Vec2::new(8.0, 0.0),
+                        format!("{kmh:.0} km/h"),
+                        theme::PIN,
+                        matches!(self.drag, Some(Drag::Velocity { .. })) || self.hover_velocity,
+                    ));
                 }
-            } else if let Some(s) = camera::project(&vp, size, Vec3::from(st.pos) + Vec3::Y * 2.0).filter(|s| inside(*s)) {
+            } else if let Some(s) =
+                camera::project(&vp, size, Vec3::from(st.pos) + Vec3::Y * 2.0).filter(|s| inside(*s))
+            {
                 out.push(tag(s, format!("Your car \u{00b7} {kmh:.0} km/h"), theme::PIN, false));
             }
         }
@@ -931,7 +1085,9 @@ impl Editor {
                 if self.sel == Sel::Setup(st.id) {
                     continue;
                 }
-                if let Some(s) = camera::project(&vp, size, Vec3::from(st.start.pos) + Vec3::Y * 2.0).filter(|s| inside(*s)) {
+                if let Some(s) = camera::project(&vp, size, Vec3::from(st.start.pos) + Vec3::Y * 2.0)
+                    .filter(|s| inside(*s))
+                {
                     out.push(tag(s, st.name.clone(), theme::SETUP, false));
                 }
             }
@@ -939,8 +1095,19 @@ impl Editor {
         if self.show.tricks && self.show.trail {
             for t in &self.trick_spans {
                 let Some(f) = self.sim.frames.get(t.from) else { continue };
-                if let Some(s) = camera::project(&vp, size, Vec3::from(f.position()) + Vec3::Y * 1.5).filter(|s| inside(*s)) {
-                    out.push(tag(s, format!("{} {:.2} s", crate::lab::trick_label(t.kind), (t.to - t.from) as f32 / 100.0), crate::lab::trick_color(t.kind), false));
+                if let Some(s) = camera::project(&vp, size, Vec3::from(f.position()) + Vec3::Y * 1.5)
+                    .filter(|s| inside(*s))
+                {
+                    out.push(tag(
+                        s,
+                        format!(
+                            "{} {:.2} s",
+                            crate::lab::trick_label(t.kind),
+                            (t.to - t.from) as f32 / 100.0
+                        ),
+                        crate::lab::trick_color(t.kind),
+                        false,
+                    ));
                 }
             }
         }
@@ -948,12 +1115,29 @@ impl Editor {
             let stops = self.route_stops();
             for (i, st) in stops.iter().enumerate() {
                 let crate::lab::RouteAt::Gate(w) = st.at else { continue };
-                let Some(b) = self.gates.iter().find(|g| g.gate.waypoint == w).and_then(|g| g.gate.boxes.first()) else { continue };
+                let Some(b) =
+                    self.gates.iter().find(|g| g.gate.waypoint == w).and_then(|g| g.gate.boxes.first())
+                else {
+                    continue;
+                };
                 let top = Vec3::new((b.min[0] + b.max[0]) * 0.5, b.max[1] + 1.0, (b.min[2] + b.max[2]) * 0.5);
                 if let Some(s) = camera::project(&vp, size, top).filter(|s| inside(*s)) {
-                    let mark = if self.route.from == crate::lab::RouteFrom::Stop(i) { "START \u{00b7} " } else if self.route.to == st.at { "END \u{00b7} " } else { "" };
-                    let t = st.tick.map_or(String::new(), |k| format!(" {}", fmt_ms(self.race_ms0 + 10 * k as i32)));
-                    out.push(tag(s, format!("{mark}{}{t}", st.name), if mark.is_empty() { theme::MUTED } else { theme::PIN }, !mark.is_empty()));
+                    let mark = if self.route.from == crate::lab::RouteFrom::Stop(i) {
+                        "START \u{00b7} "
+                    } else if self.route.to == st.at {
+                        "END \u{00b7} "
+                    } else {
+                        ""
+                    };
+                    let t = st
+                        .tick
+                        .map_or(String::new(), |k| format!(" {}", fmt_ms(self.race_ms0 + 10 * k as i32)));
+                    out.push(tag(
+                        s,
+                        format!("{mark}{}{t}", st.name),
+                        if mark.is_empty() { theme::MUTED } else { theme::PIN },
+                        !mark.is_empty(),
+                    ));
                 }
             }
         }
@@ -966,35 +1150,95 @@ impl Editor {
         let physics = self.show.physics || !realistic_ok;
         type Item = (String, Option<String>, std::rc::Rc<dyn Fn(&mut Editor, &mut Context<Editor>)>);
         let mode = segments()
-            .child(segment("v-real", !physics, "Realistic").tooltip(tip("Realistic (P)", Some("The textured map and car."))).on_click(cx.listener(|e, _, _, cx| {
-                e.show.physics = false;
-                e.dirty = true;
-                cx.notify();
-            })))
-            .child(segment("v-phys", physics, "Physics").tooltip(tip("Physics (P)", Some("The collision mesh coloured by surface; effect surfaces tinted."))).on_click(cx.listener(|e, _, _, cx| {
-                e.show.physics = true;
-                e.dirty = true;
-                cx.notify();
-            })));
-        let show = div()
-            .child(btn("v-show", "Show \u{25be}", Btn::Quiet).on_click(cx.listener(|e, ev: &gpui::ClickEvent, _, cx| {
+            .child(
+                segment("v-real", !physics, "Realistic")
+                    .tooltip(tip("Realistic (P)", Some("The textured map and car.")))
+                    .on_click(cx.listener(|e, _, _, cx| {
+                        e.show.physics = false;
+                        e.dirty = true;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                segment("v-phys", physics, "Physics")
+                    .tooltip(tip(
+                        "Physics (P)",
+                        Some("The collision mesh coloured by surface; effect surfaces tinted."),
+                    ))
+                    .on_click(cx.listener(|e, _, _, cx| {
+                        e.show.physics = true;
+                        e.dirty = true;
+                        cx.notify();
+                    })),
+            );
+        let show = div().child(btn("v-show", "Show \u{25be}", Btn::Quiet).on_click(cx.listener(
+            |e, ev: &gpui::ClickEvent, _, cx| {
                 let s = &e.show;
                 let on = |b: bool| b.then(|| "\u{2713}".to_string());
                 let items: Vec<Item> = vec![
-                    ("Trail (the run's path)".into(), on(s.trail), std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show.trail = !e.show.trail)),
-                    ("Checkpoint and finish triggers".into(), on(s.gates), std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show.gates = !e.show.gates)),
-                    ("Ghosts".into(), on(s.ghosts), std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show.ghosts = !e.show.ghosts)),
-                    ("Search tries".into(), on(s.tries), std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show.tries = !e.show.tries)),
-                    ("Tricks along the run".into(), on(s.tricks), std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show.tricks = !e.show.tricks)),
-                    ("Setups".into(), on(s.setups), std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show.setups = !e.show.setups)),
-                    ("Stadium surroundings  B".into(), on(s.stadium), std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show.stadium = !e.show.stadium)),
-                    ("Wheel contacts  \u{21e7}C".into(), on(s.contacts), std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| e.show.contacts = !e.show.contacts)),
+                    (
+                        "Trail (the run's path)".into(),
+                        on(s.trail),
+                        std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| {
+                            e.show.trail = !e.show.trail
+                        }),
+                    ),
+                    (
+                        "Checkpoint and finish triggers".into(),
+                        on(s.gates),
+                        std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| {
+                            e.show.gates = !e.show.gates
+                        }),
+                    ),
+                    (
+                        "Ghosts".into(),
+                        on(s.ghosts),
+                        std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| {
+                            e.show.ghosts = !e.show.ghosts
+                        }),
+                    ),
+                    (
+                        "Search tries".into(),
+                        on(s.tries),
+                        std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| {
+                            e.show.tries = !e.show.tries
+                        }),
+                    ),
+                    (
+                        "Tricks along the run".into(),
+                        on(s.tricks),
+                        std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| {
+                            e.show.tricks = !e.show.tricks
+                        }),
+                    ),
+                    (
+                        "Setups".into(),
+                        on(s.setups),
+                        std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| {
+                            e.show.setups = !e.show.setups
+                        }),
+                    ),
+                    (
+                        "Stadium surroundings  B".into(),
+                        on(s.stadium),
+                        std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| {
+                            e.show.stadium = !e.show.stadium
+                        }),
+                    ),
+                    (
+                        "Wheel contacts  \u{21e7}C".into(),
+                        on(s.contacts),
+                        std::rc::Rc::new(|e: &mut Editor, _: &mut Context<Editor>| {
+                            e.show.contacts = !e.show.contacts
+                        }),
+                    ),
                 ];
                 e.popup = Some(Popup { at: ev.position(), items });
                 e.dirty = true;
                 cx.stop_propagation();
                 cx.notify();
-            })));
+            },
+        )));
         let cam = div()
             .flex()
             .gap(px(2.0))
@@ -1032,10 +1276,19 @@ impl Editor {
             .border_color(c(theme::HAIRLINE))
             .child(mode)
             .child(show)
-            .children(self.visual_state.clone().map(|s| div().min_w_0().truncate().text_size(px(theme::FS_SMALL)).text_color(c(theme::MUTED)).child(s)))
-            .child(div().flex_1().min_w_0().flex().justify_center().children((self.tool != Tool::Select).then(|| {
-                div().min_w_0().truncate().text_size(px(theme::FS_SMALL)).text_color(c(theme::MUTED)).child(format!("{} \u{00b7} {}", self.tool.label(), self.tool.hint()))
-            })))
+            .children(self.visual_state.clone().map(|s| {
+                div().min_w_0().truncate().text_size(px(theme::FS_SMALL)).text_color(c(theme::MUTED)).child(s)
+            }))
+            .child(div().flex_1().min_w_0().flex().justify_center().children(
+                (self.tool != Tool::Select).then(|| {
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(px(theme::FS_SMALL))
+                        .text_color(c(theme::MUTED))
+                        .child(format!("{} \u{00b7} {}", self.tool.label(), self.tool.hint()))
+                }),
+            ))
             .child(cam)
     }
 
@@ -1045,11 +1298,14 @@ impl Editor {
         let t = f.map_or(self.race_ms0, |f| f.race_ms);
         let cam = match self.camera.mode {
             crate::camera::Mode::Follow => "follow".to_string(),
-            _ if matches!(self.drag, Some(Drag::Fly { .. })) => format!("fly {:.1} m/s", self.camera.fly_speed),
+            _ if matches!(self.drag, Some(Drag::Fly { .. })) => {
+                format!("fly {:.1} m/s", self.camera.fly_speed)
+            }
             _ => format!("orbit \u{00b7} {:.0} m", self.camera.cur.distance),
         };
         let perf = cam;
-        let hint = (self.tool != Tool::Select).then(|| format!("{} \u{00b7} {}  (Esc: back to Select)", self.tool.label(), self.tool.hint()));
+        let hint = (self.tool != Tool::Select)
+            .then(|| format!("{} \u{00b7} {}  (Esc: back to Select)", self.tool.label(), self.tool.hint()));
         div()
             .absolute()
             .left(px(12.0))
@@ -1058,8 +1314,27 @@ impl Editor {
             .flex()
             .items_end()
             .gap(px(theme::SP3))
-            .child(div().flex().items_baseline().gap(px(theme::SP1)).child(mono(format!("{speed:>3.0}"), theme::FS_DISPLAY)).child(muted("km/h")).child(mono(format!("  {} s", fmt_ms(t)), theme::FS_BODY).text_color(c(theme::MUTED))))
-            .child(div().flex_1().flex().justify_center().children(hint.map(|h| div().px(px(theme::PAD)).py(px(theme::SP1)).rounded(px(theme::R_CTL)).bg(theme::alpha(theme::PANEL, 0.9)).border_1().border_color(c(theme::PIN)).text_size(px(theme::FS_BODY)).font_weight(FontWeight::MEDIUM).child(h))))
+            .child(
+                div()
+                    .flex()
+                    .items_baseline()
+                    .gap(px(theme::SP1))
+                    .child(mono(format!("{speed:>3.0}"), theme::FS_DISPLAY))
+                    .child(muted("km/h"))
+                    .child(mono(format!("  {} s", fmt_ms(t)), theme::FS_BODY).text_color(c(theme::MUTED))),
+            )
+            .child(div().flex_1().flex().justify_center().children(hint.map(|h| {
+                div()
+                    .px(px(theme::PAD))
+                    .py(px(theme::SP1))
+                    .rounded(px(theme::R_CTL))
+                    .bg(theme::alpha(theme::PANEL, 0.9))
+                    .border_1()
+                    .border_color(c(theme::PIN))
+                    .text_size(px(theme::FS_BODY))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(h)
+            })))
             .child(mono(perf, theme::FS_SMALL).text_color(c(theme::MUTED)))
     }
 }
@@ -1097,7 +1372,10 @@ mod tests {
 
     #[test]
     fn ray_hits_a_box_in_front() {
-        assert_eq!(ray_box(Vec3::ZERO, Vec3::Z, Vec3::new(-1.0, -1.0, 5.0), Vec3::new(1.0, 1.0, 6.0)), Some(5.0));
+        assert_eq!(
+            ray_box(Vec3::ZERO, Vec3::Z, Vec3::new(-1.0, -1.0, 5.0), Vec3::new(1.0, 1.0, 6.0)),
+            Some(5.0)
+        );
         assert_eq!(ray_box(Vec3::ZERO, Vec3::Z, Vec3::new(2.0, -1.0, 5.0), Vec3::new(3.0, 1.0, 6.0)), None);
     }
 }
@@ -1121,5 +1399,8 @@ fn open_error_card(e: &str) -> impl IntoElement {
         .child(text("Could not open this map").text_color(c(theme::ERROR)).text_size(px(theme::FS_TITLE)))
         .child(muted(head.to_string()).text_size(px(theme::FS_BODY)))
         .children(lines.into_iter().map(|l| mono(l.to_string(), theme::FS_BODY).text_color(c(theme::TEXT))))
-        .child(muted("The rest of the editor stays usable: open another map with \u{2318}O.").text_size(px(theme::FS_BODY)))
+        .child(
+            muted("The rest of the editor stays usable: open another map with \u{2318}O.")
+                .text_size(px(theme::FS_BODY)),
+        )
 }

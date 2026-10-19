@@ -50,10 +50,7 @@ fn recorded_steer_matches_input_stream() {
                 let input = inputs.ticks[tick].steer as f32 / 127.0;
                 worst = worst.max((recorded - input).abs());
             }
-            assert!(
-                worst <= 2.0 / 255.0 + 1e-4,
-                "{path:?}: recorded steer differs from inputs by {worst}"
-            );
+            assert!(worst <= 2.0 / 255.0 + 1e-4, "{path:?}: recorded steer differs from inputs by {worst}");
         }
     }
 }

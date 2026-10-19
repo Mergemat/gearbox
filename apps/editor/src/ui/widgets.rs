@@ -2,7 +2,8 @@ use std::rc::Rc;
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, AnyView, App, AppContext, ClickEvent, Context, Div, FontWeight, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Render, SharedString, Stateful,
+    AnyElement, AnyView, App, AppContext, ClickEvent, Context, Div, FontWeight, InteractiveElement,
+    IntoElement, MouseButton, MouseDownEvent, ParentElement, Render, SharedString, Stateful,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 
@@ -64,12 +65,18 @@ impl Num {
     }
 }
 
-pub const M: Num = Num { decimals: 3, unit: "m", step: 0.02, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
-pub const DEG: Num = Num { decimals: 2, unit: "\u{00b0}", step: 0.25, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
-pub const MS: Num = Num { decimals: 3, unit: "m/s", step: 0.05, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
-pub const KMH: Num = Num { decimals: 1, unit: "km/h", step: 0.2, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
-pub const SEC: Num = Num { decimals: 3, unit: "s", step: 0.01, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
-pub const PLAIN: Num = Num { decimals: 3, unit: "", step: 0.01, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
+pub const M: Num =
+    Num { decimals: 3, unit: "m", step: 0.02, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
+pub const DEG: Num =
+    Num { decimals: 2, unit: "\u{00b0}", step: 0.25, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
+pub const MS: Num =
+    Num { decimals: 3, unit: "m/s", step: 0.05, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
+pub const KMH: Num =
+    Num { decimals: 1, unit: "km/h", step: 0.2, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
+pub const SEC: Num =
+    Num { decimals: 3, unit: "s", step: 0.01, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
+pub const PLAIN: Num =
+    Num { decimals: 3, unit: "", step: 0.01, min: f64::NEG_INFINITY, max: f64::INFINITY, width: 0.0 };
 pub const INT: Num = Num { decimals: 0, unit: "", step: 0.25, min: 0.0, max: 1e9, width: 0.0 };
 
 pub fn eval(s: &str) -> Option<f64> {
@@ -139,7 +146,11 @@ pub fn eval(s: &str) -> Option<f64> {
                 }
                 _ => {
                     let st = self.i;
-                    while self.i < self.s.len() && (self.s[self.i].is_ascii_digit() || self.s[self.i] == b'.' || ((self.s[self.i] == b'e' || self.s[self.i] == b'E') && self.i > st)) {
+                    while self.i < self.s.len()
+                        && (self.s[self.i].is_ascii_digit()
+                            || self.s[self.i] == b'.'
+                            || ((self.s[self.i] == b'e' || self.s[self.i] == b'E') && self.i > st))
+                    {
                         self.i += 1;
                     }
                     std::str::from_utf8(&self.s[st..self.i]).ok()?.parse().ok()
@@ -177,8 +188,12 @@ impl Render for Tip {
     }
 }
 
-pub fn tip(title: impl Into<SharedString>, body: Option<&str>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    let (title, body): (SharedString, Option<SharedString>) = (title.into(), body.map(|b| SharedString::from(b.to_string())));
+pub fn tip(
+    title: impl Into<SharedString>,
+    body: Option<&str>,
+) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    let (title, body): (SharedString, Option<SharedString>) =
+        (title.into(), body.map(|b| SharedString::from(b.to_string())));
     move |_, cx| cx.new(|_| Tip { title: title.clone(), body: body.clone() }).into()
 }
 
@@ -232,7 +247,15 @@ pub fn prop(label: impl Into<SharedString>, content: impl IntoElement) -> Div {
         .flex()
         .items_center()
         .gap(px(theme::SP3))
-        .child(div().w(px(88.0)).flex_none().text_size(px(theme::FS_BODY)).text_color(c(theme::MUTED)).truncate().child(label.into()))
+        .child(
+            div()
+                .w(px(88.0))
+                .flex_none()
+                .text_size(px(theme::FS_BODY))
+                .text_color(c(theme::MUTED))
+                .truncate()
+                .child(label.into()),
+        )
         .child(div().flex_1().min_w_0().child(content))
 }
 
@@ -243,7 +266,18 @@ pub fn prop_top(label: impl Into<SharedString>, content: impl IntoElement) -> Di
         .flex()
         .items_start()
         .gap(px(theme::SP3))
-        .child(div().w(px(88.0)).h(px(24.0)).flex_none().flex().items_center().text_size(px(theme::FS_BODY)).text_color(c(theme::MUTED)).truncate().child(label.into()))
+        .child(
+            div()
+                .w(px(88.0))
+                .h(px(24.0))
+                .flex_none()
+                .flex()
+                .items_center()
+                .text_size(px(theme::FS_BODY))
+                .text_color(c(theme::MUTED))
+                .truncate()
+                .child(label.into()),
+        )
         .child(div().flex_1().min_w_0().child(content))
 }
 
@@ -267,12 +301,23 @@ pub fn segment(id: impl Into<SharedString>, on: bool, label: impl Into<SharedStr
         .cursor_pointer()
         .when(on, |d| d.bg(c(theme::SELECT)).text_color(c(theme::TEXT)))
         .when(!on, |d| d.text_color(c(theme::FAINT)).hover(|s| s.text_color(c(theme::TEXT))))
-        .when_some(path, |d, p| d.gap(px(theme::SP1 + 1.0)).child(icon(p, if on { theme::TEXT } else { theme::FAINT }, 13.0)))
+        .when_some(path, |d, p| {
+            d.gap(px(theme::SP1 + 1.0)).child(icon(p, if on { theme::TEXT } else { theme::FAINT }, 13.0))
+        })
         .child(label)
 }
 
 pub fn segments() -> Div {
-    div().flex().flex_none().items_center().p(px(2.0)).gap(px(2.0)).rounded(px(theme::R_CTL)).bg(c(theme::WELL)).border_1().border_color(c(theme::HAIRLINE))
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .p(px(2.0))
+        .gap(px(2.0))
+        .rounded(px(theme::R_CTL))
+        .bg(c(theme::WELL))
+        .border_1()
+        .border_color(c(theme::HAIRLINE))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -289,12 +334,23 @@ pub fn icon(path: impl Into<SharedString>, color: u32, size: f32) -> gpui::Svg {
 
 pub fn labelled(label: &str, color: u32) -> Div {
     match label.strip_prefix('@').and_then(|l| l.split_once('|')) {
-        Some((path, text)) => div().flex().items_center().gap(px(theme::SP2)).min_w_0().child(icon(path.to_string(), color, 13.0)).child(div().min_w_0().truncate().child(text.to_string())),
+        Some((path, text)) => div()
+            .flex()
+            .items_center()
+            .gap(px(theme::SP2))
+            .min_w_0()
+            .child(icon(path.to_string(), color, 13.0))
+            .child(div().min_w_0().truncate().child(text.to_string())),
         None => div().min_w_0().truncate().child(label.to_string()),
     }
 }
 
-pub fn btn_icon(id: impl Into<SharedString>, path: &'static str, label: impl Into<SharedString>, kind: Btn) -> Stateful<Div> {
+pub fn btn_icon(
+    id: impl Into<SharedString>,
+    path: &'static str,
+    label: impl Into<SharedString>,
+    kind: Btn,
+) -> Stateful<Div> {
     let tint = match kind {
         Btn::Primary => 0x1B0A12,
         Btn::Quiet => theme::MUTED,
@@ -323,10 +379,25 @@ pub fn btn(id: impl Into<SharedString>, label: impl Into<SharedString>, kind: Bt
         .child(track(id.to_string()))
         .child(label.into());
     match kind {
-        Btn::Normal => d.bg(c(theme::RAISED)).border_1().border_color(c(theme::HAIRLINE)).text_color(c(theme::TEXT)).hover(|s| s.bg(c(theme::SELECT))),
-        Btn::Primary => d.bg(c(theme::PIN)).text_color(gpui::rgb(0x1B0A12)).font_weight(FontWeight::SEMIBOLD).hover(|s| s.opacity(0.9)),
-        Btn::Quiet => d.text_color(c(theme::MUTED)).hover(|s| s.bg(c(theme::RAISED)).text_color(c(theme::TEXT))),
-        Btn::Danger => d.border_1().border_color(c(theme::HAIRLINE)).text_color(c(theme::ERROR)).hover(|s| s.bg(c(theme::RAISED))),
+        Btn::Normal => d
+            .bg(c(theme::RAISED))
+            .border_1()
+            .border_color(c(theme::HAIRLINE))
+            .text_color(c(theme::TEXT))
+            .hover(|s| s.bg(c(theme::SELECT))),
+        Btn::Primary => d
+            .bg(c(theme::PIN))
+            .text_color(gpui::rgb(0x1B0A12))
+            .font_weight(FontWeight::SEMIBOLD)
+            .hover(|s| s.opacity(0.9)),
+        Btn::Quiet => {
+            d.text_color(c(theme::MUTED)).hover(|s| s.bg(c(theme::RAISED)).text_color(c(theme::TEXT)))
+        }
+        Btn::Danger => d
+            .border_1()
+            .border_color(c(theme::HAIRLINE))
+            .text_color(c(theme::ERROR))
+            .hover(|s| s.bg(c(theme::RAISED))),
     }
 }
 
@@ -371,9 +442,17 @@ pub fn icon_square(id: impl Into<SharedString>, path: &'static str, on: bool) ->
         .child(icon(path, if on { theme::TEXT } else { theme::MUTED }, 14.0))
 }
 
-pub fn chip_icon(id: impl Into<SharedString>, on: bool, path: &'static str, label: impl Into<SharedString>) -> Stateful<Div> {
+pub fn chip_icon(
+    id: impl Into<SharedString>,
+    on: bool,
+    path: &'static str,
+    label: impl Into<SharedString>,
+) -> Stateful<Div> {
     let label: SharedString = label.into();
-    chip(id, on, "").gap(px(theme::SP1 + 2.0)).child(icon(path, if on { theme::TEXT } else { theme::MUTED }, 13.0)).child(label)
+    chip(id, on, "")
+        .gap(px(theme::SP1 + 2.0))
+        .child(icon(path, if on { theme::TEXT } else { theme::MUTED }, 13.0))
+        .child(label)
 }
 
 pub fn chip(id: impl Into<SharedString>, on: bool, label: impl Into<SharedString>) -> Stateful<Div> {
@@ -392,8 +471,15 @@ pub fn chip(id: impl Into<SharedString>, on: bool, label: impl Into<SharedString
         .text_size(px(theme::FS_BODY))
         .cursor_pointer()
         .whitespace_nowrap()
-        .when(on, |d| d.bg(c(theme::SELECT)).text_color(c(theme::TEXT)).border_1().border_color(c(theme::FAINT)))
-        .when(!on, |d| d.text_color(c(theme::MUTED)).border_1().border_color(c(theme::HAIRLINE)).hover(|s| s.text_color(c(theme::TEXT))))
+        .when(on, |d| {
+            d.bg(c(theme::SELECT)).text_color(c(theme::TEXT)).border_1().border_color(c(theme::FAINT))
+        })
+        .when(!on, |d| {
+            d.text_color(c(theme::MUTED))
+                .border_1()
+                .border_color(c(theme::HAIRLINE))
+                .hover(|s| s.text_color(c(theme::TEXT)))
+        })
         .child(label.into())
 }
 
@@ -428,10 +514,18 @@ pub fn checkbox(id: impl Into<SharedString>, on: bool, label: impl Into<SharedSt
 }
 
 impl Editor {
-    pub fn num(&mut self, id: impl Into<String>, v: f64, f: Num, set: impl Fn(&mut Editor, f64, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> AnyElement {
+    pub fn num(
+        &mut self,
+        id: impl Into<String>,
+        v: f64,
+        f: Num,
+        set: impl Fn(&mut Editor, f64, &mut Context<Editor>) + 'static,
+        cx: &mut Context<Editor>,
+    ) -> AnyElement {
         let id: String = id.into();
         let (min, max) = (f.min, f.max);
-        let set = Rc::new(move |e: &mut Editor, x: f64, cx: &mut Context<Editor>| set(e, x.clamp(min, max), cx));
+        let set =
+            Rc::new(move |e: &mut Editor, x: f64, cx: &mut Context<Editor>| set(e, x.clamp(min, max), cx));
         self.setters.insert(id.clone(), Setter::Num(set));
         self.field_order.push(id.clone());
         self.field_value.insert(id.clone(), f.fmt(v));
@@ -457,7 +551,13 @@ impl Editor {
             .rounded(px(theme::R_CTL))
             .bg(c(theme::WELL))
             .border_1()
-            .border_color(c(if err.is_some() { theme::ERROR } else if caret { theme::PIN } else { theme::HAIRLINE }))
+            .border_color(c(if err.is_some() {
+                theme::ERROR
+            } else if caret {
+                theme::PIN
+            } else {
+                theme::HAIRLINE
+            }))
             .font_family(theme::MONO)
             .text_size(px(theme::FS_SMALL))
             .cursor_ew_resize()
@@ -474,7 +574,15 @@ impl Editor {
                     .child(shown)
                     .when(caret && !fresh, |d| d.child(div().w(px(1.0)).h(px(12.0)).bg(c(theme::PIN)))),
             )
-            .when(!f.unit.is_empty(), |d| d.child(div().flex_none().text_color(c(theme::FAINT)).text_size(px(theme::FS_SMALL)).child(f.unit)))
+            .when(!f.unit.is_empty(), |d| {
+                d.child(
+                    div()
+                        .flex_none()
+                        .text_color(c(theme::FAINT))
+                        .text_size(px(theme::FS_SMALL))
+                        .child(f.unit),
+                )
+            })
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, e: &MouseDownEvent, _, cx| {
@@ -489,7 +597,13 @@ impl Editor {
                     if e.modifiers.platform {
                         step *= 10.0;
                     }
-                    this.drag = Some(Drag::Field { id: drag_id.clone(), x0: f32::from(e.position.x), v0: v, step, moved: false });
+                    this.drag = Some(Drag::Field {
+                        id: drag_id.clone(),
+                        x0: f32::from(e.position.x),
+                        v0: v,
+                        step,
+                        moved: false,
+                    });
                     cx.stop_propagation();
                 }),
             );
@@ -500,7 +614,14 @@ impl Editor {
         d.into_any_element()
     }
 
-    pub fn choice<T: Copy + PartialEq + 'static>(&mut self, id: &str, current: T, items: Vec<(&str, T)>, set: impl Fn(&mut Editor, T, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> AnyElement {
+    pub fn choice<T: Copy + PartialEq + 'static>(
+        &mut self,
+        id: &str,
+        current: T,
+        items: Vec<(&str, T)>,
+        set: impl Fn(&mut Editor, T, &mut Context<Editor>) + 'static,
+        cx: &mut Context<Editor>,
+    ) -> AnyElement {
         let set = Rc::new(set);
         div()
             .flex()
@@ -508,76 +629,135 @@ impl Editor {
             .child(segments().children(items.into_iter().map(|(label, v)| {
                 let set = set.clone();
                 let key = label.rsplit('|').next().unwrap_or(label);
-                segment(format!("{id}-{key}"), v == current, label.to_string()).on_click(cx.listener(move |this, _, _, cx| {
-                    set(this, v, cx);
-                    this.dirty = true;
-                    cx.notify();
-                }))
+                segment(format!("{id}-{key}"), v == current, label.to_string()).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        set(this, v, cx);
+                        this.dirty = true;
+                        cx.notify();
+                    },
+                ))
             })))
             .into_any_element()
     }
 
-    pub fn mini_choice<T: Copy + PartialEq + 'static>(&mut self, id: &str, current: T, items: Vec<(&str, T)>, set: impl Fn(&mut Editor, T, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> AnyElement {
+    pub fn mini_choice<T: Copy + PartialEq + 'static>(
+        &mut self,
+        id: &str,
+        current: T,
+        items: Vec<(&str, T)>,
+        set: impl Fn(&mut Editor, T, &mut Context<Editor>) + 'static,
+        cx: &mut Context<Editor>,
+    ) -> AnyElement {
         let set = Rc::new(set);
         div()
             .flex()
             .child(segments().children(items.into_iter().map(|(label, v)| {
                 let set = set.clone();
-                segment(format!("{id}-{label}"), v == current, label.to_string()).h(px(18.0)).px(px(theme::SP1 + 2.0)).text_size(px(theme::FS_SMALL)).on_click(cx.listener(move |this, _, _, cx| {
-                    set(this, v, cx);
-                    this.dirty = true;
-                    cx.notify();
-                }))
+                segment(format!("{id}-{label}"), v == current, label.to_string())
+                    .h(px(18.0))
+                    .px(px(theme::SP1 + 2.0))
+                    .text_size(px(theme::FS_SMALL))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        set(this, v, cx);
+                        this.dirty = true;
+                        cx.notify();
+                    }))
             })))
             .into_any_element()
     }
 
-    pub fn time_field(&mut self, id: &str, tick: usize, set: impl Fn(&mut Editor, usize, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> AnyElement {
+    pub fn time_field(
+        &mut self,
+        id: &str,
+        tick: usize,
+        set: impl Fn(&mut Editor, usize, &mut Context<Editor>) + 'static,
+        cx: &mut Context<Editor>,
+    ) -> AnyElement {
         let ms0 = self.race_ms0;
         let set = Rc::new(set);
         let s2 = set.clone();
         let secs = f64::from(ms0 + 10 * tick as i32) / 1000.0;
-        let f = self.num(id, secs, Num { decimals: 2, ..SEC }.w(92.0), move |e, x, cx| {
-            let k = (((x * 1000.0).round() as i32 - ms0) / 10).max(0) as usize;
-            set(e, k.max(e.race_start_tick()), cx)
-        }, cx);
+        let f = self.num(
+            id,
+            secs,
+            Num { decimals: 2, ..SEC }.w(92.0),
+            move |e, x, cx| {
+                let k = (((x * 1000.0).round() as i32 - ms0) / 10).max(0) as usize;
+                set(e, k.max(e.race_start_tick()), cx)
+            },
+            cx,
+        );
         div()
             .flex()
             .items_center()
             .gap(px(theme::SP1))
             .child(f)
-            .child(icon_btn(format!("{id}-playhead"), "\u{2316}", "Take the playhead").on_click(cx.listener(move |this, _, _, cx| {
-                let k = this.cursor;
-                s2(this, k, cx);
-                this.dirty = true;
-                cx.notify();
-            })))
+            .child(icon_btn(format!("{id}-playhead"), "\u{2316}", "Take the playhead").on_click(cx.listener(
+                move |this, _, _, cx| {
+                    let k = this.cursor;
+                    s2(this, k, cx);
+                    this.dirty = true;
+                    cx.notify();
+                },
+            )))
             .into_any_element()
     }
 
-    pub fn duration_field(&mut self, id: &str, ticks: usize, set: impl Fn(&mut Editor, usize, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> AnyElement {
-        let f = self.num(id, ticks as f64 / 100.0, Num { decimals: 2, min: 0.01, max: 600.0, ..SEC }.w(92.0), move |e, x, cx| set(e, (x * 100.0).round().max(1.0) as usize, cx), cx);
+    pub fn duration_field(
+        &mut self,
+        id: &str,
+        ticks: usize,
+        set: impl Fn(&mut Editor, usize, &mut Context<Editor>) + 'static,
+        cx: &mut Context<Editor>,
+    ) -> AnyElement {
+        let f = self.num(
+            id,
+            ticks as f64 / 100.0,
+            Num { decimals: 2, min: 0.01, max: 600.0, ..SEC }.w(92.0),
+            move |e, x, cx| set(e, (x * 100.0).round().max(1.0) as usize, cx),
+            cx,
+        );
         div().flex().child(f).into_any_element()
     }
 
-    pub fn budget_field(&mut self, id: &str, seconds: f32, set: impl Fn(&mut Editor, f32, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> AnyElement {
+    pub fn budget_field(
+        &mut self,
+        id: &str,
+        seconds: f32,
+        set: impl Fn(&mut Editor, f32, &mut Context<Editor>) + 'static,
+        cx: &mut Context<Editor>,
+    ) -> AnyElement {
         let set = Rc::new(set);
         let (s1, s2) = (set.clone(), set);
         let until = seconds <= 0.0;
-        let f = self.num(id, if until { 120.0 } else { f64::from(seconds) }, Num { decimals: 0, step: 1.0, min: 1.0, max: 86400.0, ..SEC }.w(92.0), move |e, x, cx| s1(e, x as f32, cx), cx);
+        let f = self.num(
+            id,
+            if until { 120.0 } else { f64::from(seconds) },
+            Num { decimals: 0, step: 1.0, min: 1.0, max: 86400.0, ..SEC }.w(92.0),
+            move |e, x, cx| s1(e, x as f32, cx),
+            cx,
+        );
         div()
             .flex()
             .items_center()
             .gap(px(theme::SP3))
             .child(div().when(until, |d| d.opacity(0.4)).child(f))
-            .child(checkbox(format!("{id}-until"), until, "until stopped").on_click(cx.listener(move |this, _, _, cx| {
-                s2(this, if until { 120.0 } else { 0.0 }, cx);
-                cx.notify();
-            })))
+            .child(checkbox(format!("{id}-until"), until, "until stopped").on_click(cx.listener(
+                move |this, _, _, cx| {
+                    s2(this, if until { 120.0 } else { 0.0 }, cx);
+                    cx.notify();
+                },
+            )))
             .into_any_element()
     }
 
-    pub fn text_field(&mut self, id: impl Into<String>, value: &str, set: impl Fn(&mut Editor, String, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> AnyElement {
+    pub fn text_field(
+        &mut self,
+        id: impl Into<String>,
+        value: &str,
+        set: impl Fn(&mut Editor, String, &mut Context<Editor>) + 'static,
+        cx: &mut Context<Editor>,
+    ) -> AnyElement {
         let id: String = id.into();
         self.setters.insert(id.clone(), Setter::Text(Rc::new(set)));
         self.field_order.push(id.clone());
@@ -603,7 +783,13 @@ impl Editor {
             .border_color(c(if caret { theme::PIN } else { theme::HAIRLINE }))
             .text_size(px(theme::FS_BODY))
             .cursor_text()
-            .child(div().overflow_hidden().truncate().when(fresh, |d| d.bg(theme::alpha(theme::PIN, 0.25))).child(shown))
+            .child(
+                div()
+                    .overflow_hidden()
+                    .truncate()
+                    .when(fresh, |d| d.bg(theme::alpha(theme::PIN, 0.25)))
+                    .child(shown),
+            )
             .when(caret && !fresh, |d| d.child(div().w(px(1.0)).h(px(13.0)).bg(c(theme::PIN))))
             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                 if this.editing.as_ref().is_none_or(|e| e.id != vid) {
@@ -615,7 +801,14 @@ impl Editor {
             .into_any_element()
     }
 
-    pub fn menu_button<T: Copy + 'static>(&mut self, id: &str, label: &str, items: Vec<(String, T)>, set: impl Fn(&mut Editor, T, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> AnyElement {
+    pub fn menu_button<T: Copy + 'static>(
+        &mut self,
+        id: &str,
+        label: &str,
+        items: Vec<(String, T)>,
+        set: impl Fn(&mut Editor, T, &mut Context<Editor>) + 'static,
+        cx: &mut Context<Editor>,
+    ) -> AnyElement {
         let set = Rc::new(set);
         let empty = items.is_empty();
         div()
@@ -640,7 +833,8 @@ impl Editor {
                             .iter()
                             .map(|(l, v)| {
                                 let (set, v) = (set.clone(), *v);
-                                let f: Rc<dyn Fn(&mut Editor, &mut Context<Editor>)> = Rc::new(move |ed, cx| set(ed, v, cx));
+                                let f: Rc<dyn Fn(&mut Editor, &mut Context<Editor>)> =
+                                    Rc::new(move |ed, cx| set(ed, v, cx));
                                 (l.clone(), None, f)
                             })
                             .collect();
@@ -653,7 +847,14 @@ impl Editor {
             .into_any_element()
     }
 
-    pub fn dropdown<T: Copy + PartialEq + 'static>(&mut self, id: &str, current: T, items: Vec<(String, T)>, set: impl Fn(&mut Editor, T, &mut Context<Editor>) + 'static, cx: &mut Context<Editor>) -> AnyElement {
+    pub fn dropdown<T: Copy + PartialEq + 'static>(
+        &mut self,
+        id: &str,
+        current: T,
+        items: Vec<(String, T)>,
+        set: impl Fn(&mut Editor, T, &mut Context<Editor>) + 'static,
+        cx: &mut Context<Editor>,
+    ) -> AnyElement {
         let label = items.iter().find(|i| i.1 == current).map_or("\u{2014}".to_string(), |i| i.0.clone());
         let set = Rc::new(set);
         div()
@@ -683,7 +884,8 @@ impl Editor {
                         .iter()
                         .map(|(l, v)| {
                             let (set, v) = (set.clone(), *v);
-                            let f: Rc<dyn Fn(&mut Editor, &mut Context<Editor>)> = Rc::new(move |ed, cx| set(ed, v, cx));
+                            let f: Rc<dyn Fn(&mut Editor, &mut Context<Editor>)> =
+                                Rc::new(move |ed, cx| set(ed, v, cx));
                             (l.clone(), (v == current).then(|| "\u{2713}".to_string()), f)
                         })
                         .collect();
@@ -706,7 +908,8 @@ impl Editor {
                 }
                 None if e.fresh => {}
                 None => {
-                    self.field_errors.insert(e.id.clone(), format!("\u{201c}{}\u{201d} is not a number", e.text));
+                    self.field_errors
+                        .insert(e.id.clone(), format!("\u{201c}{}\u{201d} is not a number", e.text));
                     let id = e.id.clone();
                     self.editing = Some(e);
                     self.error("edit", format!("{id}: not a number"));
@@ -769,5 +972,4 @@ impl Editor {
     }
 }
 
-impl Editor {
-}
+impl Editor {}

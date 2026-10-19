@@ -62,7 +62,11 @@ fn parse() -> Result<Options> {
             "--sync" => o.sync = true,
             "--eye" | "--look" => {
                 let v = val()?;
-                let p: Vec<f32> = v.split(',').map(str::parse).collect::<Result<_, _>>().with_context(|| format!("{a} x,y,z"))?;
+                let p: Vec<f32> = v
+                    .split(',')
+                    .map(str::parse)
+                    .collect::<Result<_, _>>()
+                    .with_context(|| format!("{a} x,y,z"))?;
                 let p: [f32; 3] = p.try_into().ok().with_context(|| format!("{a} x,y,z"))?;
                 if a == "--eye" {
                     o.eye = Some(p);
@@ -89,7 +93,9 @@ fn parse() -> Result<Options> {
 
 fn window_number(window: &gpui::Window) -> Option<isize> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    let RawWindowHandle::AppKit(h) = HasWindowHandle::window_handle(window).ok()?.as_raw() else { return None };
+    let RawWindowHandle::AppKit(h) = HasWindowHandle::window_handle(window).ok()?.as_raw() else {
+        return None;
+    };
     let view = h.ns_view.as_ptr() as *mut objc2::runtime::AnyObject;
     unsafe {
         let win: *mut objc2::runtime::AnyObject = objc2::msg_send![&*view, window];
@@ -167,9 +173,14 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn open_editor(opts: Options, game: gearbox_packs::install::Game, home: PathBuf, scene: scene::Scene,
-    mut opened: futures::channel::mpsc::UnboundedReceiver<PathBuf>, cx: &mut App)
-{
+fn open_editor(
+    opts: Options,
+    game: gearbox_packs::install::Game,
+    home: PathBuf,
+    scene: scene::Scene,
+    mut opened: futures::channel::mpsc::UnboundedReceiver<PathBuf>,
+    cx: &mut App,
+) {
     let [w, h] = opts.size.unwrap_or([1600.0, 980.0]);
     let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
     let scripted = opts.script.is_some() || opts.record.is_some() || opts.shot.is_some();
@@ -177,11 +188,19 @@ fn open_editor(opts: Options, game: gearbox_packs::install::Game, home: PathBuf,
         .open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions { title: Some("Gearbox".into()), appears_transparent: true, traffic_light_position: Some(gpui::point(px(14.0), px(13.0))) }),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("Gearbox".into()),
+                    appears_transparent: true,
+                    traffic_light_position: Some(gpui::point(px(14.0), px(13.0))),
+                }),
                 focus: true,
                 show: true,
                 kind: if scripted { gpui::WindowKind::Floating } else { gpui::WindowKind::Normal },
-                inactive_frame_interval: if scripted { None } else { Some(std::time::Duration::from_micros(33_333)) },
+                inactive_frame_interval: if scripted {
+                    None
+                } else {
+                    Some(std::time::Duration::from_micros(33_333))
+                },
                 ..Default::default()
             },
             move |window, cx| cx.new(|cx| Editor::new(opts, game, home, scene, window, cx)),
@@ -207,7 +226,10 @@ fn percent_decoded(text: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        let hex = bytes.get(i + 1..i + 3).and_then(|h| std::str::from_utf8(h).ok()).and_then(|h| u8::from_str_radix(h, 16).ok());
+        let hex = bytes
+            .get(i + 1..i + 3)
+            .and_then(|h| std::str::from_utf8(h).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok());
         match (bytes[i], hex) {
             (b'%', Some(byte)) => {
                 out.push(byte);

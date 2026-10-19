@@ -1,6 +1,9 @@
-use super::super::{Body, BodyHandle, BodyInertia, BodyState};
 use super::super::constants::{MIN_CLIP_LENGTH_SQUARED, SAMPLE_DT, SOLVER_EPSILON};
-use crate::{Vec3, math::{maxss, minss}};
+use super::super::{Body, BodyHandle, BodyInertia, BodyState};
+use crate::{
+    Vec3,
+    math::{maxss, minss},
+};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ContactRow {

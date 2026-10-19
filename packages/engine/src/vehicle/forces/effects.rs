@@ -1,6 +1,6 @@
-use crate::math::{maxss, minss};
 use super::super::{Tuning, Vehicle, Wheel};
 use super::common::KMH;
+use crate::math::{maxss, minss};
 
 const EFFECT_IDLE: u32 = 0;
 const EFFECT_RISING: u32 = 1;
@@ -25,8 +25,10 @@ impl Wheel {
         }
         let contact = self.contact;
         let material = self.material;
-        let boosting = contact != 0 && (material == 3 || material == 0x4a || (material == 0x15
-            && tuning.special_material_enabled != 0));
+        let boosting = contact != 0
+            && (material == 3
+                || material == 0x4a
+                || (material == 0x15 && tuning.special_material_enabled != 0));
         if previous_mode == EFFECT_RISING {
             if !active {
                 self.effect_mode = EFFECT_IDLE;
@@ -75,17 +77,14 @@ impl Wheel {
         let mut base = 0.0;
         if self.effect_mode == EFFECT_IDLE {
             if self.effect_start != u32::MAX {
-                coefficient = maxss(self.effect_floor, self.effect_level - elapsed
-                    / tuning.effect_idle_fall_ms as f32);
+                coefficient =
+                    maxss(self.effect_floor, self.effect_level - elapsed / tuning.effect_idle_fall_ms as f32);
             }
         } else if self.effect_mode == EFFECT_RISING {
             coefficient = minss(1.0, elapsed / tuning.effect_rise_ms as f32 + self.effect_level);
         } else if self.effect_mode == EFFECT_FALLING {
-            let duration_ms = if self.contact != 0 {
-                tuning.effect_ground_fall_ms
-            } else {
-                tuning.effect_air_fall_ms
-            };
+            let duration_ms =
+                if self.contact != 0 { tuning.effect_ground_fall_ms } else { tuning.effect_air_fall_ms };
             coefficient = maxss(self.effect_floor, self.effect_level - elapsed / duration_ms as f32);
         }
         let minimum_grip = tuning.effect_minimum_grip;
@@ -129,8 +128,12 @@ impl Vehicle {
         self.special_material_present = coefficient.boost_material as u32;
     }
 
-    pub fn wheel_effect_coefficients(&self, tuning: &Tuning, now: u32,
-        contacts: &[bool]) -> WheelEffectCoefficients {
+    pub fn wheel_effect_coefficients(
+        &self,
+        tuning: &Tuning,
+        now: u32,
+        contacts: &[bool],
+    ) -> WheelEffectCoefficients {
         assert!(contacts.len() <= self.wheels.len(), "at most four wheels");
         let mut coefficients = WheelEffectCoefficients::default();
         let with_base = self.effect_flags as u8 >> 4 & 1 != 0;
@@ -143,8 +146,7 @@ impl Vehicle {
             if contact {
                 contacting_count += 1;
                 coefficients.contacting = coefficient + coefficients.contacting;
-            }
-            else {
+            } else {
                 free_count += 1;
                 coefficients.free = coefficient + coefficients.free;
             }

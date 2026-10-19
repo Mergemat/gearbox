@@ -25,9 +25,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
             }
             Ok(())
         }
-        Some("replay-json") if args.len() == 3 => {
-            dump_json(args[1].clone().into(), args[2].clone().into())
-        }
+        Some("replay-json") if args.len() == 3 => dump_json(args[1].clone().into(), args[2].clone().into()),
         Some("map") if args.len() == 2 => map_summary(&load_map(&args[1])?),
         Some("map-json") if args.len() == 3 => {
             std::fs::write(&args[2], serde_json::to_vec(&load_map(&args[1])?)?)?;
@@ -38,15 +36,25 @@ pub fn main(args: Vec<String>) -> Result<()> {
             for g in &replay.ghosts {
                 let d = g.inputs.first().context("no inputs")?.decode()?;
                 for (tick, w) in &d.state_words {
-                    println!("tick {tick:5} race {:6} ms  kind {:X}  bits {:034b}", d.start_offset_ms + *tick as i32 * TICK_MS, w & 0xF, w);
+                    println!(
+                        "tick {tick:5} race {:6} ms  kind {:X}  bits {:034b}",
+                        d.start_offset_ms + *tick as i32 * TICK_MS,
+                        w & 0xF,
+                        w
+                    );
                 }
                 for (tick, w) in &d.extra_words {
-                    println!("tick {tick:5} race {:6} ms  extra {w:#010x}", d.start_offset_ms + *tick as i32 * TICK_MS);
+                    println!(
+                        "tick {tick:5} race {:6} ms  extra {w:#010x}",
+                        d.start_offset_ms + *tick as i32 * TICK_MS
+                    );
                 }
             }
             Ok(())
         }
-        Some("replay-inputs") if args.len() == 3 => replay_inputs(args[1].clone().into(), args[2].clone().into()),
+        Some("replay-inputs") if args.len() == 3 => {
+            replay_inputs(args[1].clone().into(), args[2].clone().into())
+        }
         Some("body") if args.len() == 3 => {
             let bytes = std::fs::read(&args[1])?;
             let c = gearbox_gbx::Container::parse(&bytes)?;
@@ -69,12 +77,7 @@ fn load_map(path: &str) -> Result<Map> {
         return Map::parse(&bytes);
     }
     let replay = Replay::parse(&bytes)?;
-    Map::parse(
-        replay
-            .map_gbx
-            .as_deref()
-            .context("replay has no embedded map")?,
-    )
+    Map::parse(replay.map_gbx.as_deref().context("replay has no embedded map")?)
 }
 
 fn map_summary(map: &Map) -> Result<()> {
@@ -100,14 +103,10 @@ fn map_summary(map: &Map) -> Result<()> {
         map.items.len()
     );
     let blocks = map.blocks.iter().filter_map(|b| {
-        b.waypoint
-            .as_ref()
-            .map(|w| (b.name.as_str(), w, Some(b.coord), b.free.map(|f| f.0)))
+        b.waypoint.as_ref().map(|w| (b.name.as_str(), w, Some(b.coord), b.free.map(|f| f.0)))
     });
     let items = map.items.iter().filter_map(|i| {
-        i.waypoint
-            .as_ref()
-            .map(|w| (i.model.as_deref().unwrap_or("?"), w, None, Some(i.position)))
+        i.waypoint.as_ref().map(|w| (i.model.as_deref().unwrap_or("?"), w, None, Some(i.position)))
     });
     for (name, w, coord, pos) in blocks.chain(items) {
         println!(
@@ -137,17 +136,15 @@ fn summary(path: PathBuf) -> Result<()> {
             g.exe_version.as_deref().unwrap_or("?")
         );
         if !g.checkpoints_ms.is_empty() {
-            let cps: Vec<String> = g.checkpoints_ms.iter().map(|c| c.map_or("-".into(), |t| t.to_string())).collect();
+            let cps: Vec<String> =
+                g.checkpoints_ms.iter().map(|c| c.map_or("-".into(), |t| t.to_string())).collect();
             println!("    checkpoint times (ms): {}", cps.join(" "));
         }
         for inp in &g.inputs {
             match inp.decode() {
                 Ok(d) => {
                     let changes = d.ticks.windows(2).filter(|w| w[0] != w[1]).count();
-                    let analog = d
-                        .ticks
-                        .iter()
-                        .any(|t| t.steer != 0 && t.steer.unsigned_abs() != 127);
+                    let analog = d.ticks.iter().any(|t| t.steer != 0 && t.steer.unsigned_abs() != 127);
                     println!(
                         "    inputs v{}  {} ticks ({} ms)  start offset {} ms  {} changes  {}  respawns {}{}",
                         inp.version,
@@ -155,32 +152,20 @@ fn summary(path: PathBuf) -> Result<()> {
                         d.ticks.len() as i32 * TICK_MS,
                         d.start_offset_ms,
                         changes,
-                        if analog {
-                            "analog steer"
-                        } else {
-                            "digital steer"
-                        },
+                        if analog { "analog steer" } else { "digital steer" },
                         d.events
                             .iter()
                             .filter(|e| matches!(e.kind, gearbox_gbx::inputs::EventKind::Respawn))
                             .count(),
-                        d.truncated_at
-                            .map_or(String::new(), |t| format!("  (stream ends at tick {t})"))
+                        d.truncated_at.map_or(String::new(), |t| format!("  (stream ends at tick {t})"))
                     );
                 }
-                Err(e) => println!(
-                    "    inputs v{}  {} ticks  decode error: {e:#}",
-                    inp.version, inp.ticks
-                ),
+                Err(e) => println!("    inputs v{}  {} ticks  decode error: {e:#}", inp.version, inp.ticks),
             }
         }
         match &g.record {
             Some(rec) => {
-                for ent in rec
-                    .entities
-                    .iter()
-                    .filter(|e| e.class_id == CLASS_VEHICLE_VIS)
-                {
+                for ent in rec.entities.iter().filter(|e| e.class_id == CLASS_VEHICLE_VIS) {
                     let s = &ent.samples;
                     let dt: Vec<i32> = s.windows(2).map(|w| w[1].time_ms - w[0].time_ms).collect();
                     let (lo, hi) = (dt.iter().min(), dt.iter().max());
@@ -223,10 +208,10 @@ fn replay_inputs(path: PathBuf, out: PathBuf) -> Result<()> {
         .context("no finished ghost with inputs")?;
     let inputs = ghost.inputs.first().context("no inputs")?.decode()?;
     anyhow::ensure!(inputs.ticks.windows(2).any(|w| w[0] != w[1]), "ghost inputs never change");
-    let (dropped, kept): (Vec<_>, Vec<_>) = inputs
-        .events
-        .iter()
-        .partition(|e| matches!(e.kind, gearbox_gbx::inputs::EventKind::Horn(_)) || (e.tick == 0 && matches!(e.kind, gearbox_gbx::inputs::EventKind::Respawn)));
+    let (dropped, kept): (Vec<_>, Vec<_>) = inputs.events.iter().partition(|e| {
+        matches!(e.kind, gearbox_gbx::inputs::EventKind::Horn(_))
+            || (e.tick == 0 && matches!(e.kind, gearbox_gbx::inputs::EventKind::Respawn))
+    });
     anyhow::ensure!(kept.is_empty(), "inputs export does not support input events: {kept:?}");
     if !dropped.is_empty() {
         eprintln!("dropped {} horn/start-respawn events", dropped.len());
@@ -250,11 +235,7 @@ fn dump_json(path: PathBuf, out: PathBuf) -> Result<()> {
         .ghosts
         .iter()
         .map(|g| {
-            let inputs: Vec<_> = g
-                .inputs
-                .iter()
-                .map(|i| i.decode().map_err(|e| format!("{e:#}")))
-                .collect();
+            let inputs: Vec<_> = g.inputs.iter().map(|i| i.decode().map_err(|e| format!("{e:#}"))).collect();
             let samples: Vec<_> = g
                 .record
                 .iter()

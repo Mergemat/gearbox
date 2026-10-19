@@ -1,5 +1,5 @@
-use crate::{Aabb, DynamicItemId, EntryId, ItemId, Iso, Quat, ShapeId, Vec3};
-use super::{ContactFlags, ItemFlags, ItemEvents};
+use super::{ContactFlags, ItemEvents, ItemFlags};
+use crate::{Aabb, DynamicItemId, EntryId, Iso, ItemId, Quat, ShapeId, Vec3};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CollisionWorld {

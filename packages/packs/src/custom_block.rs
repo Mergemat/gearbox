@@ -39,7 +39,9 @@ pub fn read(ctx: &Ctx<'_>, start: usize) -> Result<BlockItem> {
         let crystal = match crystal {
             NodeLink::Null => None,
             NodeLink::Inline(p) => Some(p),
-            NodeLink::Earlier(i) => Some(ctx.layout.nodes.iter().find(|n| n.index == i).context("block crystal node")?.start),
+            NodeLink::Earlier(i) => {
+                Some(ctx.layout.nodes.iter().find(|n| n.index == i).context("block crystal node")?.start)
+            }
             NodeLink::External(_) => anyhow::bail!("external block crystal"),
         };
         mobils.push(Mobil { id, crystal, object: None, trigger: None });

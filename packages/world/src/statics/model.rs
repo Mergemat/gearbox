@@ -41,7 +41,10 @@ pub trait ModelSource {
     fn block_geometry(&self, key: &BlockKey) -> Option<Geometry>;
     fn block_model(&mut self, key: &BlockKey) -> Option<BlockModel>;
     fn block_model_at(
-        &mut self, map: &gearbox_gbx::Map, grid: &crate::statics::instancing::Grid, block: &gearbox_gbx::map::Block,
+        &mut self,
+        map: &gearbox_gbx::Map,
+        grid: &crate::statics::instancing::Grid,
+        block: &gearbox_gbx::map::Block,
     ) -> Option<BlockModel> {
         let _ = (map, grid);
         self.block_model(&BlockKey::of(block))
@@ -53,7 +56,12 @@ pub fn block_location_with(block: &gearbox_gbx::map::Block, geometry: &Geometry)
         return place::free_location_variant(pos, ang, geometry.offset);
     }
     place::grid_location_in(
-        geometry.cell, None, block.coord, block.dir as u32, geometry.size, geometry.offset,
+        geometry.cell,
+        None,
+        block.coord,
+        block.dir as u32,
+        geometry.size,
+        geometry.offset,
     )
 }
 

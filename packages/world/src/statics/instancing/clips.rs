@@ -2,8 +2,8 @@ use crate::statics::{
     model::{BlockKey, ModelSource, catalog::GeometrySource},
     place,
 };
+use anyhow::{Context, Result};
 use std::collections::HashMap;
-use anyhow::{Result, Context};
 pub type Location = ([f32; 9], [f32; 3]);
 const IDENTITY: [f32; 9] = [1., 0., 0., 0., 1., 0., 0., 0., 1.];
 
@@ -19,7 +19,11 @@ pub fn contact(location: Location, clip_type: u32, cell: [f32; 3]) -> Location {
 }
 
 pub fn unit_location(
-    unit: [i32; 3], clips: &gearbox_packs::blockinfo::UnitClips, face: usize, index: usize, cell: [f32; 3],
+    unit: [i32; 3],
+    clips: &gearbox_packs::blockinfo::UnitClips,
+    face: usize,
+    index: usize,
+    cell: [f32; 3],
 ) -> Location {
     let dir = if face < 4 {
         (face as u32 + 2) & 3
@@ -61,22 +65,32 @@ fn cells(point: [f32; 3], width: f32) -> [[i32; 3]; 8] {
     let p = point.map(|v| v * inv);
     let lo = p.map(|v| gearbox_engine::math::cvtt(gearbox_engine::numeric::floorf(v)));
     let hi = p.map(|v| gearbox_engine::math::cvtt(gearbox_engine::numeric::ceilf(v)));
-    std::array::from_fn(|i| [
-        if i & 4 == 0 { lo[0] } else { hi[0] },
-        if i & 2 == 0 { lo[1] } else { hi[1] },
-        if i & 1 == 0 { lo[2] } else { hi[2] },
-    ])
+    std::array::from_fn(|i| {
+        [
+            if i & 4 == 0 { lo[0] } else { hi[0] },
+            if i & 2 == 0 { lo[1] } else { hi[1] },
+            if i & 1 == 0 { lo[2] } else { hi[2] },
+        ]
+    })
 }
 fn bucket_at(
-    buckets: &[Bucket], bins: &HashMap<[i32; 3], Vec<usize>>,
-    point: [f32; 3], width: f32, tolerance: f32,
+    buckets: &[Bucket],
+    bins: &HashMap<[i32; 3], Vec<usize>>,
+    point: [f32; 3],
+    width: f32,
+    tolerance: f32,
 ) -> Option<usize> {
-    cells(point, width).into_iter().filter_map(|cell| bins.get(&cell)).flatten().copied()
+    cells(point, width)
+        .into_iter()
+        .filter_map(|cell| bins.get(&cell))
+        .flatten()
+        .copied()
         .find(|&i| distance(buckets[i].point, point) < tolerance)
 }
 
 pub(super) fn free_parents(
-    map: &gearbox_gbx::Map, src: &dyn ModelSource,
+    map: &gearbox_gbx::Map,
+    src: &dyn ModelSource,
 ) -> Result<HashMap<usize, (usize, usize)>> {
     let mut entries = Vec::new();
     let mut buckets: Vec<Bucket> = Vec::new();
@@ -124,13 +138,13 @@ pub(super) fn free_parents(
                     continue;
                 }
                 let ground = || -> Result<bool> {
-                    if face >= 4 { return Ok(false); }
+                    if face >= 4 {
+                        return Ok(false);
+                    }
                     let zone = geometry.ground_heights.iter().find(|(cell, _)| *cell == [unit[0], unit[2]]);
-                    let Some((_, height)) = zone
-                    else { return Ok(false) };
-                    let height = height.with_context(|| format!(
-                        "non-flat free clip ground zone on {}", block.name,
-                    ))?;
+                    let Some((_, height)) = zone else { return Ok(false) };
+                    let height = height
+                        .with_context(|| format!("non-flat free clip ground zone on {}", block.name,))?;
                     Ok(unit[1] == height)
                 };
                 for (j, name) in names.iter().enumerate() {
@@ -139,15 +153,17 @@ pub(super) fn free_parents(
                     let placed = place::compose_iso(local, parent_location);
                     let key = BlockKey {
                         name: gearbox_packs::assets::block_name(name).into(),
-                        variant: 0, sub_variant: 0, flags: 0,
+                        variant: 0,
+                        sub_variant: 0,
+                        flags: 0,
                     };
-                    let Some(clip_geometry) = src.block_geometry(&key)
-                    else {
+                    let Some(clip_geometry) = src.block_geometry(&key) else {
                         continue;
                     };
                     let expected = contact(placed, clip_geometry.clip_type, geometry.cell);
-                    let Some(bucket) = bucket_at(&buckets, &bins, expected.1, width, tolerance)
-                    else { continue };
+                    let Some(bucket) = bucket_at(&buckets, &bins, expected.1, width, tolerance) else {
+                        continue;
+                    };
                     for &k in buckets[bucket].entries.iter().rev() {
                         let entry = &mut entries[k];
                         if entry.parent.is_none()

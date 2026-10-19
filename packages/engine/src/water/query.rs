@@ -1,6 +1,10 @@
-use crate::{Vec3, numeric, math::{cvtt, maxss, minss}};
-use crate::world_water::{Column, Entry, Grid, Layer, ModelBox, VoxelGrid};
 use super::WaterManager;
+use crate::world_water::{Column, Entry, Grid, Layer, ModelBox, VoxelGrid};
+use crate::{
+    Vec3,
+    math::{cvtt, maxss, minss},
+    numeric,
+};
 
 pub const LAYER_MARGIN: f32 = 0.00001;
 
@@ -12,17 +16,14 @@ impl Grid {
     }
 
     pub fn contains_cell(&self, cell: [i32; 2]) -> bool {
-        cell[0] >= 0 && cell[1] >= 0
-            && cell[0] < self.size[0] as i32 && cell[1] < self.size[1] as i32
+        cell[0] >= 0 && cell[1] >= 0 && cell[0] < self.size[0] as i32 && cell[1] < self.size[1] as i32
     }
 
     fn index(&self, cell: [i32; 2]) -> usize {
         self.size[0].wrapping_mul(cell[1] as u32).wrapping_add(cell[0] as u32) as usize
     }
 
-    pub fn column_at<'a>(&self, cell: [i32; 2], columns: &'a [Column], default: &'a Column)
-        -> &'a Column
-    {
+    pub fn column_at<'a>(&self, cell: [i32; 2], columns: &'a [Column], default: &'a Column) -> &'a Column {
         if self.contains_cell(cell) { &columns[self.index(cell)] } else { default }
     }
 
@@ -30,9 +31,12 @@ impl Grid {
         if self.contains_cell(cell) { heads[self.index(cell)] } else { self.default_value }
     }
 
-    pub(crate) fn entries_at<'a>(&self, point: [f32; 2], heads: &[u32], entries: &'a [Entry])
-        -> impl Iterator<Item = u32> + 'a
-    {
+    pub(crate) fn entries_at<'a>(
+        &self,
+        point: [f32; 2],
+        heads: &[u32],
+        entries: &'a [Entry],
+    ) -> impl Iterator<Item = u32> + 'a {
         let mut next = self.head_at(self.cell_at(point), heads);
         std::iter::from_fn(move || {
             let entry = entries.get(next as usize)?;
@@ -44,8 +48,7 @@ impl Grid {
 
 impl Layer {
     pub fn span(&self, height: f32) -> [f32; 2] {
-        [self.bottom as f32 * height - LAYER_MARGIN,
-            self.top.wrapping_add(1) as f32 * height + LAYER_MARGIN]
+        [self.bottom as f32 * height - LAYER_MARGIN, self.top.wrapping_add(1) as f32 * height + LAYER_MARGIN]
     }
 }
 
@@ -69,9 +72,13 @@ impl ModelBox {
 }
 
 impl WaterManager<'_> {
-    pub fn query(&self, point: Vec3, height: f32, mut depth: Option<&mut f32>,
-        mut material: Option<&mut u32>) -> bool
-    {
+    pub fn query(
+        &self,
+        point: Vec3,
+        height: f32,
+        mut depth: Option<&mut f32>,
+        mut material: Option<&mut u32>,
+    ) -> bool {
         if self.water.queries_disabled || self.water.volumes.is_empty() {
             return false;
         }
@@ -81,11 +88,17 @@ impl WaterManager<'_> {
         let mut best = f32::MIN;
         for volume in &self.water.volumes {
             let column = volume.grid.column_at(
-                volume.grid.cell_at(horizontal), &volume.columns, &volume.default_column,
+                volume.grid.cell_at(horizontal),
+                &volume.columns,
+                &volume.default_column,
             );
             if column.surface > column.bottom && top > column.bottom && column.surface > point.y {
-                if let Some(out) = depth { *out = column.surface; }
-                if let Some(out) = material { *out = column.material; }
+                if let Some(out) = depth {
+                    *out = column.surface;
+                }
+                if let Some(out) = material {
+                    *out = column.material;
+                }
                 return true;
             }
             for index in volume.box_grid.entries_at(horizontal, &volume.heads, &volume.entries) {
@@ -93,8 +106,12 @@ impl WaterManager<'_> {
                 let model = &self.water.models[model_box.model as usize];
                 if model_box.overlaps(model, point, top) {
                     hit = true;
-                    if let Some(out) = material.as_deref_mut() { *out = model.material; }
-                    if depth.is_none() { return true; }
+                    if let Some(out) = material.as_deref_mut() {
+                        *out = model.material;
+                    }
+                    if depth.is_none() {
+                        return true;
+                    }
                     best = maxss(model_box.surface(model), best);
                 }
             }

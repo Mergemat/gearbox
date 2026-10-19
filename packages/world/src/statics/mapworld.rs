@@ -1,9 +1,9 @@
-use anyhow::Result;
-use gearbox_engine::collision::ItemEvents;
 use super::packs::LAYER_TRIGGER;
 use crate::statics::items::ItemSpec;
 use crate::statics::model::{self, ModelSource};
 use crate::statics::place;
+use anyhow::Result;
+use gearbox_engine::collision::ItemEvents;
 
 #[derive(Clone, Debug)]
 pub enum Placed {
@@ -32,11 +32,13 @@ pub fn blocks(map: &gearbox_gbx::Map, src: &mut dyn ModelSource) -> Result<Vec<P
                 .iter()
                 .map(|p| {
                     let entity = p.entity;
-                    let block_frame = p.block_location
-                        || (p.layer == LAYER_TRIGGER && p.local == place::IDENTITY);
+                    let block_frame =
+                        p.block_location || (p.layer == LAYER_TRIGGER && p.local == place::IDENTITY);
                     let transform = if block_frame {
                         place::transform_matrix(model::block_location_with(block, &model.geometry))
-                    } else { place::transform(place::compose(iso, p.local)) };
+                    } else {
+                        place::transform(place::compose(iso, p.local))
+                    };
                     ItemSpec {
                         entity,
                         shape: p.shape,

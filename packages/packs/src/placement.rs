@@ -190,12 +190,26 @@ pub fn grid_iso_variant(coord: [i32; 3], dir: u32, size: [u32; 3], v: VariantOff
     grid_iso_in(CELL, None, coord, dir, size, v)
 }
 
-pub fn grid_iso_in(cell: [f32; 3], loc: Option<([f32; 9], [f32; 3])>, coord: [i32; 3], dir: u32, size: [u32; 3], v: VariantOffset) -> Iso {
+pub fn grid_iso_in(
+    cell: [f32; 3],
+    loc: Option<([f32; 9], [f32; 3])>,
+    coord: [i32; 3],
+    dir: u32,
+    size: [u32; 3],
+    v: VariantOffset,
+) -> Iso {
     let (r, p) = grid_location_in(cell, loc, coord, dir, size, v);
     Iso { q: rotation_quat(r), p }
 }
 
-pub fn grid_location_in(cell: [f32; 3], loc: Option<([f32; 9], [f32; 3])>, coord: [i32; 3], dir: u32, size: [u32; 3], v: VariantOffset) -> ([f32; 9], [f32; 3]) {
+pub fn grid_location_in(
+    cell: [f32; 3],
+    loc: Option<([f32; 9], [f32; 3])>,
+    coord: [i32; 3],
+    dir: u32,
+    size: [u32; 3],
+    v: VariantOffset,
+) -> ([f32; 9], [f32; 3]) {
     let mut l = grid_location_cell(cell, coord, dir, size);
     if let Some(loc) = loc {
         l = compose_iso(l, loc);

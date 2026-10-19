@@ -14,9 +14,7 @@ fn road_visual_and_collision_occupy_the_same_block() {
     let parts = cache.model("Stadium/Media/Prefab/RoadTech/Straight_Air.Prefab.Gbx", 0).unwrap();
     assert!(!parts.is_empty());
     let visual = bounds(
-        parts
-            .iter()
-            .flat_map(|p| cache.meshes[p.mesh_id].positions.iter().map(|&v| point(p.transform, v))),
+        parts.iter().flat_map(|p| cache.meshes[p.mesh_id].positions.iter().map(|&v| point(p.transform, v))),
     )
     .unwrap();
     let collision = assets.block_model("RoadTechStraight", false, 0, 0, 0).unwrap();
@@ -65,7 +63,10 @@ fn four_cars_have_textures_and_independently_movable_wheels() {
         for w in &car.wheels {
             assert!(!w.instances.is_empty(), "{} {}", car.car, w.name);
             for axis in [9, 11] {
-                assert_eq!(w.transform[axis].is_sign_positive(), w.physics_transform[axis].is_sign_positive());
+                assert_eq!(
+                    w.transform[axis].is_sign_positive(),
+                    w.physics_transform[axis].is_sign_positive()
+                );
             }
             for &i in &w.instances {
                 let mesh = &cache.meshes[car.instances[i].mesh_id];

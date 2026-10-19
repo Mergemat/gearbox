@@ -8,8 +8,12 @@ pub struct VehicleBody<'a> {
 }
 
 impl VehicleBody<'_> {
-    pub fn state(&self) -> BodyState { self.dyna.state(self.handle).clone() }
-    pub fn center_of_mass(&self) -> Vec3 { self.dyna.body(self.handle).center_of_mass() }
+    pub fn state(&self) -> BodyState {
+        self.dyna.state(self.handle).clone()
+    }
+    pub fn center_of_mass(&self) -> Vec3 {
+        self.dyna.body(self.handle).center_of_mass()
+    }
     pub fn set_gravity(&mut self, gravity: f32) {
         self.dyna.body_mut(self.handle).record.coefficient = gravity;
     }

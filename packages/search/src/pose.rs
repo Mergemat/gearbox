@@ -1,5 +1,5 @@
-use anyhow::{Result, ensure};
 use crate::Body;
+use anyhow::{Result, ensure};
 use gearbox_engine::Session;
 use serde::{Deserialize, Serialize};
 
@@ -18,13 +18,7 @@ impl Pose {
         }
     }
     pub fn validate(&self) -> Result<()> {
-        ensure!(
-            self.position
-                .iter()
-                .chain(&self.velocity)
-                .all(|v| v.is_finite()),
-            "non-finite pose"
-        );
+        ensure!(self.position.iter().chain(&self.velocity).all(|v| v.is_finite()), "non-finite pose");
         unit(self.rotation)?;
         Ok(())
     }
@@ -41,9 +35,7 @@ pub fn rotation_distance(a: [f32; 4], b: [f32; 4]) -> f64 {
     if !n.is_finite() || n <= 1e-24 {
         return f64::INFINITY;
     }
-    let dot = (0..4)
-        .map(|k| f64::from(a[k]) * f64::from(b[k]))
-        .sum::<f64>();
+    let dot = (0..4).map(|k| f64::from(a[k]) * f64::from(b[k])).sum::<f64>();
     2.0 * (dot.abs() / n).clamp(0.0, 1.0).acos()
 }
 
@@ -73,15 +65,14 @@ impl PoseGoal {
         ensure!(
             self.position_weights.iter().any(|v| *v > 0.0)
                 || self.angle_weight > 0.0
-                || (self.velocity_tolerance.is_some()
-                    && self.velocity_weights.iter().any(|v| *v > 0.0)),
+                || (self.velocity_tolerance.is_some() && self.velocity_weights.iter().any(|v| *v > 0.0)),
             "pose metric has no positive weight"
         );
         Ok(())
     }
     pub fn error(&self, actual: Pose) -> f64 {
-        let mut error = f64::from(self.angle_weight)
-            * rotation_distance(self.pose.rotation, actual.rotation).powi(2);
+        let mut error =
+            f64::from(self.angle_weight) * rotation_distance(self.pose.rotation, actual.rotation).powi(2);
         for k in 0..3 {
             error += f64::from(self.position_weights[k])
                 * (f64::from(actual.position[k]) - f64::from(self.pose.position[k])).powi(2);
@@ -90,20 +81,14 @@ impl PoseGoal {
                     * (f64::from(actual.velocity[k]) - f64::from(self.pose.velocity[k])).powi(2);
             }
         }
-        if error.is_finite() {
-            error
-        } else {
-            f64::INFINITY
-        }
+        if error.is_finite() { error } else { f64::INFINITY }
     }
     pub fn contains(&self, actual: Pose) -> bool {
-        (0..3).all(|k| {
-            (actual.position[k] - self.pose.position[k]).abs() <= self.position_tolerance[k]
-        }) && rotation_distance(self.pose.rotation, actual.rotation)
-            <= f64::from(self.angle_tolerance)
-            && self.velocity_tolerance.is_none_or(|t| {
-                (0..3).all(|k| (actual.velocity[k] - self.pose.velocity[k]).abs() <= t[k])
-            })
+        (0..3).all(|k| (actual.position[k] - self.pose.position[k]).abs() <= self.position_tolerance[k])
+            && rotation_distance(self.pose.rotation, actual.rotation) <= f64::from(self.angle_tolerance)
+            && self
+                .velocity_tolerance
+                .is_none_or(|t| (0..3).all(|k| (actual.velocity[k] - self.pose.velocity[k]).abs() <= t[k]))
     }
 }
 
@@ -115,14 +100,15 @@ pub struct Placement {
 }
 pub fn place(native: &mut Session, placement: &Placement) -> Result<()> {
     placement.pose.validate()?;
-    ensure!(
-        placement.angular_velocity.iter().all(|v| v.is_finite()),
-        "non-finite angular velocity"
-    );
+    ensure!(placement.angular_velocity.iter().all(|v| v.is_finite()), "non-finite angular velocity");
     let q = unit(placement.pose.rotation)?;
     let rotation = gearbox_engine::Mat3::from_quat(gearbox_engine::Quat::new(q[0], q[1], q[2], q[3]));
-    native.place_car(gearbox_engine::Iso::new(rotation, placement.pose.position.into()),
-        placement.pose.velocity.into(), placement.angular_velocity.into(), placement.reset_contacts);
+    native.place_car(
+        gearbox_engine::Iso::new(rotation, placement.pose.position.into()),
+        placement.pose.velocity.into(),
+        placement.angular_velocity.into(),
+        placement.reset_contacts,
+    );
     Ok(())
 }
 

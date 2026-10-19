@@ -13,7 +13,10 @@ pub fn load(path: &Path) -> Result<Replay> {
 }
 
 pub fn driven_ghost(replay: &Replay) -> Result<&Ghost> {
-    replay.ghosts.iter().find(|g| g.race_time_ms.is_some() && !g.inputs.is_empty())
+    replay
+        .ghosts
+        .iter()
+        .find(|g| g.race_time_ms.is_some() && !g.inputs.is_empty())
         .context("no finished ghost with inputs")
 }
 
@@ -24,14 +27,22 @@ pub fn inputs(replay: &Replay) -> Result<InputFile> {
     let kept: Vec<_> = d
         .events
         .iter()
-        .filter(|e| !(matches!(e.kind, gearbox_gbx::inputs::EventKind::Horn(_))
-            || (e.tick == 0 && matches!(e.kind, gearbox_gbx::inputs::EventKind::Respawn))))
+        .filter(|e| {
+            !(matches!(e.kind, gearbox_gbx::inputs::EventKind::Horn(_))
+                || (e.tick == 0 && matches!(e.kind, gearbox_gbx::inputs::EventKind::Respawn)))
+        })
         .collect();
     ensure!(kept.is_empty(), "input events other than horns and a start respawn are not supported: {kept:?}");
     let seed = ghost.validation_seed.map(|s| s as u32).filter(|&s| s != 0);
-    let controls = d.ticks.iter().map(|t| Controls {
-        gas: t.gas as u8 as f32, brake: t.brake as u8 as f32, steer: t.steer as f32 / 127.0,
-    }).collect();
+    let controls = d
+        .ticks
+        .iter()
+        .map(|t| Controls {
+            gas: t.gas as u8 as f32,
+            brake: t.brake as u8 as f32,
+            steer: t.steer as f32 / 127.0,
+        })
+        .collect();
     Ok(InputFile { t0: d.start_offset_ms, seed, controls })
 }
 
@@ -46,14 +57,16 @@ pub fn replays_for_map(map: &Path) -> Vec<PathBuf> {
     let id: String = stem.chars().take_while(char::is_ascii_digit).collect();
     if let (false, Some(dir)) = (id.is_empty(), map.parent()) {
         let prefix = format!("{id}_");
-        out.extend(files(dir).filter(|p| is_run(p)
-            && p.file_name().unwrap_or_default().to_string_lossy().starts_with(&prefix)));
+        out.extend(files(dir).filter(|p| {
+            is_run(p) && p.file_name().unwrap_or_default().to_string_lossy().starts_with(&prefix)
+        }));
     }
     let uid = std::fs::read(map).ok().and_then(|b| gearbox_gbx::Map::parse(&b).ok()).and_then(|m| m.uid);
     if let (Some(uid), Some(dir)) = (uid, map.parent()) {
         let small = |p: &Path| std::fs::metadata(p).is_ok_and(|m| m.len() < 64 << 20);
-        out.extend(files(dir).filter(|p| is_run(p) && small(p)
-            && load(p).is_ok_and(|r| r.map_uid.as_deref() == Some(uid.as_str()))));
+        out.extend(files(dir).filter(|p| {
+            is_run(p) && small(p) && load(p).is_ok_and(|r| r.map_uid.as_deref() == Some(uid.as_str()))
+        }));
     }
     let mut out: Vec<PathBuf> = out.into_iter().filter_map(|p| p.canonicalize().ok()).collect();
     out.sort();
@@ -94,7 +107,9 @@ impl GhostTrack {
     }
 
     pub fn from_replay(replay: &Replay, path: &Path) -> Result<Self> {
-        let ghost = driven_ghost(replay).ok().filter(|g| g.record.is_some())
+        let ghost = driven_ghost(replay)
+            .ok()
+            .filter(|g| g.record.is_some())
             .or_else(|| replay.ghosts.iter().find(|g| g.record.is_some()))
             .context("no ghost with a record")?;
         let samples: Vec<GhostSample> = ghost
@@ -104,16 +119,28 @@ impl GhostTrack {
             .find(|e| e.class_id == CLASS_VEHICLE_VIS)
             .into_iter()
             .flat_map(|e| &e.samples)
-            .filter_map(|s| s.vehicle.as_ref().map(|v| GhostSample {
-                time_ms: s.time_ms, position: v.position, rotation: v.rotation, speed: v.speed,
-            }))
+            .filter_map(|s| {
+                s.vehicle.as_ref().map(|v| GhostSample {
+                    time_ms: s.time_ms,
+                    position: v.position,
+                    rotation: v.rotation,
+                    speed: v.speed,
+                })
+            })
             .collect();
         ensure!(samples.len() > 1, "the ghost's record has no vehicle samples");
-        let file = path.file_name().unwrap_or_default().to_string_lossy()
-            .replace(".Replay.Gbx", "").replace(".Ghost.Gbx", "");
+        let file = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .replace(".Replay.Gbx", "")
+            .replace(".Ghost.Gbx", "");
         Ok(Self {
             path: path.to_path_buf(),
-            name: ghost.nickname.clone().filter(|n| !n.is_empty())
+            name: ghost
+                .nickname
+                .clone()
+                .filter(|n| !n.is_empty())
                 .map_or(file.clone(), |n| format!("{n} ({file})")),
             race_time_ms: ghost.race_time_ms,
             checkpoints_ms: ghost.checkpoints_ms.iter().flatten().copied().collect(),
@@ -154,7 +181,9 @@ impl GhostTrack {
             let len2: f32 = ab.iter().map(|x| x * x).sum();
             let u = if len2 > 0.0 {
                 ((0..3).map(|k| ab[k] * ap[k]).sum::<f32>() / len2).clamp(0.0, 1.0)
-            } else { 0.0 };
+            } else {
+                0.0
+            };
             let q = std::array::from_fn(|k| a.position[k] + ab[k] * u);
             let d = dist(q, pos);
             if best.is_none_or(|(bd, _)| d < bd) {
@@ -176,10 +205,14 @@ mod tests {
     use super::*;
 
     fn straight() -> GhostTrack {
-        let samples = (0..200).map(|i| GhostSample {
-            time_ms: 50 * i, position: [0.5 * i as f32, 0.0, 0.0],
-            rotation: [0.0, 0.0, 0.0, 1.0], speed: 10.0,
-        }).collect();
+        let samples = (0..200)
+            .map(|i| GhostSample {
+                time_ms: 50 * i,
+                position: [0.5 * i as f32, 0.0, 0.0],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+                speed: 10.0,
+            })
+            .collect();
         GhostTrack { samples, ..Default::default() }
     }
 

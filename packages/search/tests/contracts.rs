@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
 
 use gearbox_engine::Controls;
-use rand::{SeedableRng, rngs::StdRng};
+use gearbox_engine::race::RaceState;
 use gearbox_search::input::Timeline;
 use gearbox_search::mutation::Mutation;
 use gearbox_search::objective::{Objective, Score};
-use gearbox_engine::race::RaceState;
+use rand::{SeedableRng, rngs::StdRng};
 
 #[test]
 fn malformed_inputs_and_uncovered_times_are_errors() {
@@ -31,11 +31,7 @@ fn malformed_inputs_and_uncovered_times_are_errors() {
 
 #[test]
 fn neutral_throttle_seeds_are_distinct() {
-    let neutral = Timeline {
-        t0: 0,
-        seed: None,
-        controls: vec![Controls::default(); 100],
-    };
+    let neutral = Timeline { t0: 0, seed: None, controls: vec![Controls::default(); 100] };
     let mut seeds: Vec<Vec<Controls>> = Vec::new();
     for attempt in 0..16 {
         let mut inputs = neutral.clone();
@@ -59,10 +55,7 @@ fn padding_a_late_timeline_keeps_every_tick_on_its_race_time() {
         assert_eq!(padded.controls[padded.index(ms).unwrap()], Controls::default());
     }
     for ms in [30, 40] {
-        assert_eq!(
-            padded.controls[padded.index(ms).unwrap()],
-            late.controls[late.index(ms).unwrap()]
-        );
+        assert_eq!(padded.controls[padded.index(ms).unwrap()], late.controls[late.index(ms).unwrap()]);
     }
     assert!(late.starting_at(40).is_err());
     assert!(late.starting_at(-25).is_err());
@@ -70,33 +63,14 @@ fn padding_a_late_timeline_keeps_every_tick_on_its_race_time() {
 
 #[test]
 fn race_ranking_keeps_milliseconds_primary_and_rejects_equal_scores() {
-    let slow_fast_car = Score::Race {
-        time_ms: 2488,
-        speed_squared: 1_000_000.0,
-    };
-    let fast_slow_car = Score::Race {
-        time_ms: 2487,
-        speed_squared: 1.0,
-    };
+    let slow_fast_car = Score::Race { time_ms: 2488, speed_squared: 1_000_000.0 };
+    let fast_slow_car = Score::Race { time_ms: 2487, speed_squared: 1.0 };
     assert_eq!(fast_slow_car.quality_cmp(&slow_fast_car), Ordering::Greater);
     assert_eq!(fast_slow_car.quality_cmp(&fast_slow_car), Ordering::Equal);
-    assert_eq!(
-        fast_slow_car.quality_cmp(&Score::Unreached),
-        Ordering::Greater
-    );
-    let fast_faster_car = Score::Race {
-        time_ms: 2487,
-        speed_squared: 2.0,
-    };
-    assert_eq!(
-        fast_faster_car.quality_cmp(&fast_slow_car),
-        Ordering::Greater
-    );
-    let race = RaceState {
-        checkpoints: vec![2487, 5001],
-        laps: 1,
-        finish: Some(5001),
-    };
+    assert_eq!(fast_slow_car.quality_cmp(&Score::Unreached), Ordering::Greater);
+    let fast_faster_car = Score::Race { time_ms: 2487, speed_squared: 2.0 };
+    assert_eq!(fast_faster_car.quality_cmp(&fast_slow_car), Ordering::Greater);
+    let race = RaceState { checkpoints: vec![2487, 5001], laps: 1, finish: Some(5001) };
     assert_eq!(Objective::Waypoint(2).race_time(&race), Some(5001));
     assert_eq!(Objective::Waypoint(3).race_time(&race), None);
     assert_eq!(Objective::Finish.race_time(&race), Some(5001));
@@ -136,24 +110,10 @@ fn mutations_cannot_change_the_prefix_suffix_or_control_ranges() {
 
 #[test]
 fn guided_misses_have_gradient_but_cannot_beat_a_reached_gate() {
-    let score = |time_ms, cost, bonus| Score::Guided {
-        time_ms,
-        cost,
-        speed_squared: 100.0,
-        bonus,
-    };
-    assert_eq!(
-        score(None, 2.0, 0.0).quality_cmp(&score(None, 10.0, 0.0)),
-        Ordering::Greater
-    );
-    assert_eq!(
-        score(Some(99999), 99999.0, 0.0).quality_cmp(&score(None, -1e12, 1e12)),
-        Ordering::Greater
-    );
-    assert_eq!(
-        score(Some(100), 100.0, 0.0).quality_cmp(&score(Some(101), 101.0, 1e12)),
-        Ordering::Greater
-    );
+    let score = |time_ms, cost, bonus| Score::Guided { time_ms, cost, speed_squared: 100.0, bonus };
+    assert_eq!(score(None, 2.0, 0.0).quality_cmp(&score(None, 10.0, 0.0)), Ordering::Greater);
+    assert_eq!(score(Some(99999), 99999.0, 0.0).quality_cmp(&score(None, -1e12, 1e12)), Ordering::Greater);
+    assert_eq!(score(Some(100), 100.0, 0.0).quality_cmp(&score(Some(101), 101.0, 1e12)), Ordering::Greater);
 }
 
 #[test]
@@ -161,7 +121,8 @@ fn polyline_projection_respects_turns_and_limits_jumps_at_crossings() {
     use gearbox_search::objective::ReferencePath;
     let path = ReferencePath {
         points: vec![[0., 0., 0.], [10., 0., 0.], [10., 0., 10.]],
-        deviation_penalty: 1.0, stay_within: None
+        deviation_penalty: 1.0,
+        stay_within: None,
     };
     path.validate().unwrap();
     let (progress, deviation) = path.project([12., 0., 5.], f64::INFINITY);
@@ -172,31 +133,15 @@ fn polyline_projection_respects_turns_and_limits_jumps_at_crossings() {
 
 #[test]
 fn exploration_from_neutral_includes_acceleration_and_preserves_window() {
-    let mut inputs = Timeline {
-        t0: -1500,
-        seed: None,
-        controls: vec![Controls::default(); 200],
-    };
+    let mut inputs = Timeline { t0: -1500, seed: None, controls: vec![Controls::default(); 200] };
     let mut rng = StdRng::seed_from_u64(42);
     Mutation::default().explore(&mut inputs, 40..100, &[], 20, 0, &mut rng);
-    assert!(
-        inputs.controls[40..100]
-            .iter()
-            .all(|c| c.gas == 1.0 && c.steer == 0.0)
-    );
-    assert!(
-        inputs.controls[..40]
-            .iter()
-            .chain(&inputs.controls[100..])
-            .all(|c| *c == Controls::default())
-    );
+    assert!(inputs.controls[40..100].iter().all(|c| c.gas == 1.0 && c.steer == 0.0));
+    assert!(inputs.controls[..40].iter().chain(&inputs.controls[100..]).all(|c| *c == Controls::default()));
     for attempt in 1..200 {
         Mutation::default().explore(&mut inputs, 40..100, &[], 20, attempt, &mut rng);
         assert!(
-            inputs.controls[..40]
-                .iter()
-                .chain(&inputs.controls[100..])
-                .all(|c| *c == Controls::default())
+            inputs.controls[..40].iter().chain(&inputs.controls[100..]).all(|c| *c == Controls::default())
         );
         assert!(inputs.controls.iter().all(|c| (0.0..=1.0).contains(&c.gas)
             && (0.0..=1.0).contains(&c.brake)
@@ -206,11 +151,14 @@ fn exploration_from_neutral_includes_acceleration_and_preserves_window() {
 
 #[test]
 fn goals_rank_by_progress_then_the_last_time() {
-    use std::cmp::Ordering;
     use gearbox_search::objective::Score;
-    let goals = |times: Vec<i32>, error: f64| Score::Goals { times, total: 3, error, strayed: false, cuts: 0 };
-    let early_first = Score::Goals { times: vec![1000, 5000, 9000], total: 3, error: 0.0, strayed: false, cuts: 0 };
-    let early_last = Score::Goals { times: vec![1010, 5100, 8000], total: 3, error: 0.0, strayed: false, cuts: 0 };
+    use std::cmp::Ordering;
+    let goals =
+        |times: Vec<i32>, error: f64| Score::Goals { times, total: 3, error, strayed: false, cuts: 0 };
+    let early_first =
+        Score::Goals { times: vec![1000, 5000, 9000], total: 3, error: 0.0, strayed: false, cuts: 0 };
+    let early_last =
+        Score::Goals { times: vec![1010, 5100, 8000], total: 3, error: 0.0, strayed: false, cuts: 0 };
     assert_eq!(early_last.quality_cmp(&early_first), Ordering::Greater);
     assert_eq!(goals(vec![1100], 10.0).quality_cmp(&goals(vec![1000], 50.0)), Ordering::Greater);
     assert_eq!(goals(vec![9000, 9500], 900.0).quality_cmp(&goals(vec![1000], 0.1)), Ordering::Greater);
@@ -218,9 +166,15 @@ fn goals_rank_by_progress_then_the_last_time() {
 
 #[test]
 fn pedal_cuts_have_to_pay_for_themselves() {
-    use std::cmp::Ordering;
     use gearbox_search::objective::Score;
-    let line = |times: Vec<i32>, error: f64, cuts: u32| Score::Goals { times, total: 1, error, strayed: false, cuts };
+    use std::cmp::Ordering;
+    let line = |times: Vec<i32>, error: f64, cuts: u32| Score::Goals {
+        times,
+        total: 1,
+        error,
+        strayed: false,
+        cuts,
+    };
     assert_eq!(line(vec![], 10.0, 0).quality_cmp(&line(vec![], 9.0, 40)), Ordering::Greater);
     assert_eq!(line(vec![], 7.0, 40).quality_cmp(&line(vec![], 10.0, 0)), Ordering::Greater);
     assert_eq!(line(vec![5200], 0.0, 90).quality_cmp(&line(vec![5210], 0.0, 0)), Ordering::Greater);

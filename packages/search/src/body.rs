@@ -13,8 +13,16 @@ impl From<&gearbox_engine::dyna::BodyState> for Body {
     }
 }
 impl Body {
-    pub fn position(&self) -> [f32; 3] { self.0[9..12].try_into().unwrap() }
-    pub fn rotation(&self) -> [f32; 9] { self.0[..9].try_into().unwrap() }
-    pub fn local_velocity(&self) -> [f32; 3] { self.0[16..19].try_into().unwrap() }
-    pub fn local_angular_velocity(&self) -> [f32; 3] { self.0[19..22].try_into().unwrap() }
+    pub fn position(&self) -> [f32; 3] {
+        self.0[9..12].try_into().unwrap()
+    }
+    pub fn rotation(&self) -> [f32; 9] {
+        self.0[..9].try_into().unwrap()
+    }
+    pub fn local_velocity(&self) -> [f32; 3] {
+        self.0[16..19].try_into().unwrap()
+    }
+    pub fn local_angular_velocity(&self) -> [f32; 3] {
+        self.0[19..22].try_into().unwrap()
+    }
 }

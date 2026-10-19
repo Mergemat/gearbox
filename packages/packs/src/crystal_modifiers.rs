@@ -21,11 +21,7 @@ pub(crate) fn select(
                 let Some(group) = groups.iter().position(|g| g == group) else {
                     continue;
                 };
-                let g = if *trigger {
-                    &c.triggers[*index]
-                } else {
-                    &c.geometry[*index]
-                };
+                let g = if *trigger { &c.triggers[*index] } else { &c.geometry[*index] };
                 for ((face, _), &fg) in g.faces.iter().zip(&g.face_groups).rev() {
                     if fg != group {
                         continue;
@@ -58,11 +54,7 @@ pub fn centroid(positions: impl IntoIterator<Item = [f32; 3]>) -> [f32; 3] {
     }
     sum.map(|v| {
         let scale = crate::reader_math::maxss(1.0, crate::reader_math::maxss(v.abs(), 0.0));
-        if scale * 0.00001 >= (v - 0.0).abs() {
-            0.0
-        } else {
-            v
-        }
+        if scale * 0.00001 >= (v - 0.0).abs() { 0.0 } else { v }
     })
 }
 
@@ -96,13 +88,7 @@ pub(crate) fn apply(c: &mut Crystal, selections: &[Selection], value: [f32; 3], 
         let selected: Vec<_> = points.iter().copied().filter(|p| p.0 == trigger).collect();
         let mut positions: Vec<_> = selected
             .iter()
-            .map(|&(_, g, p)| {
-                if trigger {
-                    c.triggers[g].positions[p]
-                } else {
-                    c.geometry[g].positions[p]
-                }
-            })
+            .map(|&(_, g, p)| if trigger { c.triggers[g].positions[p] } else { c.geometry[g].positions[p] })
             .collect();
         if scaling {
             scale(&mut positions, value);

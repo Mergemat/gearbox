@@ -1,6 +1,6 @@
 use super::common::PivotState;
+use super::common::{EPS, KMH, PEDAL_THRESHOLD, PI, PIVOT_UP_THRESHOLD, TINY, sign_one};
 use super::{ForceCtx, surface::SurfaceResponse};
-use super::common::{EPS, KMH, PI, TINY, PEDAL_THRESHOLD, PIVOT_UP_THRESHOLD, sign_one};
 use crate::math::{angle_approx, fast_exp2};
 
 const LOG2_E: f32 = 1.442695;
@@ -52,7 +52,8 @@ pub fn pivot_forces(ctx: &mut ForceCtx<'_>, active: bool, steer: f32, dt: f32) {
     let state = ctx.body.state();
     let velocity = [ctx.local_velocity.x, ctx.local_velocity.y, ctx.local_velocity.z];
     let blocked = ctx.tuning.low_grip_threshold >= ctx.vehicle.grip
-        || ctx.vehicle.special_material_present != 0 || dt > EPS;
+        || ctx.vehicle.special_material_present != 0
+        || dt > EPS;
     let eligible = !(PEDAL_THRESHOLD > ctx.vehicle.controls.gas)
         && !(PEDAL_THRESHOLD > ctx.vehicle.controls.brake)
         && !(EPS > steer.abs())
@@ -78,8 +79,8 @@ fn construct_pivot(ctx: &mut ForceCtx<'_>, steer: f32, state: crate::dyna::BodyS
 
     let (normal_x, normal_y, normal_z) = initialize_axis(ctx);
     store_support_radius(ctx);
-    let (velocity_x, velocity_y, velocity_z) = (ctx.local_velocity.x, ctx.local_velocity.y,
-        ctx.local_velocity.z);
+    let (velocity_x, velocity_y, velocity_z) =
+        (ctx.local_velocity.x, ctx.local_velocity.y, ctx.local_velocity.z);
     let mut tangent_x = (velocity_z * normal_y - velocity_y * normal_z) * steering_sign;
     let mut tangent_y = (velocity_x * normal_z - velocity_z * normal_x) * steering_sign;
     let mut tangent_z = (velocity_y * normal_x - velocity_x * normal_y) * steering_sign;
@@ -102,7 +103,8 @@ fn construct_pivot(ctx: &mut ForceCtx<'_>, steer: f32, state: crate::dyna::BodyS
     if PIVOT_UP_THRESHOLD > ctx.vehicle.pivot_axis_y {
         ctx.vehicle.set_pivot_state(PivotState::Idle);
         ctx.vehicle.pivot_axis_x = 0.0;
-        ctx.vehicle.pivot_axis_y = 1.0; ctx.vehicle.pivot_axis_z = 0.0;
+        ctx.vehicle.pivot_axis_y = 1.0;
+        ctx.vehicle.pivot_axis_z = 0.0;
     }
     let (a0, b0, c0) = (tangent_x * 0.0, tangent_y * 0.0, tangent_z * 0.0);
     let p1 = tangent_x - c0;
@@ -123,28 +125,28 @@ fn construct_pivot(ctx: &mut ForceCtx<'_>, steer: f32, state: crate::dyna::BodyS
         return;
     }
     let transform = crate::Iso::new(state.rot, state.pos).to_array();
-    let (center_x, center_y, center_z) = (ctx.geometry.center_of_mass.x,
-        ctx.geometry.center_of_mass.y, ctx.geometry.center_of_mass.z);
+    let (center_x, center_y, center_z) =
+        (ctx.geometry.center_of_mass.x, ctx.geometry.center_of_mass.y, ctx.geometry.center_of_mass.z);
     let radius = ctx.tuning.pivot_radius_by_speed.eval(velocity_z * KMH) + ctx.vehicle.pivot_support_radius;
     ctx.vehicle.pivot_radius = radius;
     let pivot_x = (((center_x * transform[0] + center_y * transform[1]) + center_z * transform[2])
-        + transform[9]) + ((transform[0] * tangent_x + transform[1] * tangent_y) + transform[2]
-        * tangent_z) * radius;
+        + transform[9])
+        + ((transform[0] * tangent_x + transform[1] * tangent_y) + transform[2] * tangent_z) * radius;
     ctx.vehicle.pivot_center_x = pivot_x;
     let pivot_y = (((center_x * transform[3] + center_y * transform[4]) + center_z * transform[5])
-        + transform[10]) + ((transform[3] * tangent_x + transform[4] * tangent_y) + transform[5]
-        * tangent_z) * radius;
+        + transform[10])
+        + ((transform[3] * tangent_x + transform[4] * tangent_y) + transform[5] * tangent_z) * radius;
     ctx.vehicle.pivot_center_y = pivot_y;
-    let pivot_z = ((transform[6] * tangent_x + transform[7] * tangent_y) + transform[8] * tangent_z)
-        * radius + (((center_x * transform[6] + center_y * transform[7]) + center_z * transform[8])
-        + transform[11]);
+    let pivot_z = ((transform[6] * tangent_x + transform[7] * tangent_y) + transform[8] * tangent_z) * radius
+        + (((center_x * transform[6] + center_y * transform[7]) + center_z * transform[8]) + transform[11]);
     ctx.vehicle.pivot_center_z = pivot_z;
     let pivoting = ctx.vehicle.pivot_state() == PivotState::Turning;
     ctx.vehicle.fixed_wheel_spin = pivoting as u32;
 }
 
 fn initialize_axis(ctx: &mut ForceCtx<'_>) -> (f32, f32, f32) {
-    ctx.vehicle.pivot_axis_y = 0.0; ctx.vehicle.pivot_axis_z = 0.0;
+    ctx.vehicle.pivot_axis_y = 0.0;
+    ctx.vehicle.pivot_axis_z = 0.0;
     ctx.vehicle.pivot_axis_x = 0.0;
     let (mut normal_x, mut normal_y, mut normal_z) = (0.0f32, 0.0f32, 0.0f32);
     for wheel in &ctx.vehicle.wheels {
@@ -182,9 +184,12 @@ fn store_support_radius(ctx: &mut ForceCtx<'_>) {
 }
 
 fn active_pivot_forces(
-    ctx: &mut ForceCtx<'_>, steer: f32, state: crate::dyna::BodyState, velocity: [f32; 3], eligible: bool,
+    ctx: &mut ForceCtx<'_>,
+    steer: f32,
+    state: crate::dyna::BodyState,
+    velocity: [f32; 3],
+    eligible: bool,
 ) {
-
     if !eligible {
         ctx.vehicle.set_pivot_state(PivotState::Idle);
         return;
@@ -204,12 +209,12 @@ fn active_pivot_forces(
     } else {
         (normal_x, normal_y, normal_z) = (0.0, 1.0, 0.0);
     }
-            let rotation = state.rot.to_array();
+    let rotation = state.rot.to_array();
     let world_x = (normal_y * rotation[1] + normal_x * rotation[0]) + normal_z * rotation[2];
     let world_y = (normal_x * rotation[3] + normal_y * rotation[4]) + normal_z * rotation[5];
     let world_z = (normal_x * rotation[6] + normal_y * rotation[7]) + normal_z * rotation[8];
-    let (held_x, held_y, held_z) = (ctx.vehicle.pivot_axis_x, ctx.vehicle.pivot_axis_y,
-        ctx.vehicle.pivot_axis_z);
+    let (held_x, held_y, held_z) =
+        (ctx.vehicle.pivot_axis_x, ctx.vehicle.pivot_axis_y, ctx.vehicle.pivot_axis_z);
     let c0 = held_z * world_y - held_y * world_z;
     let c1 = held_x * world_z - held_z * world_x;
     let c2 = held_y * world_x - held_x * world_y;
@@ -226,8 +231,8 @@ fn active_pivot_forces(
         ctx.vehicle.wheels[index].slipping = 0;
     }
     let radius_response = ctx.tuning.pivot_lateral_force_by_radius.eval(motion.distance) / KMH;
-    let force_scale = (-sign_one(steer) * radius_response - motion.lateral_speed)
-        * ctx.tuning.pivot_lateral_stiffness;
+    let force_scale =
+        (-sign_one(steer) * radius_response - motion.lateral_speed) * ctx.tuning.pivot_lateral_stiffness;
     ctx.body.add_local_force(motion.tangent * force_scale);
     pivot_yaw(ctx, steer, &motion);
     let c3 = ctx.tuning.pivot_torque_by_side_speed.eval(velocity[0].abs() * KMH);
@@ -238,28 +243,48 @@ fn active_pivot_forces(
 }
 
 fn radial_force(
-    ctx: &mut ForceCtx<'_>, state: crate::dyna::BodyState, velocity: [f32; 3], normal: [f32; 3],
+    ctx: &mut ForceCtx<'_>,
+    state: crate::dyna::BodyState,
+    velocity: [f32; 3],
+    normal: [f32; 3],
 ) -> PivotMotion {
     let [normal_x, normal_y, normal_z] = normal;
     let inverse_rotation = state.rot.transpose().to_array();
     let negative = crate::Vec3::new(-state.pos.x, -state.pos.y, -state.pos.z);
-    let inverse_transform = [inverse_rotation[0], inverse_rotation[1], inverse_rotation[2],
-        inverse_rotation[3], inverse_rotation[4], inverse_rotation[5],
-        inverse_rotation[6], inverse_rotation[7], inverse_rotation[8],
-        negative.x * inverse_rotation[0] + negative.y * inverse_rotation[1] + negative.z
-            * inverse_rotation[2],
-        negative.x * inverse_rotation[3] + negative.y * inverse_rotation[4] + negative.z
-            * inverse_rotation[5],
-        negative.x * inverse_rotation[6] + negative.y * inverse_rotation[7] + negative.z
-            * inverse_rotation[8]];
-    let (pivot_x, pivot_y, pivot_z) = (ctx.vehicle.pivot_center_x, ctx.vehicle.pivot_center_y,
-        ctx.vehicle.pivot_center_z);
-    let offset_x = (((pivot_x * inverse_transform[0] + pivot_y * inverse_transform[1]) + pivot_z
-        * inverse_transform[2]) + inverse_transform[9]) - ctx.geometry.center_of_mass.x;
-    let offset_y = (((pivot_x * inverse_transform[3] + pivot_y * inverse_transform[4]) + pivot_z
-        * inverse_transform[5]) + inverse_transform[10]) - ctx.geometry.center_of_mass.y;
-    let offset_z = (((pivot_x * inverse_transform[6] + pivot_y * inverse_transform[7]) + pivot_z
-        * inverse_transform[8]) + inverse_transform[11]) - ctx.geometry.center_of_mass.z;
+    let inverse_transform = [
+        inverse_rotation[0],
+        inverse_rotation[1],
+        inverse_rotation[2],
+        inverse_rotation[3],
+        inverse_rotation[4],
+        inverse_rotation[5],
+        inverse_rotation[6],
+        inverse_rotation[7],
+        inverse_rotation[8],
+        negative.x * inverse_rotation[0]
+            + negative.y * inverse_rotation[1]
+            + negative.z * inverse_rotation[2],
+        negative.x * inverse_rotation[3]
+            + negative.y * inverse_rotation[4]
+            + negative.z * inverse_rotation[5],
+        negative.x * inverse_rotation[6]
+            + negative.y * inverse_rotation[7]
+            + negative.z * inverse_rotation[8],
+    ];
+    let (pivot_x, pivot_y, pivot_z) =
+        (ctx.vehicle.pivot_center_x, ctx.vehicle.pivot_center_y, ctx.vehicle.pivot_center_z);
+    let offset_x = (((pivot_x * inverse_transform[0] + pivot_y * inverse_transform[1])
+        + pivot_z * inverse_transform[2])
+        + inverse_transform[9])
+        - ctx.geometry.center_of_mass.x;
+    let offset_y = (((pivot_x * inverse_transform[3] + pivot_y * inverse_transform[4])
+        + pivot_z * inverse_transform[5])
+        + inverse_transform[10])
+        - ctx.geometry.center_of_mass.y;
+    let offset_z = (((pivot_x * inverse_transform[6] + pivot_y * inverse_transform[7])
+        + pivot_z * inverse_transform[8])
+        + inverse_transform[11])
+        - ctx.geometry.center_of_mass.z;
     let squared_length = (offset_y * offset_y + offset_x * offset_x) + offset_z * offset_z;
     let distance = squared_length.sqrt();
     let (mut radial_x, mut radial_y, mut radial_z) = (offset_x, offset_y, offset_z);
@@ -313,32 +338,16 @@ fn pivot_yaw(ctx: &mut ForceCtx<'_>, steer: f32, motion: &PivotMotion) {
         && !(angle * steering_sign * PI > ctx.tuning.pivot_positive_angle_limit);
     if in_range {
         let yaw = ctx.local_angular_velocity.y;
-        let pulled = if angle > 0.0 {
-            0.0 > yaw
-        } else {
-            yaw > 0.0
-        };
+        let pulled = if angle > 0.0 { 0.0 > yaw } else { yaw > 0.0 };
         let t1 = if pulled {
             -ctx.tuning.pivot_return_yaw_damping * yaw
         } else {
-            let x = if angle > 0.0 {
-                angle - 1.0
-            } else {
-                angle + 1.0
-            };
+            let x = if angle > 0.0 { angle - 1.0 } else { angle + 1.0 };
             -ctx.tuning.pivot_outer_yaw_damping * yaw * (x * x)
         };
         let lr = lateral_speed / distance;
-        let against = if angle > 0.0 {
-            0.0 > lr
-        } else {
-            lr > 0.0
-        };
-        let t2 = if against {
-            -ctx.tuning.pivot_lateral_yaw_damping * lr
-        } else {
-            0.0
-        };
+        let against = if angle > 0.0 { 0.0 > lr } else { lr > 0.0 };
+        let t2 = if against { -ctx.tuning.pivot_lateral_yaw_damping * lr } else { 0.0 };
         let torque = (angle * ctx.tuning.pivot_angle_stiffness + t1) + t2;
         ctx.body.add_local_torque([torque * 0.0, torque, torque * 0.0].into());
     } else {

@@ -1,8 +1,15 @@
+use super::{
+    Tuning, Vehicle, VisualState,
+    flags::{ActionFlags, EffectFlags, SurfaceFlags, ToggleFlags, WheelFlags},
+    forces::common::{EPS, KMH},
+    model::ForceGeometry,
+};
 use crate::race::countdown::{ControlFlags, ControlPhase};
-use crate::{Vec3, Quat, Mat3, Iso, dyna::{BodyHandle, Dyna}, math::{quantize, maxss, minss}};
-use super::{Vehicle, VisualState, Tuning, model::ForceGeometry,
-    forces::common::{KMH, EPS},
-    flags::{EffectFlags, WheelFlags, ToggleFlags, ActionFlags, SurfaceFlags}};
+use crate::{
+    Iso, Mat3, Quat, Vec3,
+    dyna::{BodyHandle, Dyna},
+    math::{maxss, minss, quantize},
+};
 
 const STEP: f32 = 0.001;
 const QUAT_STEP: f32 = 1.0e-6;
@@ -16,7 +23,9 @@ pub struct Config<'a> {
     pub recent_event_duration: u32,
 }
 
-pub struct Refresh<'a> { pub config: Config<'a> }
+pub struct Refresh<'a> {
+    pub config: Config<'a>,
+}
 impl super::spawn::Visuals for Refresh<'_> {
     fn visual(&mut self, vehicle: &mut Vehicle, dyna: &Dyna, _fresh: bool) {
         vehicle_vis(vehicle, dyna, &self.config, 1);
@@ -52,7 +61,9 @@ impl Flags {
     }
 }
 
-pub fn vehicle_vis_fast(vehicle: &mut Vehicle) { vehicle.visual[1].state = vehicle.model_choice; }
+pub fn vehicle_vis_fast(vehicle: &mut Vehicle) {
+    vehicle.visual[1].state = vehicle.model_choice;
+}
 
 pub fn vis_state(vehicle: &Vehicle, config: &Config<'_>, velocity: Vec3, visual: &mut VisualState) {
     let tuning = config.tuning;
@@ -75,17 +86,15 @@ pub fn vis_state(vehicle: &Vehicle, config: &Config<'_>, velocity: Vec3, visual:
     boost(vehicle, tuning, velocity, tick, visual, &mut flags);
     status(vehicle, tuning, tick, visual, &mut flags);
     wheel_states(vehicle, config, visual);
-    visual.model_state = [vehicle.model_visual_0, vehicle.model_visual_1,
-        vehicle.model_visual_2, vehicle.model_visual_3];
+    visual.model_state =
+        [vehicle.model_visual_0, vehicle.model_visual_1, vehicle.model_visual_2, vehicle.model_visual_3];
     visual.wear = vehicle.wear;
     visual.recent_events = [0; 5];
     visual.race_start = vehicle.race_start;
     visual.flags = flags.0;
 }
 
-fn drivetrain(vehicle: &Vehicle, tuning: &Tuning, tick: u32, visual: &mut VisualState,
-    flags: &mut Flags)
-{
+fn drivetrain(vehicle: &Vehicle, tuning: &Tuning, tick: u32, visual: &mut VisualState, flags: &mut Flags) {
     flags.set(Flags::TURBO, vehicle.turbo_duration_ms != 0);
     let mut fraction = 0.0;
     if vehicle.turbo_duration_ms != 0 && vehicle.turbo_end != u32::MAX {
@@ -106,26 +115,40 @@ fn drivetrain(vehicle: &Vehicle, tuning: &Tuning, tick: u32, visual: &mut Visual
     let mode = match vehicle.turbo_active {
         1 | 4 | 5 => Some(1),
         2 => Some(2),
-        3 => Some(if 0.25 > vehicle.turbo_phase { 3 }
-            else if 0.75 > vehicle.turbo_phase { 4 } else { 5 }),
+        3 => Some(if 0.25 > vehicle.turbo_phase {
+            3
+        } else if 0.75 > vehicle.turbo_phase {
+            4
+        } else {
+            5
+        }),
         _ => None,
     };
-    if let Some(mode) = mode { visual.turbo = mode; }
+    if let Some(mode) = mode {
+        visual.turbo = mode;
+    }
 }
 
 fn pose(vehicle: &Vehicle, visual: &mut VisualState) {
     visual.pose = Iso::from_quat_pos(vehicle.quat, vehicle.pos);
     let source = vehicle.quat;
-    let quantised = Quat::new(quantize(source.w, QUAT_STEP), quantize(source.x, QUAT_STEP),
-        quantize(source.y, QUAT_STEP), quantize(source.z, QUAT_STEP));
-    let squared = ((quantised.x * quantised.x + quantised.w * quantised.w)
-        + quantised.y * quantised.y) + quantised.z * quantised.z;
-    if 0.0 > squared { todo!("sqrtf of a negative"); }
+    let quantised = Quat::new(
+        quantize(source.w, QUAT_STEP),
+        quantize(source.x, QUAT_STEP),
+        quantize(source.y, QUAT_STEP),
+        quantize(source.z, QUAT_STEP),
+    );
+    let squared = ((quantised.x * quantised.x + quantised.w * quantised.w) + quantised.y * quantised.y)
+        + quantised.z * quantised.z;
+    if 0.0 > squared {
+        todo!("sqrtf of a negative");
+    }
     let inverse = 1.0 / squared.sqrt();
     let rotation = if inverse > EPS && f32::MAX > inverse {
-        Quat::new(quantised.w * inverse, quantised.x * inverse, quantised.y * inverse,
-            quantised.z * inverse)
-    } else { Quat::IDENTITY };
+        Quat::new(quantised.w * inverse, quantised.x * inverse, quantised.y * inverse, quantised.z * inverse)
+    } else {
+        Quat::IDENTITY
+    };
     visual.pose.rot = Mat3::from_quat(rotation);
     visual.pose.pos = quantize3(vehicle.pos);
     visual.velocity = quantize3(vehicle.vel + vehicle.extra_linear_velocity);
@@ -143,37 +166,56 @@ fn inputs(vehicle: &Vehicle, velocity: Vec3, visual: &mut VisualState, flags: &m
     visual.drivetrain_state = vehicle.drivetrain_state;
     visual.action = ActionFlags(vehicle.controls.actions).contains(ActionFlags::SECONDARY) as u32;
     flags.set(Flags::DRIVETRAIN, ToggleFlags(vehicle.drivetrain_flags).enabled());
-    visual.braking = if vehicle.has_effect_flag(4) { 0 } else {
+    visual.braking = if vehicle.has_effect_flag(4) {
+        0
+    } else {
         let forward = vehicle.gear == 0 && -2.0 >= velocity.z;
         let pedal = if forward { vehicle.controls.gas } else { vehicle.controls.brake };
         (pedal > BRAKING_THRESHOLD) as u32
     };
     visual.secondary_action = (ToggleFlags(vehicle.controls.auxiliary_bytes[0] as u32).enabled()
         || ActionFlags(vehicle.controls.actions).contains(ActionFlags::TRANSIENT)
-        || ToggleFlags(vehicle.controls.auxiliary_words[11] as u32).enabled()) as u32;
+        || ToggleFlags(vehicle.controls.auxiliary_words[11] as u32).enabled())
+        as u32;
 }
 
-fn boost(vehicle: &Vehicle, tuning: &Tuning, velocity: Vec3, tick: u32,
-    visual: &mut VisualState, flags: &mut Flags)
-{
-    let fixed_spin = if vehicle.fixed_wheel_spin != 0 { true }
-        else if vehicle.effect_mode_is_free()
-            && ControlFlags(vehicle.control_flags).phase() == ControlPhase::Countdown
-            && vehicle.in_water == 0 {
-            let speed = velocity.z * KMH;
-            speed > tuning.fixed_spin_minimum_speed && tuning.fixed_spin_maximum_speed > speed
-                && vehicle.controls.gas > 0.0
-        } else { false };
+fn boost(
+    vehicle: &Vehicle,
+    tuning: &Tuning,
+    velocity: Vec3,
+    tick: u32,
+    visual: &mut VisualState,
+    flags: &mut Flags,
+) {
+    let fixed_spin = if vehicle.fixed_wheel_spin != 0 {
+        true
+    } else if vehicle.effect_mode_is_free()
+        && ControlFlags(vehicle.control_flags).phase() == ControlPhase::Countdown
+        && vehicle.in_water == 0
+    {
+        let speed = velocity.z * KMH;
+        speed > tuning.fixed_spin_minimum_speed
+            && tuning.fixed_spin_maximum_speed > speed
+            && vehicle.controls.gas > 0.0
+    } else {
+        false
+    };
     flags.set(Flags::FIXED_SPIN, fixed_spin);
-    if EffectFlags::FRAGILE.contains_in(vehicle.effect_flags) { flags.set(Flags::FIXED_SPIN, false); }
+    if EffectFlags::FRAGILE.contains_in(vehicle.effect_flags) {
+        flags.set(Flags::FIXED_SPIN, false);
+    }
     let maximum = vehicle.maximum_level();
-    if maximum <= 2 { visual.maximum_level = maximum; }
+    if maximum <= 2 {
+        visual.maximum_level = maximum;
+    }
     let level = vehicle.level();
-    if level <= 3 { visual.level = level; }
+    if level <= 3 {
+        visual.level = level;
+    }
     let mut fade = 0.0;
     if visual.level != 0 {
-        let left = vehicle.ground_pull_duration_ms.wrapping_add(vehicle.boost_last_contact)
-            .wrapping_sub(tick);
+        let left =
+            vehicle.ground_pull_duration_ms.wrapping_add(vehicle.boost_last_contact).wrapping_sub(tick);
         if left < tuning.boost_visual_fade_ms {
             fade = 1.0 - left as f32 / tuning.boost_visual_fade_ms as f32;
         }
@@ -193,10 +235,14 @@ fn status(vehicle: &Vehicle, tuning: &Tuning, tick: u32, visual: &mut VisualStat
     }
     visual.model_extra_state = 0;
     flags.set(Flags::EXTRA_MODEL, false);
-    flags.set(Flags::CONTACT_EFFECT,
-        SurfaceFlags(vehicle.visual_contact_flags).intersects(SurfaceFlags::VISUAL_CONTACTS));
-    flags.set(Flags::CONTACT_EFFECT_ON,
-        SurfaceFlags(vehicle.visual_contact_flags).intersects(SurfaceFlags::CONTACT));
+    flags.set(
+        Flags::CONTACT_EFFECT,
+        SurfaceFlags(vehicle.visual_contact_flags).intersects(SurfaceFlags::VISUAL_CONTACTS),
+    );
+    flags.set(
+        Flags::CONTACT_EFFECT_ON,
+        SurfaceFlags(vehicle.visual_contact_flags).intersects(SurfaceFlags::CONTACT),
+    );
     flags.set(Flags::CONTROL_A, ControlFlags(vehicle.control_flags).contains(ControlFlags::VISUAL_A));
     flags.set(Flags::CONTROL_B, ControlFlags(vehicle.control_flags).contains(ControlFlags::VISUAL_B));
     flags.set(Flags::CONTROL_C, ControlFlags(vehicle.control_flags).contains(ControlFlags::VISUAL_C));
@@ -204,22 +250,28 @@ fn status(vehicle: &Vehicle, tuning: &Tuning, tick: u32, visual: &mut VisualStat
     visual.slow_motion = if power >= 1.0 { 0 } else { 1 + !(power >= tuning.level_power_base) as u8 };
     flags.set(Flags::RESERVED_EFFECT, false);
     visual.state_sequence = vehicle.state_sequence;
-    if tuning.model_kind == 6 { todo!("visual state of model 6"); }
-    flags.set(Flags::ANGULAR_HOLD, vehicle.angular_control_hold_time != 0
-        && vehicle.angular_control_hold_time.wrapping_add(300) <= tick);
+    if tuning.model_kind == 6 {
+        todo!("visual state of model 6");
+    }
+    flags.set(
+        Flags::ANGULAR_HOLD,
+        vehicle.angular_control_hold_time != 0 && vehicle.angular_control_hold_time.wrapping_add(300) <= tick,
+    );
     visual.control_phase = ControlFlags(vehicle.control_flags).phase_code();
     visual.respawn_sequence = vehicle.respawn_sequence;
     flags.set(Flags::SPIN_UP, vehicle.spin_up_duration != 0);
     visual.meter = vehicle.engine_meter;
     flags.set(Flags::SPIN_UNINITIALIZED, vehicle.spin_up_begin == u32::MAX);
-    flags.set(Flags::RECENT_ROOF_CONTACT, vehicle.last_roof_contact != u32::MAX
-        && tick < vehicle.last_roof_contact.wrapping_add(2000));
+    flags.set(
+        Flags::RECENT_ROOF_CONTACT,
+        vehicle.last_roof_contact != u32::MAX && tick < vehicle.last_roof_contact.wrapping_add(2000),
+    );
 }
 
 fn wheel_states(vehicle: &Vehicle, config: &Config<'_>, visual: &mut VisualState) {
     let tuning = config.tuning;
-    let coefficients = vehicle.wheel_effect_coefficients(tuning, config.tick,
-        &config.geometry.effect_contacts);
+    let coefficients =
+        vehicle.wheel_effect_coefficients(tuning, config.tick, &config.geometry.effect_contacts);
     for index in 0..config.geometry.effect_contacts.len() {
         let wheel = &vehicle.wheels[index];
         let out = &mut visual.wheels[index];
@@ -244,21 +296,26 @@ fn wheel_states(vehicle: &Vehicle, config: &Config<'_>, visual: &mut VisualState
 }
 
 pub fn vehicle_vis(vehicle: &mut Vehicle, dyna: &Dyna, config: &Config<'_>, index: usize) {
-    let velocity = if vehicle.body != u32::MAX { dyna.local_velocity(BodyHandle(vehicle.body)) }
-        else { Vec3::ZERO };
+    let velocity =
+        if vehicle.body != u32::MAX { dyna.local_velocity(BodyHandle(vehicle.body)) } else { Vec3::ZERO };
     let mut visual = vehicle.visual[index].clone();
     vis_state(vehicle, config, velocity, &mut visual);
-    if super::race_flags::RaceFlags(vehicle.flags)
-        .contains(super::race_flags::RaceFlags::GHOST_RESPONSE)
-    {
+    if super::race_flags::RaceFlags(vehicle.flags).contains(super::race_flags::RaceFlags::GHOST_RESPONSE) {
         todo!("visual speed from quantised velocity");
     }
     let force = vehicle.pending_contact_force;
     let squared = (force.x * force.x + force.y * force.y) + force.z * force.z;
-    if 0.0 > squared { todo!("sqrtf of a negative"); }
-    if squared.sqrt() != 0.0 { todo!("visual impact time"); }
-    visual.input_direction = [vehicle.pitch_input_direction.to_bits(), vehicle.yaw_input_direction.to_bits(),
-        vehicle.angular_control_scratch];
+    if 0.0 > squared {
+        todo!("sqrtf of a negative");
+    }
+    if squared.sqrt() != 0.0 {
+        todo!("visual impact time");
+    }
+    visual.input_direction = [
+        vehicle.pitch_input_direction.to_bits(),
+        vehicle.yaw_input_direction.to_bits(),
+        vehicle.angular_control_scratch,
+    ];
     let mut flags = Flags(visual.flags);
     flags.set(Flags::PITCH_INPUT, ToggleFlags(vehicle.pitch_input_active).enabled());
     flags.set(Flags::HARD_IMPACT, ToggleFlags(vehicle.hard_impact).enabled());
@@ -268,17 +325,19 @@ pub fn vehicle_vis(vehicle: &mut Vehicle, dyna: &Dyna, config: &Config<'_>, inde
     visual.bump_frequency = vehicle.bump_frequency;
     visual.bump_amplitude = vehicle.bump_amplitude;
     copy_history(vehicle, &mut visual);
-    for (index, layer) in vehicle.wheel_layers.into_iter().enumerate()
-    { visual.wheels[index].layer = layer; }
+    for (index, layer) in vehicle.wheel_layers.into_iter().enumerate() {
+        visual.wheels[index].layer = layer;
+    }
     visual.sound_speed = vehicle.sound_speed;
     let delay = config.tuning.jump_rearm_ms;
     if config.tick.wrapping_sub(vehicle.last_jump) < delay
         || config.tick.wrapping_sub(vehicle.recent_effect_time) < delay
-    { todo!("visual recent respawn fade"); }
-    for (index, last) in vehicle.recent_events.into_iter().enumerate()
     {
-        visual.recent_events[index] = (last != 0
-            && config.tick < last.wrapping_add(config.recent_event_duration)) as u8;
+        todo!("visual recent respawn fade");
+    }
+    for (index, last) in vehicle.recent_events.into_iter().enumerate() {
+        visual.recent_events[index] =
+            (last != 0 && config.tick < last.wrapping_add(config.recent_event_duration)) as u8;
     }
     visual.flags = flags.0;
     vehicle.visual[index] = visual;

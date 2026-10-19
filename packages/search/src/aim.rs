@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::Body;
+use serde::{Deserialize, Serialize};
 
 use crate::tricks::{Events, Observation, TrickKind};
 
@@ -66,7 +66,10 @@ pub struct Verdict {
 
 impl Verdict {
     pub fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.held.cmp(&other.held).then(self.value.total_cmp(&other.value)).then(self.tie.total_cmp(&other.tie))
+        self.held
+            .cmp(&other.held)
+            .then(self.value.total_cmp(&other.value))
+            .then(self.tie.total_cmp(&other.tie))
     }
 }
 
@@ -74,7 +77,11 @@ pub fn yaw_pitch_roll(body: &Body) -> [f32; 3] {
     let r = body.rotation();
     let col = |j: usize| [r[j], r[3 + j], r[6 + j]];
     let (side, up, fwd) = (col(0), col(1), col(2));
-    [fwd[0].atan2(fwd[2]).to_degrees(), fwd[1].clamp(-1.0, 1.0).asin().to_degrees(), (-side[1]).atan2(up[1]).to_degrees()]
+    [
+        fwd[0].atan2(fwd[2]).to_degrees(),
+        fwd[1].clamp(-1.0, 1.0).asin().to_degrees(),
+        (-side[1]).atan2(up[1]).to_degrees(),
+    ]
 }
 
 fn off(a: f32, b: f32) -> f32 {
@@ -90,7 +97,12 @@ impl Quantity {
             Self::Speed => s.observation.speed * 3.6,
             Self::Height => f64::from(p[1]),
             Self::Distance { to } => (0..3).map(|k| f64::from(p[k] - to[k]).powi(2)).sum::<f64>().sqrt(),
-            Self::Angle { yaw, pitch, roll } => [yaw, pitch, roll].iter().zip(ypr).filter_map(|(t, a)| t.map(|t| f64::from(off(a, t)).powi(2))).sum::<f64>().sqrt(),
+            Self::Angle { yaw, pitch, roll } => [yaw, pitch, roll]
+                .iter()
+                .zip(ypr)
+                .filter_map(|(t, a)| t.map(|t| f64::from(off(a, t)).powi(2)))
+                .sum::<f64>()
+                .sqrt(),
             Self::Yaw => f64::from(ypr[0]),
             Self::Pitch => f64::from(ypr[1]),
             Self::Roll => f64::from(ypr[2]),
@@ -139,18 +151,34 @@ impl Aim {
     }
 
     pub fn fastest() -> Self {
-        Self { judged: Judged::End, measure: Measure { quantity: Quantity::Speed, higher: true }, conditions: Vec::new(), then: None }
+        Self {
+            judged: Judged::End,
+            measure: Measure { quantity: Quantity::Speed, higher: true },
+            conditions: Vec::new(),
+            then: None,
+        }
     }
 
     pub fn longest_trick(kind: TrickKind) -> Self {
-        Self { judged: Judged::End, measure: Measure { quantity: Quantity::Trick(kind), higher: true }, conditions: Vec::new(), then: Some(Measure { quantity: Quantity::Speed, higher: true }) }
+        Self {
+            judged: Judged::End,
+            measure: Measure { quantity: Quantity::Trick(kind), higher: true },
+            conditions: Vec::new(),
+            then: Some(Measure { quantity: Quantity::Speed, higher: true }),
+        }
     }
 
     pub fn nose_position() -> Self {
         Self {
             judged: Judged::End,
-            measure: Measure { quantity: Quantity::Angle { yaw: None, pitch: Some(-90.0), roll: None }, higher: false },
-            conditions: vec![Condition::Above(Quantity::Speed, 390.0), Condition::Wheels { which: Wheels::Front, touching: true }],
+            measure: Measure {
+                quantity: Quantity::Angle { yaw: None, pitch: Some(-90.0), roll: None },
+                higher: false,
+            },
+            conditions: vec![
+                Condition::Above(Quantity::Speed, 390.0),
+                Condition::Wheels { which: Wheels::Front, touching: true },
+            ],
             then: Some(Measure { quantity: Quantity::Speed, higher: true }),
         }
     }
@@ -158,7 +186,10 @@ impl Aim {
     pub fn land_flat() -> Self {
         Self {
             judged: Judged::End,
-            measure: Measure { quantity: Quantity::Angle { yaw: None, pitch: Some(0.0), roll: Some(0.0) }, higher: false },
+            measure: Measure {
+                quantity: Quantity::Angle { yaw: None, pitch: Some(0.0), roll: Some(0.0) },
+                higher: false,
+            },
             conditions: vec![Condition::Wheels { which: Wheels::All, touching: true }],
             then: Some(Measure { quantity: Quantity::Speed, higher: true }),
         }
@@ -182,7 +213,18 @@ mod tests {
     fn state<'a>(b: Body, wheels: [bool; 4], events: &'a Events) -> State<'a> {
         let v = b.local_velocity();
         let speed = v.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>().sqrt();
-        State { body: b, observation: Observation { speed, slip: 0.0, pitch: 0.0, wheels, body_contact: false, wall_contact: false }, events }
+        State {
+            body: b,
+            observation: Observation {
+                speed,
+                slip: 0.0,
+                pitch: 0.0,
+                wheels,
+                body_contact: false,
+                wall_contact: false,
+            },
+            events,
+        }
     }
 
     #[test]
@@ -190,7 +232,9 @@ mod tests {
         let e = Events::default();
         let s = state(body(-80.0, 120.0), [true, true, false, false], &e);
         assert!((Quantity::Pitch.value(&s) + 80.0).abs() < 1e-3);
-        assert!((Quantity::Angle { yaw: None, pitch: Some(-90.0), roll: None }.value(&s) - 10.0).abs() < 1e-3);
+        assert!(
+            (Quantity::Angle { yaw: None, pitch: Some(-90.0), roll: None }.value(&s) - 10.0).abs() < 1e-3
+        );
         assert_eq!(off(179.0, -179.0), 2.0);
     }
 
@@ -206,6 +250,10 @@ mod tests {
         assert_eq!(closer.cmp(&fast), std::cmp::Ordering::Greater);
         let flat = aim.judge(&state(body(-85.0, 120.0), [true, true, true, true], &e));
         assert!(flat.held, "front wheels touching holds with the rear down too");
-        assert!(!Condition::Wheels { which: Wheels::Rear, touching: false }.holds(&state(body(-85.0, 120.0), [true, true, true, true], &e)));
+        assert!(!Condition::Wheels { which: Wheels::Rear, touching: false }.holds(&state(
+            body(-85.0, 120.0),
+            [true, true, true, true],
+            &e
+        )));
     }
 }

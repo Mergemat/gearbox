@@ -1,6 +1,6 @@
-use crate::math::{maxss, minss, sincos};
-use crate::Vec3;
 use super::super::{Tuning, Vehicle};
+use crate::Vec3;
+use crate::math::{maxss, minss, sincos};
 
 pub(crate) const KMH: f32 = 3.6;
 pub(crate) const EPS: f32 = 0.00001;
@@ -76,44 +76,24 @@ const RESPONSE_FLOOR: f32 = 0.7;
 const SPEED_DRAG_SCALE: f32 = 0.15;
 
 pub fn asym_scale(x: f32) -> f32 {
-    if x >= 0.0 {
-        x * POSITIVE_DRAG_SCALE
-    } else {
-        -x * NEGATIVE_DRAG_SCALE
-    }
+    if x >= 0.0 { x * POSITIVE_DRAG_SCALE } else { -x * NEGATIVE_DRAG_SCALE }
 }
 
 pub fn sign_one(x: f32) -> f32 {
-    if x.to_bits() >> 31 != 0 {
-        -1.0
-    } else {
-        1.0
-    }
+    if x.to_bits() >> 31 != 0 { -1.0 } else { 1.0 }
 }
 
 pub fn clamp01(x: f32) -> f32 {
-    if x >= 0.0 {
-        minss(x, 1.0)
-    } else {
-        0.0
-    }
+    if x >= 0.0 { minss(x, 1.0) } else { 0.0 }
 }
 
 pub fn timed_ramp(now: u32, duration: u32, start: u32, base: f32, up: bool) -> f32 {
-    let sign = if up {
-        1.0
-    } else {
-        -1.0
-    };
+    let sign = if up { 1.0 } else { -1.0 };
     let x = (now.wrapping_sub(start) as f32 * sign) / duration as f32 + base;
     if x < 0.0 {
         return 0.0;
     }
-    if 1.0 <= x {
-        1.0
-    } else {
-        x
-    }
+    if 1.0 <= x { 1.0 } else { x }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -126,11 +106,7 @@ pub struct PiecewiseResponse {
 impl PiecewiseResponse {
     pub fn factor(&self, x: f32, scale: f32, alternate: bool) -> f32 {
         let keys = self.keys;
-        let values = if alternate {
-            self.alternate_values
-        } else {
-            self.values
-        };
+        let values = if alternate { self.alternate_values } else { self.values };
         let response = if keys[0] > x {
             values[0]
         } else if keys[1] > x {
@@ -152,11 +128,7 @@ pub fn speed_drag(velocity: Vec3, x: f32, y: f32, speed_scale: f32, body_scale: 
     let Vec3 { x: vx, y: vy, z: vz } = velocity;
     let fourth_root = ((vx * vx + vy * vy + vz * vz).sqrt()).sqrt();
     let response = fourth_root * speed_scale * x.abs().sqrt() * x;
-    let response = if response >= -1.0 {
-        minss(response, 0.0)
-    } else {
-        -1.0
-    };
+    let response = if response >= -1.0 { minss(response, 0.0) } else { -1.0 };
     let scale = y * body_scale + response * SPEED_DRAG_SCALE;
     Vec3::new(vx * scale, vy * scale, vz * scale)
 }
@@ -190,20 +162,12 @@ impl Vehicle {
     pub fn maximum_level(&self) -> u32 {
         let forced = self.forced_effect_flags >> 4 & 3;
         let current = self.boost_maximum_level;
-        if current < forced {
-            forced
-        } else {
-            current
-        }
+        if current < forced { forced } else { current }
     }
 
     pub fn level(&self) -> u32 {
         let flags = self.forced_effect_flags;
-        if flags & 0x30 == 0 {
-            self.boost_level
-        } else {
-            (flags & 0x40 != 0) as u32 + 1
-        }
+        if flags & 0x30 == 0 { self.boost_level } else { (flags & 0x40 != 0) as u32 + 1 }
     }
 
     pub fn level_consistent(&self) -> bool {
@@ -214,25 +178,13 @@ impl Vehicle {
         let exponent = (self.forced_effect_flags >> 7 & 3) as f32;
         let power = crate::math::fast_exp2(crate::math::fast_log2(tuning.level_power_base) * exponent)
             * self.level_power_scale;
-        if power >= tuning.level_power_minimum {
-            minss(power, 1.0)
-        } else {
-            tuning.level_power_minimum
-        }
+        if power >= tuning.level_power_minimum { minss(power, 1.0) } else { tuning.level_power_minimum }
     }
 
     pub fn steer_angle(&self, tuning: &Tuning, velocity: Vec3) -> f32 {
         let k = velocity.z.abs() * tuning.steering_angle_speed_scale + tuning.steering_angle_constant;
-        let angle = if EPS > k {
-            0.0
-        } else {
-            crate::math::asin(1.0 / k)
-        };
-        if self.has_effect_flag(8) {
-            0.0
-        } else {
-            -self.steering * angle
-        }
+        let angle = if EPS > k { 0.0 } else { crate::math::asin(1.0 / k) };
+        if self.has_effect_flag(8) { 0.0 } else { -self.steering * angle }
     }
 
     pub fn update_grip_meter(&mut self, recovery_ms: u32, minimum: f32, dt: f32) {
@@ -251,11 +203,7 @@ impl Vehicle {
         } else {
             rate + self.grip_meter
         };
-        self.grip_meter = if r >= minimum {
-            minss(r, 1.0)
-        } else {
-            minimum
-        };
+        self.grip_meter = if r >= minimum { minss(r, 1.0) } else { minimum };
     }
 }
 

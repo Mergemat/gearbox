@@ -77,11 +77,7 @@ pub struct ForceGeometry {
 
 impl ForceGeometry {
     pub fn material(&self, material: u8) -> &SurfaceMaterial {
-        let index = if self.material14_alias && material == 14 {
-            0
-        } else {
-            material as usize
-        };
+        let index = if self.material14_alias && material == 14 { 0 } else { material as usize };
         &self.materials[index]
     }
 }

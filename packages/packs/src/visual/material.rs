@@ -48,7 +48,13 @@ impl VisualCache {
         self.material_ids.insert(key, i);
         Ok(i)
     }
-    pub(super) fn texture_graph(&mut self, path: &str, mat: &mut Material, depth: usize, seen: &mut std::collections::HashSet<String>) -> Result<()> {
+    pub(super) fn texture_graph(
+        &mut self,
+        path: &str,
+        mat: &mut Material,
+        depth: usize,
+        seen: &mut std::collections::HashSet<String>,
+    ) -> Result<()> {
         ensure!(depth < 24, "material graph recursion");
         if !seen.insert(norm(path)) {
             return Ok(());
@@ -96,10 +102,8 @@ impl VisualCache {
         refs.dedup();
         for p in refs {
             let lower = norm(&p);
-            let sampler = named
-                .get(&lower)
-                .cloned()
-                .unwrap_or_else(|| crate::assets::block_name(&p).to_string());
+            let sampler =
+                named.get(&lower).cloned().unwrap_or_else(|| crate::assets::block_name(&p).to_string());
             let texture = lower.ends_with(".dds") || lower.ends_with(".png") || lower.ends_with(".webp");
             if texture {
                 match self.texture(&p) {
@@ -109,12 +113,7 @@ impl VisualCache {
                             kind = role(&p);
                         }
                         if !mat.textures.iter().any(|b| b.texture == texture && b.sampler == sampler) {
-                            mat.textures.push(TextureBinding {
-                                sampler,
-                                role: kind,
-                                texture,
-                                bitmap_usage,
-                            });
+                            mat.textures.push(TextureBinding { sampler, role: kind, texture, bitmap_usage });
                         }
                     }
                     Err(e) => self.report("texture", &p, format!("{e:#}")),
@@ -158,7 +157,10 @@ impl VisualCache {
             NodeLink::External(p) => self.material_or_diagnostic(&p),
             NodeLink::Null => Ok(self.intern_material(format!("{}#null", ctx.path), Material::default())),
             NodeLink::Inline(p) => self.inline_material(ctx, p),
-            NodeLink::Earlier(i) => self.inline_material(ctx, ctx.layout.nodes.iter().find(|n| n.index == i).context("material node")?.start),
+            NodeLink::Earlier(i) => self.inline_material(
+                ctx,
+                ctx.layout.nodes.iter().find(|n| n.index == i).context("material node")?.start,
+            ),
         }
     }
     fn inline_material(&mut self, ctx: &Ctx<'_>, p: usize) -> Result<MaterialId> {
@@ -187,13 +189,7 @@ impl VisualCache {
         }
     }
     pub(super) fn named_material(&mut self, name: String) -> MaterialId {
-        self.intern_material(
-            name.clone(),
-            Material {
-                name,
-                ..Default::default()
-            },
-        )
+        self.intern_material(name.clone(), Material { name, ..Default::default() })
     }
     pub(super) fn intern_unassigned(&mut self, path: &str) -> MaterialId {
         self.intern_material(format!("{path}#unassigned"), Material::default())
@@ -226,11 +222,7 @@ impl VisualCache {
         let base = r.string()?;
         let surface_id = Some(r.u8()?);
         let gameplay_id = Some(r.u8()?);
-        let link = if game || version == 10 {
-            Some(r.string()?)
-        } else {
-            crate::crystal::id(&mut r)?.1
-        };
+        let link = if game || version == 10 { Some(r.string()?) } else { crate::crystal::id(&mut r)?.1 };
         let mut mat = Material {
             name: name.unwrap_or_else(|| key.clone()),
             surface_id,
@@ -244,7 +236,8 @@ impl VisualCache {
         }
         let colors = (0..r.len()?).map(|_| r.i32()).collect::<Result<Vec<_>>>()?;
         if colors.len() == 3 && colors.iter().all(|&v| (0..=255).contains(&v)) {
-            mat.base_color = Some([colors[0] as f32 / 255., colors[1] as f32 / 255., colors[2] as f32 / 255., 1.]);
+            mat.base_color =
+                Some([colors[0] as f32 / 255., colors[1] as f32 / 255., colors[2] as f32 / 255., 1.]);
         }
         if let Some(link) = link.filter(|s| !s.is_empty()) {
             let path = if link.to_ascii_lowercase().ends_with(".gbx") {

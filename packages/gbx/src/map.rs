@@ -91,11 +91,7 @@ impl Block {
 impl Map {
     pub fn parse(file: &[u8]) -> Result<Self> {
         let c = Container::parse(file)?;
-        ensure!(
-            c.class_id == CLASS_MAP,
-            "not a map (class 0x{:08X})",
-            c.class_id
-        );
+        ensure!(c.class_id == CLASS_MAP, "not a map (class 0x{:08X})", c.class_id);
         let mut map = Map::default();
         if let Some(h) = c.header_chunk(0x0304_3003) {
             let mut r = Reader::new(h);
@@ -120,9 +116,7 @@ impl Map {
                             Ok(true)
                         })
                     })?;
-                    node(r, CLASS_PARAMETERS, |r| {
-                        parameters(r, &mut map.author_time_ms)
-                    })?;
+                    node(r, CLASS_PARAMETERS, |r| parameters(r, &mut map.author_time_ms))?;
                     r.i32()?;
                 }
                 0x0304_3018 => {
@@ -188,18 +182,16 @@ impl Map {
                 0x0304_3054 => map.embedded = embedded::read(r)?,
                 0x0304_305F => {
                     ensure!(r.u32()? == 0, "free blocks version");
-                    for b in map
-                        .blocks
-                        .iter_mut()
-                        .chain(map.baked_blocks.iter_mut())
-                        .filter(|b| b.is_free())
+                    for b in map.blocks.iter_mut().chain(map.baked_blocks.iter_mut()).filter(|b| b.is_free())
                     {
                         b.free = Some((r.vec3()?, r.vec3()?));
                     }
                 }
                 0x0304_3063 => {
                     ensure!(r.u32()? == 0, "item animation phase version");
-                    for item in &mut map.items { item.anim_phase = r.u8()?; }
+                    for item in &mut map.items {
+                        item.anim_phase = r.u8()?;
+                    }
                 }
                 _ => return Ok(false),
             }
@@ -275,7 +267,10 @@ fn blocks(r: &mut Reader) -> Result<Vec<Block>> {
                 NodeRef::Null => None,
                 NodeRef::Shared(i) => skins.get(&i).cloned(),
                 NodeRef::New(class) => {
-                    ensure!(class == CLASS_BLOCK_SKIN, "expected node 0x{CLASS_BLOCK_SKIN:08X}, got 0x{class:08X}");
+                    ensure!(
+                        class == CLASS_BLOCK_SKIN,
+                        "expected node 0x{CLASS_BLOCK_SKIN:08X}, got 0x{class:08X}"
+                    );
                     let mut strings = Vec::new();
                     block_skin(r, &mut strings)?;
                     skins.insert(index, strings.clone());
@@ -284,10 +279,7 @@ fn blocks(r: &mut Reader) -> Result<Vec<Block>> {
             };
         }
         let mut waypoint = None;
-        ensure!(
-            flags & (1 << 19) == 0,
-            "block char-physics property not supported"
-        );
+        ensure!(flags & (1 << 19) == 0, "block char-physics property not supported");
         if flags & (1 << 20) != 0 {
             node(r, CLASS_WAYPOINT, |r| {
                 waypoint = Some(waypoint_property(r)?);
@@ -350,10 +342,7 @@ fn block_skin(r: &mut Reader, out: &mut Vec<String>) -> Result<()> {
 }
 
 fn waypoint_property(r: &mut Reader) -> Result<Waypoint> {
-    let mut w = Waypoint {
-        tag: None,
-        order: 0,
-    };
+    let mut w = Waypoint { tag: None, order: 0 };
     r.chunks("CGameWaypointSpecialProperty", |r, id, _| {
         match id {
             0x2E00_9000 => match r.u32()? {

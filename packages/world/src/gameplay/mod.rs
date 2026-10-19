@@ -1,9 +1,12 @@
 mod player;
 mod scene;
 
-use anyhow::{Context, Result, ensure};
-use gearbox_engine::{Iso, race::{self, Race, RaceWaypoint, Rules, WaypointFlags}};
 use crate::statics::MapAssets;
+use anyhow::{Context, Result, ensure};
+use gearbox_engine::{
+    Iso,
+    race::{self, Race, RaceWaypoint, Rules, WaypointFlags},
+};
 pub use scene::{EntityBinding, EntityKind};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -34,22 +37,30 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, start: u32, now: u3
     let (waypoints, checkpoints_per_lap) = groups(landmarks);
     let initial_pose = Iso::from_array([0.0; 12]);
     let settings = race::RaceRules {
-        start, mode_bits: LOCAL_RACE_MODE,
+        start,
+        mode_bits: LOCAL_RACE_MODE,
         checkpoints: checkpoints_per_lap,
         ..Default::default()
     };
     Ok(Gameplay {
         race: Race {
             rules: Rules {
-                mode: race::Mode::Race, checkpoints_per_lap, lap_race: map.lap_race,
-                laps: if map.lap_race { map.laps } else { 0 }, waypoints, clear_untouched: false,
+                mode: race::Mode::Race,
+                checkpoints_per_lap,
+                lap_race: map.lap_race,
+                laps: if map.lap_race { map.laps } else { 0 },
+                waypoints,
+                clear_untouched: false,
             },
-            store: player::store(start), players: vec![player::build(start, spawn, 0)],
+            store: player::store(start),
+            players: vec![player::build(start, spawn, 0)],
         },
-        settings, scene: scene::build(now), entities: vec![EntityBinding {
-            handle: 0, kind: EntityKind::Vehicle, index: 0,
-        }],
-        ghost: Default::default(), spawn, initial_pose,
+        settings,
+        scene: scene::build(now),
+        entities: vec![EntityBinding { handle: 0, kind: EntityKind::Vehicle, index: 0 }],
+        ghost: Default::default(),
+        spawn,
+        initial_pose,
     })
 }
 
@@ -62,11 +73,17 @@ fn landmark(waypoint: &gearbox_gbx::map::Waypoint, pose: [u32; 12]) -> Result<(R
         "StartFinish" => WaypointFlags(WaypointFlags::SPAWN.0 | WaypointFlags::GOAL.0),
         _ => anyhow::bail!("unsupported waypoint tag {tag}"),
     };
-    Ok((RaceWaypoint {
-        flags, group: NO_GROUP, order: waypoint.order as u32, pose: Iso::from_array(pose.map(f32::from_bits)),
-        linked: flags.counts(), respawn: flags.contains(WaypointFlags::SPAWN)
-            || flags.contains(WaypointFlags::GOAL),
-    }, tag == "LinkedCheckpoint"))
+    Ok((
+        RaceWaypoint {
+            flags,
+            group: NO_GROUP,
+            order: waypoint.order as u32,
+            pose: Iso::from_array(pose.map(f32::from_bits)),
+            linked: flags.counts(),
+            respawn: flags.contains(WaypointFlags::SPAWN) || flags.contains(WaypointFlags::GOAL),
+        },
+        tag == "LinkedCheckpoint",
+    ))
 }
 
 const LOCAL_RACE_MODE: u8 = 0x88;
@@ -76,23 +93,39 @@ const LINKED_KEY: u32 = 0x8000_0000;
 fn select_spawn(landmarks: &[(RaceWaypoint, bool)]) -> Result<u32> {
     let spawn_only = |mark: &&(RaceWaypoint, bool)| mark.0.flags == WaypointFlags::SPAWN;
     let starts = landmarks.iter().filter(spawn_only).count();
-    let start_finishes = landmarks.iter().filter(|(mark, _)| mark.flags.contains(WaypointFlags::SPAWN)
-        && mark.flags.contains(WaypointFlags::GOAL)).count();
-    ensure!(starts <= 1 && (starts == 1 || start_finishes == 1),
-        "missing or multiple starts");
-    landmarks.iter().position(|(mark, _)| mark.flags == WaypointFlags::SPAWN)
+    let start_finishes = landmarks
+        .iter()
+        .filter(|(mark, _)| {
+            mark.flags.contains(WaypointFlags::SPAWN) && mark.flags.contains(WaypointFlags::GOAL)
+        })
+        .count();
+    ensure!(starts <= 1 && (starts == 1 || start_finishes == 1), "missing or multiple starts");
+    landmarks
+        .iter()
+        .position(|(mark, _)| mark.flags == WaypointFlags::SPAWN)
         .or_else(|| landmarks.iter().position(|(mark, _)| mark.flags.contains(WaypointFlags::SPAWN)))
-        .map(|index| index as u32).context("map has no start")
+        .map(|index| index as u32)
+        .context("map has no start")
 }
 
 fn groups(landmarks: Vec<(RaceWaypoint, bool)>) -> (Vec<RaceWaypoint>, u32) {
-    let keys: Vec<_> = landmarks.iter().enumerate().map(|(index, (mark, linked))| {
-        if mark.flags == WaypointFlags::SPAWN { NO_GROUP }
-        else if *linked { mark.order | LINKED_KEY } else { index as u32 }
-    }).collect();
+    let keys: Vec<_> = landmarks
+        .iter()
+        .enumerate()
+        .map(|(index, (mark, linked))| {
+            if mark.flags == WaypointFlags::SPAWN {
+                NO_GROUP
+            } else if *linked {
+                mark.order | LINKED_KEY
+            } else {
+                index as u32
+            }
+        })
+        .collect();
     let mut unique: Vec<_> = keys.iter().copied().filter(|&key| key != NO_GROUP).collect();
     gearbox_engine::numeric::quicksort(&mut unique, |left, right| match left.cmp(right) {
-        std::cmp::Ordering::Less => -1, std::cmp::Ordering::Equal => 0,
+        std::cmp::Ordering::Less => -1,
+        std::cmp::Ordering::Equal => 0,
         std::cmp::Ordering::Greater => 1,
     });
     unique.dedup();
@@ -100,28 +133,32 @@ fn groups(landmarks: Vec<(RaceWaypoint, bool)>) -> (Vec<RaceWaypoint>, u32) {
     let mut waypoints: Vec<_> = landmarks.into_iter().map(|(mark, _)| mark).collect();
     for (mark, key) in waypoints.iter_mut().zip(keys) {
         mark.group = unique.binary_search(&key).map_or(NO_GROUP, |index| index as u32);
-        if mark.flags.contains(WaypointFlags::CHECKPOINT) { checkpoints.insert(key); }
+        if mark.flags.contains(WaypointFlags::CHECKPOINT) {
+            checkpoints.insert(key);
+        }
     }
     (waypoints, checkpoints.len() as u32)
 }
 
 pub(crate) fn gates(
-    world: &gearbox_engine::static_world::StaticWorld, effects: &std::collections::HashMap<u32, u8>,
+    world: &gearbox_engine::static_world::StaticWorld,
+    effects: &std::collections::HashMap<u32, u8>,
 ) -> Result<Vec<race::GateRecord>> {
-    world.items.iter().filter(|item| {
-        matches!(item.entity, gearbox_engine::static_world::Entity::Gate(_))
-    }).map(|item| {
-        let effect = effects.get(&item.shape).copied()
-            .context("gate has no first material gameplay metadata")?;
-        let direction = world.shapes[item.shape as usize].main_dir;
-        let rows = item.iso.rot.rows;
-        let dir = gearbox_engine::Vec3::new(
-            direction.y * rows[0].y + direction.x * rows[0].x + direction.z * rows[0].z,
-            direction.x * rows[1].x + direction.y * rows[1].y + direction.z * rows[1].z,
-            direction.x * rows[2].x + direction.y * rows[2].y + direction.z * rows[2].z,
-        );
-        Ok(race::GateRecord {
-            effect, dir, id: u32::MAX,
+    world
+        .items
+        .iter()
+        .filter(|item| matches!(item.entity, gearbox_engine::static_world::Entity::Gate(_)))
+        .map(|item| {
+            let effect =
+                effects.get(&item.shape).copied().context("gate has no first material gameplay metadata")?;
+            let direction = world.shapes[item.shape as usize].main_dir;
+            let rows = item.iso.rot.rows;
+            let dir = gearbox_engine::Vec3::new(
+                direction.y * rows[0].y + direction.x * rows[0].x + direction.z * rows[0].z,
+                direction.x * rows[1].x + direction.y * rows[1].y + direction.z * rows[1].z,
+                direction.x * rows[2].x + direction.y * rows[2].y + direction.z * rows[2].z,
+            );
+            Ok(race::GateRecord { effect, dir, id: u32::MAX })
         })
-    }).collect()
+        .collect()
 }
