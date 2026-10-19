@@ -59,7 +59,7 @@ jobs:
           cargo update --workspace
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore(release): v$VERSION"
+          git diff --quiet || git commit -am "chore(release): v$VERSION"
           git tag "v$VERSION"
           git push origin HEAD:main "v$VERSION"
       - name: Pick the ref
