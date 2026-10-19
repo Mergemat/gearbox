@@ -158,7 +158,7 @@ jobs:
           args: --latest --strip header
         env:
           OUTPUT: NOTES.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           prerelease: ${{ needs.prepare.outputs.prerelease }}
