@@ -3,6 +3,11 @@ name = "gearbox-world"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
 description = "Typed map collision, water, gameplay and kinematic body construction"
 
 [dependencies]

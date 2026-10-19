@@ -3,6 +3,11 @@ name = "gearbox-cli"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
 description = "The gearbox command: replays and maps, packs, input search, golden checks"
 
 [[bin]]

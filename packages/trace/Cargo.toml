@@ -3,6 +3,11 @@ name = "gearbox-trace"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
 description = "Golden traces: the per-tick state an engine must reproduce bit for bit, and the check against them"
 
 [dependencies]

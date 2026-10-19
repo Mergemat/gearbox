@@ -3,6 +3,11 @@ name = "gearbox-engine"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
 description = "Trackmania 2020 physics on typed values"
 
 [dependencies]

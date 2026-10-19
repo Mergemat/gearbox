@@ -3,6 +3,11 @@ name = "gearbox-packs"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
 description = "Trackmania 2020 packs: pack reader, block collision models, car tunings, surface tables"
 
 [dependencies]

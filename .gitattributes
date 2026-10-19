@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.Gbx binary
+*.gbx binary
+*.zst binary
+*.bin binary
+*.icns binary
+*.ttf binary

@@ -2,7 +2,13 @@
 name = "gearbox-gbx"
 edition.workspace = true
 version.workspace = true
+description = "Trackmania GBX files: maps, replays, ghosts and their inputs"
 license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
 
 [dependencies]
 anyhow = "1"
