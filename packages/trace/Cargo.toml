@@ -12,6 +12,6 @@ description = "Golden traces: the per-tick state an engine must reproduce bit fo
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-zstd = "0.13"
+zstd = "0.14"
 gearbox-engine = { path = "../engine" }
 gearbox-world = { path = "../world" }
