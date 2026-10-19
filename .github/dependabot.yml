@@ -7,11 +7,6 @@ updates:
     groups:
       cargo:
         patterns: ["*"]
-    ignore:
-      - dependency-name: rand
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-      - dependency-name: glam
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
