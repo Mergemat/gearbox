@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+            app: true
+          - target: x86_64-apple-darwin
+            os: macos-14
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build the CLI
+        run: cargo build --release --locked --target ${{ matrix.target }} -p gearbox-cli
+      - name: Package the CLI
+        run: |
+          name="gearbox-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp LICENSE "dist/$name/"
+          if [ "${{ runner.os }}" = Windows ]; then
+            cp "target/${{ matrix.target }}/release/gearbox.exe" "dist/$name/"
+            (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null)
+          else
+            cp "target/${{ matrix.target }}/release/gearbox" "dist/$name/"
+            tar -C dist -czf "dist/$name.tar.gz" "$name"
+          fi
+          rm -rf "dist/$name"
+      - name: Build Gearbox.app
+        if: matrix.app
+        run: |
+          cargo build --release --locked --target ${{ matrix.target }} -p gearbox-editor
+          "target/${{ matrix.target }}/release/gearbox-editor" bundle --out dist
+          ditto -c -k --keepParent dist/Gearbox.app "dist/Gearbox-${GITHUB_REF_NAME}-macos-arm64.zip"
+          rm -rf dist/Gearbox.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: orhun/git-cliff-action@v4
+        id: notes
+        with:
+          args: --latest --strip header
+        env:
+          OUTPUT: NOTES.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: NOTES.md
+          files: dist/*
