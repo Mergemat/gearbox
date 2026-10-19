@@ -620,7 +620,7 @@ impl Live {
     }
 }
 
-const MAX_TRIES: usize = 192;
+const MAX_TRIES: usize = 1500;
 
 pub struct Request {
     pub origin: Savestate,

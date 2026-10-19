@@ -726,8 +726,8 @@ impl Scene {
         for (i, (path, mark)) in s.tries.iter().enumerate() {
             let age = (i as f32 + 1.0) / n;
             let c = match mark {
-                crate::optimize::Mark::Reached => rgba(theme::OK, (40.0 + 120.0 * age) as u8),
-                crate::optimize::Mark::Missed => rgba(theme::TEXT, (12.0 + 50.0 * age) as u8),
+                crate::optimize::Mark::Reached => rgba(theme::OK, (70.0 + 150.0 * age) as u8),
+                crate::optimize::Mark::Missed => rgba(theme::TEXT, (22.0 + 70.0 * age) as u8),
             };
             for w in path.windows(2) {
                 d.line(Vec3::from(w[0]) + Vec3::Y * 0.25, Vec3::from(w[1]) + Vec3::Y * 0.25, c);
