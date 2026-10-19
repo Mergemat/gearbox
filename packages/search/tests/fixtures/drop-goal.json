@@ -1,0 +1,38 @@
+{
+  "pose": {
+    "position": [
+      770.2,
+      8,
+      759.75
+    ],
+    "rotation": [
+      0.7071067811865476,
+      0,
+      -0.7071067811865476,
+      0
+    ],
+    "velocity": [
+      0,
+      0,
+      0
+    ]
+  },
+  "position_tolerance": [
+    0.1,
+    0.1,
+    0.05
+  ],
+  "angle_tolerance": 0.05,
+  "velocity_tolerance": null,
+  "position_weights": [
+    1,
+    1,
+    1
+  ],
+  "angle_weight": 3,
+  "velocity_weights": [
+    0,
+    0,
+    0
+  ]
+}

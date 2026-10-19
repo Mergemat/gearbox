@@ -1,0 +1,12 @@
+[package]
+name = "gearbox-world"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "Typed map collision, water, gameplay and kinematic body construction"
+
+[dependencies]
+anyhow = "1"
+gearbox-engine = { path = "../engine" }
+gearbox-gbx = { path = "../gbx" }
+gearbox-packs = { path = "../packs" }

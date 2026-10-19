@@ -1,0 +1,49 @@
+const SURFACES: [&str; 81] = [
+    "Concrete", "Pavement", "Grass", "Ice", "Metal", "Sand", "Dirt", "Turbo_Deprecated", "DirtRoad",
+    "Rubber", "SlidingRubber", "Test", "Rock", "Water", "Wood", "Danger", "Asphalt", "WetDirtRoad",
+    "WetAsphalt", "WetPavement", "WetGrass", "Snow", "ResonantMetal", "GolfBall", "GolfWall",
+    "GolfGround", "Turbo2_Deprecated", "Bumper_Deprecated", "NotCollidable", "FreeWheeling_Deprecated",
+    "TurboRoulette_Deprecated", "WallJump", "MetalTrans", "Stone", "Player", "Trunk", "TechLaser",
+    "SlidingWood", "PlayerOnly", "Tech", "TechArmor", "TechSafe", "OffZone", "Bullet", "TechHook",
+    "TechGround", "TechWall", "TechArrow", "TechHook2", "Forest", "Wheat", "TechTarget",
+    "PavementStair", "TechTeleport", "Energy", "TechMagnetic", "TurboTechMagnetic_Deprecated",
+    "Turbo2TechMagnetic_Deprecated", "TurboWood_Deprecated", "Turbo2Wood_Deprecated",
+    "FreeWheelingTechMagnetic_Deprecated", "FreeWheelingWood_Deprecated", "TechSuperMagnetic",
+    "TechNucleus", "TechMagneticAccel", "MetalFence", "TechGravityChange", "TechGravityReset",
+    "RubberBand", "Gravel", "Hack_NoGrip_Deprecated", "Bumper2_Deprecated", "NoSteering_Deprecated",
+    "NoBrakes_Deprecated", "RoadIce", "RoadSynthetic", "Green", "Plastic", "DevDebug", "Free3",
+    "XXX_Null",
+];
+
+pub fn surface_name(id: u8) -> &'static str {
+    SURFACES.get(id as usize).copied().unwrap_or("?")
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Family {
+    Road,
+    Ice,
+    Dirt,
+    Grass,
+    Plastic,
+    Wood,
+    Metal,
+    Water,
+    Other,
+}
+
+pub fn family(id: u8) -> Family {
+    match id {
+        16 | 18 | 75 => Family::Road,
+        0 | 1 | 19 | 52 => Family::Road,
+        3 | 21 | 74 => Family::Ice,
+        6 | 8 | 17 | 5 | 69 => Family::Dirt,
+        2 | 20 | 76 | 49 | 50 => Family::Grass,
+        9 | 10 | 77 | 68 => Family::Plastic,
+        14 | 37 | 35 => Family::Wood,
+        4 | 22 | 32 | 65 | 39..=48 | 55 | 62..=64 => Family::Metal,
+        13 => Family::Water,
+        _ => Family::Other,
+    }
+}
+

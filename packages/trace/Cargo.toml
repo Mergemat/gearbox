@@ -1,0 +1,12 @@
+[package]
+name = "gearbox-trace"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "Golden traces: the per-tick state an engine must reproduce bit for bit, and the check against them"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+zstd = "0.13"
+gearbox-engine = { path = "../engine" }
+gearbox-world = { path = "../world" }

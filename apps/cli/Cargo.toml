@@ -1,0 +1,21 @@
+[package]
+name = "gearbox-cli"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "The gearbox command: replays and maps, packs, input search, golden checks"
+
+[[bin]]
+name = "gearbox"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"
+gearbox-packs = { path = "../../packages/packs" }
+gearbox-gbx = { path = "../../packages/gbx" }
+gearbox-engine = { path = "../../packages/engine" }
+gearbox-world = { path = "../../packages/world" }
+gearbox-search = { path = "../../packages/search" }
+gearbox-trace = { path = "../../packages/trace" }

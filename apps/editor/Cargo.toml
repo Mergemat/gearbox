@@ -1,0 +1,41 @@
+[package]
+name = "gearbox-editor"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "The TAS editor on GPUI, with a wgpu 3D view composited through an IOSurface"
+
+[[bin]]
+name = "gearbox-editor"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+bytemuck = { version = "1", features = ["derive"] }
+futures = "0.3"
+glam = "0.30"
+pollster = "0.4"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+smallvec = "1"
+raw-window-handle = "0.6"
+gpui = { version = "=0.3.9", package = "gpui-pre" }
+gpui_platform = { version = "=0.3.9", package = "gpui-pre-platform", features = ["font-kit"] }
+wgpu = { version = "30", default-features = false, features = ["metal", "wgsl"] }
+gearbox-engine = { path = "../../packages/engine" }
+gearbox-world = { path = "../../packages/world" }
+gearbox-trace = { path = "../../packages/trace" }
+gearbox-search = { path = "../../packages/search" }
+gearbox-packs = { path = "../../packages/packs" }
+gearbox-gbx = { path = "../../packages/gbx" }
+image_dds = { version = "0.7", default-features = false, features = ["ddsfile", "image"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-core-foundation = { version = "0.3", features = ["CFDictionary", "CFNumber", "CFString"] }
+objc2-core-video = { version = "0.3", features = ["CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVPixelBufferIOSurface", "CVReturn", "objc2-io-surface"] }
+objc2-io-surface = { version = "0.3", features = ["IOSurfaceRef", "IOSurfaceTypes"] }
+objc2-foundation = { version = "0.3", features = ["NSError", "NSFileManager", "NSString", "NSURL"] }
+objc2-metal = { version = "0.3", features = ["MTLAllocation", "MTLDevice", "MTLPixelFormat", "MTLResource", "MTLTexture", "objc2-io-surface"] }

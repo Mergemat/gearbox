@@ -1,0 +1,12 @@
+[package]
+name = "gearbox-gbx"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1"
+flate2 = "1"
+lzokay-native = "0.1"
+serde = { version = "1", features = ["derive"] }
+zip = { version = "6", default-features = false, features = ["deflate-flate2"] }

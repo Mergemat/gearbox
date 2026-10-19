@@ -1,0 +1,19 @@
+[package]
+name = "gearbox-search"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "Offline savestate-based Trackmania input search"
+
+[dependencies]
+anyhow = "1"
+gearbox-engine = { path = "../engine" }
+gearbox-world = { path = "../world" }
+gearbox-trace = { path = "../trace" }
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+clap = { version = "4", features = ["derive"] }
+gearbox-packs = { path = "../packs" }

@@ -1,0 +1,8 @@
+[package]
+name = "gearbox-engine"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "Trackmania 2020 physics on typed values"
+
+[dependencies]

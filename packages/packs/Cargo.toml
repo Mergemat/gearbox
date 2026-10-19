@@ -1,0 +1,19 @@
+[package]
+name = "gearbox-packs"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "Trackmania 2020 packs: pack reader, block collision models, car tunings, surface tables"
+
+[dependencies]
+anyhow = "1"
+gearbox-gbx = { path = "../gbx" }
+gearbox-engine = { path = "../engine" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+postcard = { version = "1", features = ["use-std"] }
+lzokay-native = "0.1"
+dirs = "6"
+
+image = { version = "0.25", default-features = false, features = ["png", "webp"] }
+image_dds = { version = "0.7", default-features = false, features = ["ddsfile", "image"] }
