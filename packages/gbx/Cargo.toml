@@ -15,7 +15,7 @@ anyhow = "1"
 flate2 = "1"
 lzokay-native = "0.1"
 serde = { version = "1", features = ["derive"] }
-zip = { version = "6", default-features = false, features = ["deflate-flate2"] }
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 
 [lints]
 workspace = true

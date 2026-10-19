@@ -79,7 +79,7 @@ pub(super) fn read(r: &mut Reader) -> Result<EmbeddedData> {
             if file.is_dir() {
                 continue;
             }
-            let path = file.name().replace('/', "\\");
+            let path = file.name()?.replace('/', "\\");
             let mut data = Vec::new();
             file.read_to_end(&mut data).with_context(|| format!("embedded file {path}"))?;
             let item_model = if path.to_ascii_lowercase().ends_with(".gbx") {
