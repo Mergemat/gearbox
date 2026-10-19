@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -165,7 +164,7 @@ impl Pak {
     pub fn open(path: &Path, key: Option<[u8; 16]>) -> Result<Pak> {
         let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
         let mut head = vec![0u8; 0x4000];
-        let n = file.read_at(&mut head, 0)?;
+        let n = read_at(&file, &mut head, 0)?;
         head.truncate(n);
         ensure!(head.starts_with(b"NadeoPak"), "{}: not a NadeoPak", path.display());
         let mut r = Plain { b: &head, pos: 8 };
@@ -201,7 +200,7 @@ impl Pak {
         }
         let header_iv_offset = r.pos;
         let mut header = vec![0u8; header_max_size as usize];
-        let n = file.read_at(&mut header, 0)?;
+        let n = read_at(&file, &mut header, 0)?;
         header.truncate(n);
         let mut pak = Pak {
             path: path.to_owned(),
@@ -359,7 +358,7 @@ impl Pak {
 fn read_up_to(f: &File, buf: &mut [u8], at: u64) -> Result<usize> {
     let mut done = 0;
     while done < buf.len() {
-        let n = f.read_at(&mut buf[done..], at + done as u64)?;
+        let n = read_at(f, &mut buf[done..], at + done as u64)?;
         if n == 0 {
             break;
         }
@@ -388,7 +387,7 @@ impl<'k> FileDecoder<'k> {
         let (cipher, data_at) = if f.is_encrypted() {
             let bf = pak.bf.as_ref().context("pack key not set")?;
             let mut iv = [0u8; 8];
-            pak.file.read_exact_at(&mut iv, at)?;
+            read_exact_at(&pak.file, &mut iv, at)?;
             (Some(Cipher::new(bf, u64::from_le_bytes(iv))), at + 8)
         } else {
             (None, at)
@@ -477,4 +476,27 @@ impl<'k> FileDecoder<'k> {
     pub fn is_encrypted(&self) -> bool {
         self.cipher.is_some()
     }
+}
+
+#[cfg(unix)]
+fn read_at(file: &File, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
+    std::os::unix::fs::FileExt::read_at(file, buf, offset)
+}
+
+#[cfg(windows)]
+fn read_at(file: &File, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
+    std::os::windows::fs::FileExt::seek_read(file, buf, offset)
+}
+
+fn read_exact_at(file: &File, mut buf: &mut [u8], mut offset: u64) -> std::io::Result<()> {
+    while !buf.is_empty() {
+        match read_at(file, buf, offset)? {
+            0 => return Err(std::io::ErrorKind::UnexpectedEof.into()),
+            n => {
+                buf = &mut buf[n..];
+                offset += n as u64;
+            }
+        }
+    }
+    Ok(())
 }
