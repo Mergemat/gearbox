@@ -626,7 +626,7 @@ pub fn build_line(
                         .collect();
                     k += chunk;
                     if config.rollback_ms > 0.0 {
-                        if (k - from_k) % 100 == 0 {
+                        if (k - from_k).is_multiple_of(100) {
                             saved.push((k, beam.clone(), 0));
                         }
                         let low = recent.iter().copied().fold(f64::INFINITY, f64::min);

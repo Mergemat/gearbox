@@ -99,7 +99,7 @@ fn touch(tr: &Tri) -> Option<Hit> {
     let normal = tr.normal;
     let p0 = tr.vertices[0];
     let distance = (0.0 - p0[1]) * normal[1] + (0.0 - p0[0]) * normal[0] + (0.0 - p0[2]) * normal[2];
-    if distance > 1.0 || 0.0 > distance {
+    if !(0.0..=1.0).contains(&distance) {
         return None;
     }
     let section_radius = sqrt(1.0 - distance * distance);

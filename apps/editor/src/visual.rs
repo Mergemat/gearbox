@@ -392,7 +392,7 @@ fn tex_data(t: &tv::Texture, bc: bool) -> Result<TexData> {
             keep += 1;
         }
         mips.truncate(keep.max(1));
-        if t.width % bw == 0 && t.height % bh == 0 {
+        if t.width.is_multiple_of(bw) && t.height.is_multiple_of(bh) {
             return Ok(TexData { width: t.width, height: t.height, format: f, mips });
         }
     }

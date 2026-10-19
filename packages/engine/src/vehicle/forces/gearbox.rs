@@ -51,7 +51,7 @@ impl Vehicle {
         let airborne = !self.any_wheel_contact();
         let mut timer = self.shift_remaining;
         if timer > 0.0 {
-            timer = timer - dt;
+            timer -= dt;
             self.shift_remaining = timer;
         }
         let held = airborne || timer > 0.0;
@@ -103,7 +103,7 @@ impl Vehicle {
             rate = LEGACY_GROUND_RPM_RATE;
         } else {
             if timer >= 0.0 && dt + dt >= timer {
-                self.rpm = self.rpm - dt * tuning.maximum_rpm * SHIFT_RPM_DECAY;
+                self.rpm -= dt * tuning.maximum_rpm * SHIFT_RPM_DECAY;
             }
             target = pedal;
             rate = LEGACY_AIR_RPM_RATE;
@@ -310,7 +310,7 @@ impl Vehicle {
                 self.gearbox_state = GearboxState::Loaded as u32;
             }
         } else {
-            self.rpm = dt * tuning.rpm_launch_rate + self.rpm;
+            self.rpm += dt * tuning.rpm_launch_rate;
         }
     }
 

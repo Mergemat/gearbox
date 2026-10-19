@@ -32,13 +32,13 @@ impl EmbeddedFile {
         let mut path = self.path.replace('/', "\\");
         let namespaces = ["Items", "Blocks", "ClubItems"];
         let parts: Vec<_> = path.split('\\').collect();
-        if !namespaces.iter().any(|n| parts[0].eq_ignore_ascii_case(n)) {
-            if let Some(root) = parts.windows(2).position(|p| {
+        if !namespaces.iter().any(|n| parts[0].eq_ignore_ascii_case(n))
+            && let Some(root) = parts.windows(2).position(|p| {
                 ["Trackmania", "Trackmania2020"].iter().any(|n| p[0].eq_ignore_ascii_case(n))
                     && namespaces.iter().any(|n| p[1].eq_ignore_ascii_case(n))
-            }) {
-                path = parts[root + 1..].join("\\");
-            }
+            })
+        {
+            path = parts[root + 1..].join("\\");
         }
         for prefix in ["Items\\", "Blocks\\"] {
             if path.get(..prefix.len()).is_some_and(|p| p.eq_ignore_ascii_case(prefix)) {

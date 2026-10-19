@@ -136,32 +136,32 @@ impl Vehicle {
     ) -> WheelEffectCoefficients {
         assert!(contacts.len() <= self.wheels.len(), "at most four wheels");
         let mut coefficients = WheelEffectCoefficients::default();
-        let with_base = self.effect_flags as u8 >> 4 & 1 != 0;
+        let with_base = self.effect_flags >> 4 & 1 != 0;
         let (mut contacting_count, mut free_count) = (0, 0);
         for (index, &contact) in contacts.iter().enumerate() {
             let wheel = &self.wheels[index];
             let coefficient = wheel.effect_coefficient(tuning, now, with_base);
             coefficients.wheels[index] = coefficient;
-            coefficients.all = coefficient + coefficients.all;
+            coefficients.all += coefficient;
             if contact {
                 contacting_count += 1;
-                coefficients.contacting = coefficient + coefficients.contacting;
+                coefficients.contacting += coefficient;
             } else {
                 free_count += 1;
-                coefficients.free = coefficient + coefficients.free;
+                coefficients.free += coefficient;
             }
             if wheel.has_boost_material() {
                 coefficients.boost_material = true;
             }
         }
         if contacting_count != 0 {
-            coefficients.contacting = coefficients.contacting / contacting_count as f32;
+            coefficients.contacting /= contacting_count as f32;
         }
         if free_count != 0 {
-            coefficients.free = coefficients.free / free_count as f32;
+            coefficients.free /= free_count as f32;
         }
         if contacting_count + free_count != 0 {
-            coefficients.all = coefficients.all / (contacting_count + free_count) as f32;
+            coefficients.all /= (contacting_count + free_count) as f32;
         }
         coefficients
     }

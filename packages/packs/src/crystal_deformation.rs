@@ -282,15 +282,15 @@ pub(crate) fn apply_layers(
 ) {
     let mut selected = Vec::<(usize, Vec<usize>)>::new();
     for (group, id) in refs {
-        if let Some((_, groups, _, index)) = layers.iter().find(|l| &l.0 == id && l.2 == trigger) {
-            if let Some(group) = groups.iter().position(|g| g == group) {
-                let i = selected.iter().position(|s| s.0 == *index).unwrap_or_else(|| {
-                    selected.push((*index, Vec::new()));
-                    selected.len() - 1
-                });
-                if !selected[i].1.contains(&group) {
-                    selected[i].1.push(group);
-                }
+        if let Some((_, groups, _, index)) = layers.iter().find(|l| &l.0 == id && l.2 == trigger)
+            && let Some(group) = groups.iter().position(|g| g == group)
+        {
+            let i = selected.iter().position(|s| s.0 == *index).unwrap_or_else(|| {
+                selected.push((*index, Vec::new()));
+                selected.len() - 1
+            });
+            if !selected[i].1.contains(&group) {
+                selected[i].1.push(group);
             }
         }
     }

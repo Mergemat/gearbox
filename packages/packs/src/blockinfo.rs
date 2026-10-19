@@ -116,7 +116,7 @@ fn mobil(ctx: &Ctx, index: u32, start: usize, end: usize) -> Result<Mobil> {
     let mut r = Reader::new(b);
     r.skip(at + 4)?;
     let version = r.u32()?;
-    ensure!(version >= 14 && version < 64, "mobil chunk version {version}");
+    ensure!((14..64).contains(&version), "mobil chunk version {version}");
     m.solid_frequency = r.u32()?;
     if r.u8()? != 0 {
         m.geom_translation = Some(r.vec3()?);
@@ -369,7 +369,7 @@ pub fn read_block_info(buf: &[u8], layout: &Layout, path: &str) -> Result<BlockI
         variants.push(variant(&ctx, kind, index, v005[k], end, &mobils, own)?);
     }
     let (mut mm, mut mm2) = (None, None);
-    if let Some(p) = find_all(buf, body, 0x0304e031).into_iter().filter(|&p| own(p)).last() {
+    if let Some(p) = find_all(buf, body, 0x0304e031).into_iter().rfind(|&p| own(p)) {
         let mut r = Reader::new(buf);
         r.skip(p + 4)?;
         let v = r.u32()?;

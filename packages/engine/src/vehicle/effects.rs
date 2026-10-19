@@ -228,10 +228,9 @@ pub fn surface_effects(
 fn post(vehicle: &Vehicle, tick: u32, kind: EventKind, events: &mut Option<&mut Vec<Event>>) {
     if !super::race_flags::RaceFlags(vehicle.flags).contains(super::race_flags::RaceFlags::MUTED)
         && vehicle.tag != u8::MAX
+        && let Some(events) = events
     {
-        if let Some(events) = events {
-            events.push(Event { kind, tick, vehicle: vehicle.key, tag: vehicle.tag });
-        }
+        events.push(Event { kind, tick, vehicle: vehicle.key, tag: vehicle.tag });
     }
 }
 

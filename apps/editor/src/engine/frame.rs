@@ -38,8 +38,7 @@ impl Frame {
         let (waypoints, finish, last_ms) = race.map_or((0, None, None), |r| {
             (r.checkpoints.len() as u16, r.finish, r.checkpoints.last().copied())
         });
-        let last_crossing =
-            last_ms.and_then(|t| runner.crossing_waypoint(waypoints as usize).map(|w| (w, t)));
+        let last_crossing = runner.crossing_waypoint(waypoints as usize).zip(last_ms);
         Self { race_ms: runner.race_ms(), body, wheels, waypoints, finish, last_crossing, controls }
     }
 

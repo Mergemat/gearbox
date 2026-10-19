@@ -73,10 +73,10 @@ pub fn schedule(vehicle: &Vehicle, tuning: &Tuning, dyna: &Dyna, dt: f32) -> Sch
     let power = vehicle.level_power(tuning);
     let remaining = power * dt;
     let mut distance = length(body.state.vel) + length(body.state.ang_vel);
-    distance = distance + length(vehicle.extra_linear_velocity);
-    distance = distance + length(vehicle.extra_angular_velocity);
-    distance = distance * remaining;
-    distance = distance / body.model.substep_distance;
+    distance += length(vehicle.extra_linear_velocity);
+    distance += length(vehicle.extra_angular_velocity);
+    distance *= remaining;
+    distance /= body.model.substep_distance;
     let count = (cvtt64(distance) as u32).wrapping_add(1);
     let maximum = crate::dyna::solver::MAX_SUBSTEPS as u32;
     let (substep, interval, repeats) = if count > maximum {
@@ -114,7 +114,7 @@ pub fn substeps(ctx: &mut StepCtx<'_>) -> Vec<CollisionFrame> {
     let mut now = ctx.tick as i64 * NS_PER_MS;
     let mut frames = Vec::with_capacity(plan.repeats as usize + 1);
     for _ in 0..plan.repeats {
-        remaining = remaining - plan.substep;
+        remaining -= plan.substep;
         frames.push(substep(ctx, now, plan.substep));
         now = now.wrapping_sub(plan.clock_step);
     }

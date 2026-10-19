@@ -29,8 +29,8 @@ pub fn forces(ctx: &mut ForceCtx<'_>) {
     let (mut grip_slope, mut thrust_slope) = ctx.tuning.slope_factors(ctx.local_force);
     let grip = clamp01(ctx.geometry.grip_scale * ctx.vehicle.grip_scale);
     let remaining = 1.0 - drive_blend;
-    grip_slope = grip_slope * (remaining * grip);
-    thrust_slope = thrust_slope * remaining;
+    grip_slope *= remaining * grip;
+    thrust_slope *= remaining;
     let steer = ctx.vehicle.steer_angle(ctx.tuning, ctx.local_velocity);
     let (surface, factors, any) = adhesion::surface_adhesion(ctx, &mut grip_slope, &mut thrust_slope);
     surface::drain_meter(ctx, &surface);
@@ -182,13 +182,12 @@ fn steering_force(ctx: &mut ForceCtx<'_>, index: usize, speed: f32, grip_capacit
             if ctx.vehicle.wheels[index].slipping != 0 { ctx.tuning.slipping_steering_scale } else { 1.0 };
         let speed_steering = ctx.tuning.steering_by_speed.eval(speed_kmh);
         let steering_scale = clamp01(ctx.geometry.steering_scale * ctx.vehicle.steering_scale);
-        side_force = side_force
-            - ((((steering_scale * sg) * steering_response) * ctx.vehicle.steering) * speed_steering)
-                * slip_scale;
+        side_force -= ((((steering_scale * sg) * steering_response) * ctx.vehicle.steering) * speed_steering)
+            * slip_scale;
     }
     if ctx.tuning.direction_drag_enabled != 0 {
         let x = ctx.vehicle.wheel_meter;
-        side_force = side_force * ctx.tuning.meter_steering.eval(x);
+        side_force *= ctx.tuning.meter_steering.eval(x);
     }
     let fs0 = side_force * 0.0;
     let torque = [fs0 * 0.0 - fs0 * axle_offset, side_force * axle_offset - fs0 * 0.0, fs0 * 0.0 - fs0];
@@ -234,7 +233,7 @@ fn engine_thrust(
         let boost_time_response = ctx.tuning.boost_thrust_by_time.eval(boost_elapsed);
         let absolute_speed_kmh = forward_speed.abs() * KMH;
         let boost_speed_response = ctx.tuning.boost_thrust_by_speed.eval(absolute_speed_kmh);
-        thrust = thrust * (boost_speed_response * boost_time_response);
+        thrust *= boost_speed_response * boost_time_response;
         let drag_time_response = ctx.tuning.boost_drag_by_time.eval(boost_elapsed);
         let velocity = [ctx.local_velocity.x, ctx.local_velocity.y, ctx.local_velocity.z];
         let drag_speed_response = ctx.tuning.boost_drag_by_speed.eval(absolute_speed_kmh);
@@ -244,14 +243,14 @@ fn engine_thrust(
     let forward_speed = ctx.local_velocity.z;
     if ctx.tuning.direction_drag_enabled != 0 {
         let x = ctx.vehicle.wheel_meter;
-        thrust = thrust * ctx.tuning.meter_thrust.eval(x);
+        thrust *= ctx.tuning.meter_thrust.eval(x);
         if ctx.vehicle.any_wheel_contact() {
             let blend = ctx.tuning.meter_ground_drag.eval(forward_speed * KMH);
             ctx.body.add_local_force(([0.0, 0.0, -(blend * x)]).into());
         }
     }
     if ctx.vehicle.in_water != 0 && ctx.tuning.water_thrust_reduction != 0 {
-        thrust = thrust * 0.5;
+        thrust *= 0.5;
     }
 
     thrust
@@ -292,11 +291,11 @@ fn braking_thrust(
             }
             brake = -brake;
             if 1.0 > forward_speed.abs() {
-                brake = brake * forward_speed.abs();
+                brake *= forward_speed.abs();
             }
         }
     } else if cut_pedal && 1.0 > forward_speed.abs() {
-        brake = brake * forward_speed.abs();
+        brake *= forward_speed.abs();
     }
     if ctx.vehicle.has_effect_flag(4) {
         brake = 0.0;

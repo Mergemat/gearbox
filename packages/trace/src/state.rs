@@ -57,7 +57,7 @@ impl Body {
     pub fn from_floats(f: [f32; 22]) -> Self {
         let g = |i: usize| F32::new(f[i]);
         Self {
-            rotation: std::array::from_fn(|i| g(i)),
+            rotation: std::array::from_fn(&g),
             position: std::array::from_fn(|i| g(9 + i)),
             quaternion: std::array::from_fn(|i| g(12 + i)),
             linear_velocity: std::array::from_fn(|i| g(16 + i)),

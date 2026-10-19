@@ -123,7 +123,7 @@ impl Condition {
                     Wheels::Front => on(&[0, 1]),
                     Wheels::Rear => on(&[2, 3]),
                     Wheels::All => on(&[0, 1, 2, 3]),
-                    Wheels::Any => w.iter().any(|t| *t == touching),
+                    Wheels::Any => w.contains(&touching),
                 }
             }
             Self::Inside { min, max } => {

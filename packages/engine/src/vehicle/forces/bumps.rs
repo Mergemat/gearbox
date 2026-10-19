@@ -50,18 +50,19 @@ fn bump_contact(ctx: &mut ForceCtx<'_>, index: usize, force: f32) {
     let material = ctx.vehicle.wheels[index].material;
     let mut normal = Vec3::new(0.0, 1.0, 0.0);
     let mut point = ctx.geometry.wheels[index].anchor;
-    if material == b'D' && ctx.tuning.pipe_side_contact_enabled != 0 {
-        if let Some(side_normal) = pipe_side_contact(ctx, index, point) {
-            normal = side_normal;
-            point = ctx.geometry.wheels[index].anchor;
-        }
+    if material == b'D'
+        && ctx.tuning.pipe_side_contact_enabled != 0
+        && let Some(side_normal) = pipe_side_contact(ctx, index, point)
+    {
+        normal = side_normal;
+        point = ctx.geometry.wheels[index].anchor;
     }
     let tick = (ctx.time_ns / NS_PER_MS) as u32;
     let wheel = &mut ctx.vehicle.wheels[index];
     wheel.contact |= 1;
-    wheel.contact_normal_x = wheel.contact_normal_x + normal.x;
-    wheel.contact_normal_y = normal.y + wheel.contact_normal_y;
-    wheel.contact_normal_z = wheel.contact_normal_z + normal.z;
+    wheel.contact_normal_x += normal.x;
+    wheel.contact_normal_y += normal.y;
+    wheel.contact_normal_z += normal.z;
     wheel.contact_point_x = point.x;
     wheel.contact_point_y = point.y;
     wheel.contact_point_z = point.z;
@@ -78,7 +79,7 @@ fn bump_contact(ctx: &mut ForceCtx<'_>, index: usize, force: f32) {
         let sample = contact::direction_drag(ctx.tuning, velocity, normal, impact);
         if sample > 0.0 {
             wheel.sample_count = wheel.sample_count.wrapping_add(1);
-            wheel.sample_sum = sample + wheel.sample_sum;
+            wheel.sample_sum += sample;
             if wheel.sample_time == 0 {
                 wheel.sample_time = tick;
             }
@@ -131,7 +132,7 @@ pub(crate) fn pipe_side_contact(ctx: &ForceCtx<'_>, index: usize, point: Vec3) -
     let squared = (dy * dy + 0.0) + dz * dz;
     if squared > TINY && f32::MAX > squared {
         let inverse = 1.0 / squared.sqrt();
-        dy = dy * inverse;
+        dy *= inverse;
         zero = inverse * 0.0;
     }
     let normal_y = -dy;
@@ -144,9 +145,9 @@ pub(crate) fn pipe_side_contact(ctx: &ForceCtx<'_>, index: usize, point: Vec3) -
     let squared = (normal_x * normal_x + normal_y * normal_y) + normal_z * normal_z;
     if squared > TINY && f32::MAX > squared {
         let inverse = 1.0 / squared.sqrt();
-        normal_y = normal_y * inverse;
-        normal_x = inverse * normal_x;
-        normal_z = normal_z * inverse;
+        normal_y *= inverse;
+        normal_x *= inverse;
+        normal_z *= inverse;
     }
     Some(Vec3::new(normal_x, normal_y, normal_z))
 }

@@ -7,7 +7,7 @@ pub fn lroundf(x: f32) -> i32 {
         return 0;
     }
     let r = x.round();
-    if -2147483648.0 <= r && r <= 2147483648.0 { cvtt(r) } else { 0 }
+    if (-2147483648.0..=2147483648.0).contains(&r) { cvtt(r) } else { 0 }
 }
 
 #[inline]
@@ -274,7 +274,7 @@ pub fn fmod(x: f64, y: f64) -> f64 {
     let t1 = axd - p;
     let mut r = (((axd - t1) - p) - e) + t1;
     if !(r >= 0.0) {
-        r = r + ayd;
+        r += ayd;
     }
     if x > 0.0 { r } else { f64::from_bits(r.to_bits() | SIGN) }
 }

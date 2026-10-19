@@ -80,7 +80,7 @@ fn cook(mesh: &mut Mesh) {
             let mut n = cross(e1, e2);
             let len2 = (n.y * n.y + n.x * n.x) + n.z * n.z;
             if len2 > 1.00000005e-20 {
-                n = n * (1.0 / len2.sqrt());
+                n *= 1.0 / len2.sqrt();
             }
             CookedTriangle {
                 normal: n,

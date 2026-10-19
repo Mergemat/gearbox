@@ -88,7 +88,7 @@ pub fn ground_pull(ctx: &mut ForceCtx<'_>, scale: f32) {
         if push {
             let mut force = if maximum_level == 2 { 1.0 } else { scale } * ctx.tuning.ground_pull_downforce;
             if ctx.vehicle.in_water != 0 {
-                force = force * ctx.tuning.ground_pull_water_scale;
+                force *= ctx.tuning.ground_pull_water_scale;
             }
             ctx.body.add_local_force_at(Vec3::new(0.0, force, 0.0), definition.anchor);
         }

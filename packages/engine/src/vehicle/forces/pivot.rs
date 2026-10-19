@@ -87,9 +87,9 @@ fn construct_pivot(ctx: &mut ForceCtx<'_>, steer: f32, state: crate::dyna::BodyS
     let squared_length = (tangent_y * tangent_y + tangent_x * tangent_x) + tangent_z * tangent_z;
     if squared_length > TINY && f32::MAX > squared_length {
         let inv = 1.0 / squared_length.sqrt();
-        tangent_x = inv * tangent_x;
-        tangent_y = inv * tangent_y;
-        tangent_z = inv * tangent_z;
+        tangent_x *= inv;
+        tangent_y *= inv;
+        tangent_z *= inv;
     }
     let rotation = state.rot.to_array();
     let axis = crate::Vec3::new(
@@ -151,17 +151,17 @@ fn initialize_axis(ctx: &mut ForceCtx<'_>) -> (f32, f32, f32) {
     let (mut normal_x, mut normal_y, mut normal_z) = (0.0f32, 0.0f32, 0.0f32);
     for wheel in &ctx.vehicle.wheels {
         if wheel.contact != 0 {
-            normal_x = normal_x + wheel.contact_normal_x;
-            normal_y = normal_y + wheel.contact_normal_y;
-            normal_z = normal_z + wheel.contact_normal_z;
+            normal_x += wheel.contact_normal_x;
+            normal_y += wheel.contact_normal_y;
+            normal_z += wheel.contact_normal_z;
         }
     }
     let squared_length = (normal_y * normal_y + normal_x * normal_x) + normal_z * normal_z;
     if squared_length > TINY && f32::MAX > squared_length {
         let inv = 1.0 / squared_length.sqrt();
-        normal_z = normal_z * inv;
-        normal_y = normal_y * inv;
-        normal_x = normal_x * inv;
+        normal_z *= inv;
+        normal_y *= inv;
+        normal_x *= inv;
     } else {
         ctx.vehicle.set_pivot_state(PivotState::Idle);
         (normal_x, normal_y, normal_z) = (0.0, 1.0, 0.0);

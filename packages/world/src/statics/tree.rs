@@ -10,14 +10,14 @@ pub struct Leaf {
 fn split_axis(boxes: &[Leaf]) -> (usize, Vec3) {
     let mut sum = Vec3::ZERO;
     for b in boxes {
-        sum = sum + b.bounds.center;
+        sum += b.bounds.center;
     }
     let mean = sum * (1.0 / boxes.len() as u32 as u64 as f32);
     let mut variance = Vec3::ZERO;
     for b in boxes {
         let d = b.bounds.center - mean;
         for k in 0..3 {
-            variance[k] = variance[k] + d[k] * d[k];
+            variance[k] += d[k] * d[k];
         }
     }
     let axis = if variance.y > variance.x {

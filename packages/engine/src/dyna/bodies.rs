@@ -208,10 +208,8 @@ impl Dyna {
         let slot = self.bodies.len() as u32;
         self.active.push(slot);
         self.dynamic_registered |= params.special;
-        for item in [params.item, params.owner_item] {
-            if let Some(item) = item {
-                collision.set_body(item, handle);
-            }
+        for item in [params.item, params.owner_item].into_iter().flatten() {
+            collision.set_body(item, handle);
         }
         let mut flags = BodyOptions::default();
         flags.set(BodyOptions::FIXED, params.fixed);
@@ -249,9 +247,9 @@ impl Dyna {
         let r = point - b.center_of_mass();
         let a = &mut b.acc;
         a.force = Vec3::new(f.x + a.force.x, f.y + a.force.y, a.force.z + f.z);
-        a.torque.x = (r.y * f.z - r.z * f.y) + a.torque.x;
-        a.torque.z = (r.x * f.y - r.y * f.x) + a.torque.z;
-        a.torque.y = (r.z * f.x - r.x * f.z) + a.torque.y;
+        a.torque.x += r.y * f.z - r.z * f.y;
+        a.torque.z += r.x * f.y - r.y * f.x;
+        a.torque.y += r.z * f.x - r.x * f.z;
         b.wake();
     }
 

@@ -22,7 +22,7 @@ impl InputBits {
         let signed = (((bits << 21) as i32) >> 28) as u32;
         let low =
             bits & 16 | (signed & 15) << 27 | (buttons & 0x3f_ffff) << 5 | bits & 15 | (bits >> 5) << 31;
-        let high = ((bits >> 12) & 1) * 2 | (bits >> 6) & 1;
+        let high = (((bits >> 12) & 1) * 2) | (bits >> 6) & 1;
         (high as u64) << 32 | low as u64
     }
 }

@@ -259,7 +259,7 @@ fn pedal_thrust(ctx: &mut ForceCtx<'_>, blend: f32) -> f32 {
         let boost_time_response = tuning.boost_thrust_by_time.eval(boost_elapsed);
         let absolute_speed_kmh = velocity[2].abs() * KMH;
         let boost_speed_response = tuning.boost_thrust_by_speed.eval(absolute_speed_kmh);
-        timed_thrust = boost_speed_response * boost_time_response * timed_thrust;
+        timed_thrust *= boost_speed_response * boost_time_response;
         let drag_time_response = tuning.boost_drag_by_time.eval(boost_elapsed);
         let drag_speed_response = tuning.boost_drag_by_speed.eval(absolute_speed_kmh);
         let drag_scale = -(drag_speed_response * drag_time_response);
@@ -281,7 +281,7 @@ fn pedal_thrust(ctx: &mut ForceCtx<'_>, blend: f32) -> f32 {
     } else {
         (if reversing { -1.0f32 } else { 0.0 }) * ctx.vehicle.controls.brake + ctx.vehicle.controls.gas
     };
-    thrust = thrust * gas;
+    thrust *= gas;
     if ctx.vehicle.turbo_active != 0 {
         let turbo_response = tuning.engine_thrust.eval(velocity[2] * KMH);
         let turbo_force =

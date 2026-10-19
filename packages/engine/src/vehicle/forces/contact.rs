@@ -146,9 +146,9 @@ pub fn contact_response(
         rotation.rotate(Vec3::new(target.x - impulse.x, target.y - impulse.y, target.z - impulse.z));
     let inverse_mass = 1.0 / ctx.geometry.mass;
     let vehicle = &mut *ctx.vehicle;
-    vehicle.extra_linear_velocity.x = remainder.x * inverse_mass + vehicle.extra_linear_velocity.x;
-    vehicle.extra_linear_velocity.y = remainder.y * inverse_mass + vehicle.extra_linear_velocity.y;
-    vehicle.extra_linear_velocity.z = remainder.z * inverse_mass + vehicle.extra_linear_velocity.z;
+    vehicle.extra_linear_velocity.x += remainder.x * inverse_mass;
+    vehicle.extra_linear_velocity.y += remainder.y * inverse_mass;
+    vehicle.extra_linear_velocity.z += remainder.z * inverse_mass;
     let center = ctx.body.center_of_mass();
     let radius = world_point - center;
     let torque = Vec3::new(
@@ -162,19 +162,16 @@ pub fn contact_response(
             ((remainder.y * remainder.y + remainder.x * remainder.x) + remainder.z * remainder.z).sqrt();
         strength = ctx.tuning.contact_angular_response.eval(length) * scale;
     }
-    strength = strength * ctx.tuning.impulse_angular_blend;
+    strength *= ctx.tuning.impulse_angular_blend;
     let inertia = vehicle.world_inverse_inertia.to_array();
-    vehicle.extra_angular_velocity.x =
-        ((torque.y * inertia[1] + torque.x * inertia[0]) + torque.z * inertia[2]) * strength
-            + vehicle.extra_angular_velocity.x;
-    vehicle.extra_angular_velocity.z =
-        ((torque.y * inertia[7] + torque.x * inertia[6]) + torque.z * inertia[8]) * strength
-            + vehicle.extra_angular_velocity.z;
-    vehicle.extra_angular_velocity.y = ((torque.x * inertia[3] + inertia[4] * torque.y)
+    vehicle.extra_angular_velocity.x +=
+        ((torque.y * inertia[1] + torque.x * inertia[0]) + torque.z * inertia[2]) * strength;
+    vehicle.extra_angular_velocity.z +=
+        ((torque.y * inertia[7] + torque.x * inertia[6]) + torque.z * inertia[8]) * strength;
+    vehicle.extra_angular_velocity.y += ((torque.x * inertia[3] + inertia[4] * torque.y)
         + inertia[5] * torque.z)
         * strength
-        * ctx.tuning.impulse_y_blend
-        + vehicle.extra_angular_velocity.y;
+        * ctx.tuning.impulse_y_blend;
 }
 
 fn rotate(vector: Vec3, rotation: [f32; 9]) -> Vec3 {

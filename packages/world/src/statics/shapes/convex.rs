@@ -68,7 +68,7 @@ pub(super) fn read(raw: &[u8], material: u16) -> Result<Convex> {
         let length = (normal.x * normal.x + normal.y * normal.y) + normal.z * normal.z;
         if length > 1.00000005e-20 {
             let inv = 1.0 / length.sqrt();
-            normal = normal * inv;
+            normal *= inv;
         }
         let id = axis(&mut hull.normals, normal);
         hull.faces.push(Face {
@@ -90,7 +90,7 @@ pub(super) fn read(raw: &[u8], material: u16) -> Result<Convex> {
         let mut d = hull.vertices[e[1] as usize] - hull.vertices[e[0] as usize];
         let length = dot(d, d);
         if length > 1.0e-10 && f32::MAX > length {
-            d = d * (1.0 / length.sqrt());
+            d *= 1.0 / length.sqrt();
         }
         e[2] = axis(&mut hull.directions, d);
     }

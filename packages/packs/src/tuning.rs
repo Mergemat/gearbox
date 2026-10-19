@@ -1646,7 +1646,6 @@ fn constructed() -> (Tuning, FluidTuning) {
         roll_vertical_speed_limit: -10.0,
         roll_angular_damping: 0.1,
         roll_force_scale: 0.3,
-        ..Default::default()
     };
     let fluid = FluidTuning {
         reference_speed: 10.0,

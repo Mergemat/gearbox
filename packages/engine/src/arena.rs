@@ -65,10 +65,10 @@ pub struct GhostTarget {
 }
 impl GhostTarget {
     pub fn origin(self, rules: &crate::race::RaceRules) -> u32 {
-        if self.override_window.is_none() {
-            if let Some(start) = self.explicit_start {
-                return start;
-            }
+        if self.override_window.is_none()
+            && let Some(start) = self.explicit_start
+        {
+            return start;
         }
         if (rules.mode_bits as i8) < 0 || ArenaOptions(rules.flags).contains(ArenaOptions::FORCE_RACE_ORIGIN)
         {

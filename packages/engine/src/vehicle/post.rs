@@ -105,8 +105,8 @@ pub fn follow(value: f32, target: f32, tolerance: f32) -> f32 {
 
 pub fn spring_step(value: &mut f32, target: f32, velocity: &mut f32, stiffness: f32, damping: f32, dt: f32) {
     let acceleration = (target - *value) * stiffness - *velocity * damping;
-    *velocity = acceleration * dt + *velocity;
-    *value = *velocity * dt + *value;
+    *velocity += acceleration * dt;
+    *value += *velocity * dt;
 }
 
 pub fn idle_update(vehicle: &mut Vehicle, tick: u32) {
@@ -513,8 +513,8 @@ pub fn contact_summary(
             if summary.material != 13 {
                 summary.material = record.material as u8;
             }
-            summary.sum = record.slip + summary.sum;
-            summary.weighted = wheel.radius * record.spin + summary.weighted;
+            summary.sum += record.slip;
+            summary.weighted += wheel.radius * record.spin;
         } else {
             last[side] = record.material as u8;
         }
@@ -532,13 +532,13 @@ pub fn contact_summary(
     } else {
         for side in 0..2 {
             if counts[1 - side] != 0 {
-                sides[side].sum = 1.0 / counts[1 - side] as f32 * sides[side].sum;
+                sides[side].sum *= 1.0 / counts[1 - side] as f32;
             }
         }
     }
     for side in 0..2 {
         if counts[1 - side] != 0 {
-            sides[side].weighted = 1.0 / counts[1 - side] as f32 * sides[side].weighted;
+            sides[side].weighted *= 1.0 / counts[1 - side] as f32;
         }
         if sides[side].material >= 80 {
             sides[side].material = last[side];
@@ -568,7 +568,7 @@ pub fn post(vehicle: &mut Vehicle, ctx: &mut Context<'_>, recent_event_duration:
         }
         let front = 0.0 + vehicle.front_spin;
         let rear = 0.0 + vehicle.rear_spin;
-        if !(front >= -SPIN_LIMIT && SPIN_LIMIT > front) || !(rear >= -SPIN_LIMIT && SPIN_LIMIT > rear) {
+        if !(-SPIN_LIMIT..SPIN_LIMIT).contains(&front) || !(-SPIN_LIMIT..SPIN_LIMIT).contains(&rear) {
             todo!("wheel spin angle wrap");
         }
         vehicle.front_spin = front;

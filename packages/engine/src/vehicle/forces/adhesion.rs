@@ -43,10 +43,10 @@ pub fn surface_adhesion(
     let tuning = ctx.tuning;
     let mut gravity_scale = clamp01(vehicle.gravity_scale * ctx.geometry.gravity_scale);
     if vehicle.vehicle_effect_active != 0 {
-        gravity_scale = gravity_scale * vehicle.vehicle_effect_gravity;
+        gravity_scale *= vehicle.vehicle_effect_gravity;
     }
     if vehicle.gravity_effect_active != 0 {
-        gravity_scale = gravity_scale * vehicle.gravity_effect_scale;
+        gravity_scale *= vehicle.gravity_effect_scale;
     }
     let contact = vehicle.any_wheel_contact();
     let state = ctx.body.state();

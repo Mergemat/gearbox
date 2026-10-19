@@ -16,7 +16,7 @@ pub fn wheel_visual(ctx: &mut ForceCtx<'_>, index: usize, speed: f32) {
     if !(angle >= 0.0) || !(SPIN_WRAP > angle) {
         let mut remainder = crate::numeric::fmodf(angle - 0.0, SPIN_WRAP - 0.0);
         if 0.0 > remainder {
-            remainder = remainder + (SPIN_WRAP - 0.0);
+            remainder += SPIN_WRAP - 0.0;
         }
         angle = remainder + 0.0;
     }
@@ -26,9 +26,9 @@ pub fn wheel_visual(ctx: &mut ForceCtx<'_>, index: usize, speed: f32) {
         + wheel.contact_normal_z * wheel.contact_normal_z;
     if squared > TINY && f32::MAX > squared {
         let inverse = 1.0 / squared.sqrt();
-        wheel.contact_normal_x = wheel.contact_normal_x * inverse;
-        wheel.contact_normal_y = wheel.contact_normal_y * inverse;
-        wheel.contact_normal_z = wheel.contact_normal_z * inverse;
+        wheel.contact_normal_x *= inverse;
+        wheel.contact_normal_y *= inverse;
+        wheel.contact_normal_z *= inverse;
     }
     visual_steering(ctx, index, speed);
     visual_suspension(ctx, index);
@@ -152,7 +152,7 @@ pub fn wheels_engine_step(ctx: &mut ForceCtx<'_>) {
         wheel_visual(ctx, index, forward_speed);
         let wheel = &ctx.vehicle.wheels[index];
         if wheel.contact != 0 {
-            steering_sum = steering_sum + ctx.geometry.material(wheel.material).steering_rate;
+            steering_sum += ctx.geometry.material(wheel.material).steering_rate;
             contacts += 1;
         }
     }

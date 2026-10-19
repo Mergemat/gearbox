@@ -81,7 +81,7 @@ impl Grid {
         Ok(Self { cells, free_parents: clips::free_parents(map, src)?, geometry: block_geometry })
     }
 
-    fn block<'m>(map: &'m gearbox_gbx::Map, (list, i): (usize, usize)) -> &'m gearbox_gbx::map::Block {
+    fn block(map: &gearbox_gbx::Map, (list, i): (usize, usize)) -> &gearbox_gbx::map::Block {
         if list == 0 { &map.blocks[i] } else { &map.baked_blocks[i] }
     }
 

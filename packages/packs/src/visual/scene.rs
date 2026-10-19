@@ -136,8 +136,8 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
             let overrides = cache.overrides(&parts, &mods, assets)?;
             let start = scene.instances.len();
             append(&mut scene, cache, &b.name, &parts, iso, &overrides, 1.);
-            if checked.insert((b.name.clone(), b.flags & 0x0fe01000, b.variant, b.sub_variant)) {
-                if let (Some(visual), Ok(collision)) = (
+            if checked.insert((b.name.clone(), b.flags & 0x0fe01000, b.variant, b.sub_variant))
+                && let (Some(visual), Ok(collision)) = (
                     instance_bounds(cache, &scene.instances[start..]),
                     assets.block_model(
                         &b.name,
@@ -146,26 +146,25 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
                         b.variant as usize,
                         b.sub_variant as usize,
                     ),
-                ) {
-                    let mut points = Vec::new();
-                    for ps in collision {
-                        if ps.role != crate::assets::Role::Collision {
-                            continue;
-                        }
-                        let local = iso_loc(placement::compose(iso, loc_iso(chain(&ps.chain))));
-                        surf_points(&ps.surface.surf, transform(local), &mut points);
+                )
+            {
+                let mut points = Vec::new();
+                for ps in collision {
+                    if ps.role != crate::assets::Role::Collision {
+                        continue;
                     }
-                    if let Some(collision) = bounds(points) {
-                        scene.bounds_checks.push(BoundsCheck {
-                            block: b.name.clone(),
-                            visual,
-                            collision,
-                            overlap: (0..3).all(|k| {
-                                visual[0][k] <= collision[1][k] + 0.05
-                                    && collision[0][k] <= visual[1][k] + 0.05
-                            }),
-                        });
-                    }
+                    let local = iso_loc(placement::compose(iso, loc_iso(chain(&ps.chain))));
+                    surf_points(&ps.surface.surf, transform(local), &mut points);
+                }
+                if let Some(collision) = bounds(points) {
+                    scene.bounds_checks.push(BoundsCheck {
+                        block: b.name.clone(),
+                        visual,
+                        collision,
+                        overlap: (0..3).all(|k| {
+                            visual[0][k] <= collision[1][k] + 0.05 && collision[0][k] <= visual[1][k] + 0.05
+                        }),
+                    });
                 }
             }
             Ok(())
@@ -206,51 +205,51 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
             Err(e) => cache.report("item", it.model.as_deref().unwrap_or("<none>"), format!("{e:#}")),
         }
     }
-    if let Some(d) = decoration {
-        if let Some(path) = &d.map {
-            match cache.read(path).and_then(|b| gearbox_gbx::Map::parse(&b).map_err(Into::into)) {
-                Ok(deco) => {
-                    for b in &deco.blocks {
-                        let result = (|| -> Result<_> {
-                            let (_, v, m, offset) = selection(assets, b, env)?;
-                            let parts = match &m.prefab {
-                                Some(p) => cache.file_parts(p, 0, 0)?,
-                                None => Vec::new(),
-                            };
-                            let location = (
-                                [1., 0., 0., 0., 1., 0., 0., 0., 1.],
-                                [
-                                    (map.size[0] as f32 * 32. - d.size[0] as f32 * 256.) * 0.5,
-                                    -184.,
-                                    (map.size[2] as f32 * 32. - d.size[2] as f32 * 256.) * 0.5,
-                                ],
-                            );
-                            let iso = placement::grid_iso_in(
-                                [256., 64., -64.],
-                                Some(location),
-                                b.coord,
-                                b.dir as u32,
-                                size(&v.units),
-                                offset,
-                            );
-                            append(
-                                &mut scene,
-                                cache,
-                                &format!("decoration/{}", b.name),
-                                &parts,
-                                iso,
-                                &BTreeMap::new(),
-                                1.,
-                            );
-                            Ok(())
-                        })();
-                        if let Err(e) = result {
-                            cache.report("decoration", &b.name, format!("{e:#}"));
-                        }
+    if let Some(d) = decoration
+        && let Some(path) = &d.map
+    {
+        match cache.read(path).and_then(|b| gearbox_gbx::Map::parse(&b)) {
+            Ok(deco) => {
+                for b in &deco.blocks {
+                    let result = (|| -> Result<_> {
+                        let (_, v, m, offset) = selection(assets, b, env)?;
+                        let parts = match &m.prefab {
+                            Some(p) => cache.file_parts(p, 0, 0)?,
+                            None => Vec::new(),
+                        };
+                        let location = (
+                            [1., 0., 0., 0., 1., 0., 0., 0., 1.],
+                            [
+                                (map.size[0] as f32 * 32. - d.size[0] as f32 * 256.) * 0.5,
+                                -184.,
+                                (map.size[2] as f32 * 32. - d.size[2] as f32 * 256.) * 0.5,
+                            ],
+                        );
+                        let iso = placement::grid_iso_in(
+                            [256., 64., -64.],
+                            Some(location),
+                            b.coord,
+                            b.dir as u32,
+                            size(&v.units),
+                            offset,
+                        );
+                        append(
+                            &mut scene,
+                            cache,
+                            &format!("decoration/{}", b.name),
+                            &parts,
+                            iso,
+                            &BTreeMap::new(),
+                            1.,
+                        );
+                        Ok(())
+                    })();
+                    if let Err(e) = result {
+                        cache.report("decoration", &b.name, format!("{e:#}"));
                     }
                 }
-                Err(e) => cache.report("decoration", path, format!("{e:#}")),
             }
+            Err(e) => cache.report("decoration", path, format!("{e:#}")),
         }
     }
     scene.diagnostics = cache.diagnostics[begin..].to_vec();
@@ -340,11 +339,10 @@ pub fn instance_bounds(cache: &VisualCache, instances: &[Instance]) -> Option<[[
     )
 }
 fn surf_points(s: &Option<crate::surface::SurfNode>, t: Transform, out: &mut Vec<[f32; 3]>) {
-    if let Some(s) = s {
-        match &s.surf {
-            Surf::Mesh { vertices, .. } => out.extend(vertices.iter().map(|&p| point(t, p))),
-            _ => {}
-        }
+    if let Some(s) = s
+        && let Surf::Mesh { vertices, .. } = &s.surf
+    {
+        out.extend(vertices.iter().map(|&p| point(t, p)))
     }
 }
 impl VisualCache {
@@ -419,10 +417,10 @@ impl VisualCache {
             };
             return Ok(Some(parts));
         }
-        if !custom.compiled {
-            if let Some(start) = mobil.crystal {
-                return self.crystal(&ctx, start).map(Some);
-            }
+        if !custom.compiled
+            && let Some(start) = mobil.crystal
+        {
+            return self.crystal(&ctx, start).map(Some);
         }
         Ok(None)
     }
@@ -465,10 +463,9 @@ fn block_modifiers(
             let coord = std::array::from_fn(|k| b.coord[k] + delta[k]);
             if let Some(parent) =
                 grid.get(&coord).and_then(|cell| cell.iter().find(|b| b.flags & 0x10000000 == 0))
+                && let Some(info) = assets.block_in(&parent.name, env)
             {
-                if let Some(info) = assets.block_in(&parent.name, env) {
-                    inherited = block_modifiers(map, assets, env, parent, info, grid, cache, depth + 1)?;
-                }
+                inherited = block_modifiers(map, assets, env, parent, info, grid, cache, depth + 1)?;
             }
         }
     }

@@ -124,7 +124,7 @@ impl KinematicModel {
 
 pub fn phase(now: i64, duration: u32, speed: f32) -> f32 {
     let x = (duration as f32 * speed / 1000.0) as f64 * -1e9;
-    let offset = if x.is_nan() || x >= 9.223372036854775807e18 || x < -9.223372036854775808e18 {
+    let offset = if x.is_nan() || !(-9.223372036854775808e18..9.223372036854775807e18).contains(&x) {
         i64::MIN
     } else {
         x as i64

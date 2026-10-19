@@ -389,35 +389,32 @@ impl Editor {
             rows.push(g);
         }
         if open && cars > 0 {
-            match self.doc.start.clone() {
-                Some(s) => {
-                    let ms = self.race_ms0 + 10 * s.tick as i32;
-                    let row = self
-                        .orow(
-                            "start-row".into(),
-                            self.sel == Sel::Start,
-                            type_icon("icons/car.svg", theme::PIN),
-                            format!("Car at {} s", fmt_ms(ms)),
-                            String::new(),
-                            Some((
-                                format!("{:.0} km/h", glam::Vec3::from(s.velocity).length() * 3.6),
-                                theme::MUTED,
-                            )),
-                            None,
-                        )
-                        .on_mouse_down(
-                            gpui::MouseButton::Right,
-                            cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
-                                this.row_menu(Sel::Start, e.position, cx)
-                            }),
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.select(Sel::Start);
-                            cx.notify();
-                        }));
-                    rows.push(row.into_any_element());
-                }
-                None => {}
+            if let Some(s) = self.doc.start.clone() {
+                let ms = self.race_ms0 + 10 * s.tick as i32;
+                let row = self
+                    .orow(
+                        "start-row".into(),
+                        self.sel == Sel::Start,
+                        type_icon("icons/car.svg", theme::PIN),
+                        format!("Car at {} s", fmt_ms(ms)),
+                        String::new(),
+                        Some((
+                            format!("{:.0} km/h", glam::Vec3::from(s.velocity).length() * 3.6),
+                            theme::MUTED,
+                        )),
+                        None,
+                    )
+                    .on_mouse_down(
+                        gpui::MouseButton::Right,
+                        cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                            this.row_menu(Sel::Start, e.position, cx)
+                        }),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.select(Sel::Start);
+                        cx.notify();
+                    }));
+                rows.push(row.into_any_element());
             }
             for st in self.doc.setups.clone() {
                 let id = st.id;

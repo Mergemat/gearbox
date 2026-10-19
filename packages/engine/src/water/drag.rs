@@ -65,9 +65,9 @@ fn direction(velocity: Vec3) -> (Vec3, f32) {
 
 fn accumulate(acc: &mut ForceAcc, force: Vec3, relative: Vec3) {
     acc.force = force + acc.force;
-    acc.torque.x = (relative.y * force.z - relative.z * force.y) + acc.torque.x;
-    acc.torque.y = (force.x * relative.z - relative.x * force.z) + acc.torque.y;
-    acc.torque.z = (relative.x * force.y - force.x * relative.y) + acc.torque.z;
+    acc.torque.x += relative.y * force.z - relative.z * force.y;
+    acc.torque.y += force.x * relative.z - relative.x * force.z;
+    acc.torque.z += relative.x * force.y - force.x * relative.y;
 }
 
 pub fn surface_drag(
@@ -91,7 +91,7 @@ pub fn surface_drag(
     let power = fast_exp2(fast_log2(dot.abs()) * exponent);
     let mut magnitude = power * (curve.eval(ratio) * pressure_scale) * tuning.scale;
     if facing {
-        magnitude = magnitude * -1.0;
+        magnitude *= -1.0;
     }
     let force = element.normal * magnitude;
     let lane = if facing { &mut forces.facing } else { &mut forces.trailing };

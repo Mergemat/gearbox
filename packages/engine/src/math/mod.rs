@@ -26,17 +26,17 @@ pub fn minss(a: f32, b: f32) -> f32 {
 
 #[inline]
 pub fn cvtt(x: f32) -> i32 {
-    if x.is_nan() || x >= 2147483648.0 || x < -2147483648.0 { i32::MIN } else { x as i32 }
+    if x.is_nan() || !(-2147483648.0..2147483648.0).contains(&x) { i32::MIN } else { x as i32 }
 }
 
 #[inline]
 pub fn cvtt64(x: f32) -> i64 {
-    if x.is_nan() || x >= 9.223372e18 || x < -9.223372e18 { i64::MIN } else { x as i64 }
+    if x.is_nan() || !(-9.223372e18..9.223372e18).contains(&x) { i64::MIN } else { x as i64 }
 }
 
 #[inline]
 pub fn cvtt64d(x: f64) -> i64 {
-    if x.is_nan() || x >= 9.223372036854775808e18 || x < -9.223372036854775808e18 {
+    if x.is_nan() || !(-9.223372036854775808e18..9.223372036854775808e18).contains(&x) {
         i64::MIN
     } else {
         x as i64
@@ -80,7 +80,7 @@ pub fn sincos_precise(x: f32) -> (f32, f32) {
     let mut q = crate::numeric::floorf((ax * d(0x3ff4_5f30_6dc9_c882)) as f32);
     let e = cvtt(q);
     if e & 1 != 0 {
-        q = q + 1.0;
+        q += 1.0;
     }
     let mut j = if e & 1 != 0 { e.wrapping_add(1) } else { e } & 7;
     let mut swapped = false;
@@ -106,7 +106,7 @@ pub fn sincos_precise(x: f32) -> (f32, f32) {
     c = c * z - d(0x3e92_7e4f_7eac_4bc6);
     c = c * z + d(0x3efa_01a0_19c8_44f5);
     c = c * z - d(0x3f56_c16c_16c1_4f91);
-    c = c * z;
+    c *= z;
     let c =
         (c + d(0x3fa5_5555_5555_554b)) * (z * z) + (d(0x3ff0_0000_0000_0000) - z * d(0x3fe0_0000_0000_0000));
     let c = c as f32;
@@ -146,8 +146,8 @@ pub fn angle_approx(mut a: f32, mut b: f32) -> f32 {
     let (half, nhalf) = (1.5707964, -1.5707964);
     let (k1, k2, k3) = (0.678484, 0.08595542, 0.43157974);
     if 1.0e-9 > a.abs() + b.abs() {
-        b = b * 1.0e12;
-        a = a * 1.0e12;
+        b *= 1.0e12;
+        a *= 1.0e12;
     }
     let (bb, aa) = (b * b, a * a);
     let sa = if 0.0 > a { nhalf } else { half };

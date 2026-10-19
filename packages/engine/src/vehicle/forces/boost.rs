@@ -128,7 +128,7 @@ pub fn level2_model(ctx: &mut ForceCtx<'_>, scale: f32) {
             let origin = rotation.rotate(definition.anchor) + ctx.vehicle.pos;
             let direction = rotation.rotate(Vec3::new(0.0, -ctx.tuning.level_two_down_reach, 0.0));
             if ctx.collision.raycast(origin, direction).is_some() {
-                force = force * ctx.tuning.level_two_inverted_force_scale;
+                force *= ctx.tuning.level_two_inverted_force_scale;
             }
         }
         ctx.body.add_local_force_at(Vec3::new(0.0, force, 0.0), definition.anchor);

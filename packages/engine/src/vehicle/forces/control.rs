@@ -76,7 +76,7 @@ pub fn fold_wheel_samples(ctx: &mut ForceCtx<'_>) {
             wheel.sample_count = 0;
             wheel.sample_sum = 0.0;
             wheel.sample_time = 0;
-            sum = sum + (average - expected);
+            sum += average - expected;
         }
     }
     if samples != 0 {

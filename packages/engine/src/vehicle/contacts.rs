@@ -183,7 +183,7 @@ fn spin_bookkeeping(ctx: &mut ForceCtx<'_>, initial_yaw: f32, volume_contact: bo
             ctx.vehicle.impact_yaw_begin = ctx.tick;
         }
         let yaw = ctx.body.local_angular_velocity().y;
-        ctx.vehicle.impact_yaw_change = (initial_yaw - yaw).abs() + ctx.vehicle.impact_yaw_change;
+        ctx.vehicle.impact_yaw_change += (initial_yaw - yaw).abs();
     }
     let start = ctx.vehicle.impact_yaw_begin;
     if start == u32::MAX || ctx.tick <= start.wrapping_add(400) {

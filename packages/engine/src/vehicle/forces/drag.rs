@@ -50,16 +50,15 @@ pub fn brake_and_drag(ctx: &mut ForceCtx<'_>, blend: f32) {
             let b = vehicle.last_body_contact;
             if tick < b { None } else { Some(b) }
         };
-        if let Some(b) = base {
-            if tick - b < tuning.body_contact_drag_ms {
-                let len = ((x * x + y * y) + z * z).sqrt();
-                if len > zero_threshold {
-                    let inv = 1.0 / len;
-                    let s = -tuning.body_contact_drag.eval(len * super::common::KMH);
-                    ctx.body.add_local_force(
-                        ([x * inv * s * grip, y * inv * s * grip, z * inv * s * grip]).into(),
-                    );
-                }
+        if let Some(b) = base
+            && tick - b < tuning.body_contact_drag_ms
+        {
+            let len = ((x * x + y * y) + z * z).sqrt();
+            if len > zero_threshold {
+                let inv = 1.0 / len;
+                let s = -tuning.body_contact_drag.eval(len * super::common::KMH);
+                ctx.body
+                    .add_local_force(([x * inv * s * grip, y * inv * s * grip, z * inv * s * grip]).into());
             }
         }
     }

@@ -43,12 +43,12 @@ pub fn solve_contacts(bodies: &mut [Body], rows: &mut [ContactRow]) -> f32 {
         let acc = maxss(0.0, -vn * row.mass_factor + row.impulse);
         let change = acc - row.impulse;
         let d = Vec3::new(n.x * change, n.y * change, n.z * change);
-        state.vel.x = k.inverse_mass * d.x + state.vel.x;
-        state.vel.y = d.y * k.inverse_mass + state.vel.y;
-        state.vel.z = d.z * k.inverse_mass + state.vel.z;
-        state.ang_vel.x = (d.z * r.y - d.y * r.z) * k.diagonal.x + state.ang_vel.x;
-        state.ang_vel.y = (d.x * r.z - d.z * r.x) * k.diagonal.y + state.ang_vel.y;
-        state.ang_vel.z = (d.y * r.x - d.x * r.y) * k.diagonal.z + state.ang_vel.z;
+        state.vel.x += k.inverse_mass * d.x;
+        state.vel.y += d.y * k.inverse_mass;
+        state.vel.z += d.z * k.inverse_mass;
+        state.ang_vel.x += (d.z * r.y - d.y * r.z) * k.diagonal.x;
+        state.ang_vel.y += (d.x * r.z - d.z * r.x) * k.diagonal.y;
+        state.ang_vel.z += (d.y * r.x - d.x * r.y) * k.diagonal.z;
         row.impulse = acc;
         let absolute = change.abs();
         if !(worst >= absolute) {
@@ -94,7 +94,7 @@ pub fn closest_time_ms(now: i64, max: f32, a: Vec3, b: Vec3) -> i64 {
         t = max;
     }
     let d = (max - t) as f64 * -1e9;
-    let i = if d.is_nan() || d >= 9.223372036854775807e18 || d < -9.223372036854775808e18 {
+    let i = if d.is_nan() || !(-9.223372036854775808e18..9.223372036854775807e18).contains(&d) {
         i64::MIN
     } else {
         d as i64

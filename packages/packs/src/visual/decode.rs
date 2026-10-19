@@ -83,7 +83,7 @@ fn stream(ctx: &Ctx<'_>, start: usize, mesh: &mut Mesh, depth: usize) -> Result<
                 mesh.blend_weights = (0..count).map(|_| Ok([r.f32()?, r.f32()?])).collect::<Result<_>>()?;
             }
             (0, 2) => mesh.positions = (0..count).map(|_| r.vec3()).collect::<Result<_>>()?,
-            (5 | 6, 2 | 14) | (18 | 19 | 20 | 21, 14) => {
+            (5 | 6, 2 | 14) | (18..=21, 14) => {
                 let values = (0..count).map(|_| Ok(packed(r.u32()?))).collect::<Result<Vec<_>>>()?;
                 match semantic {
                     5 => mesh.normals = values,

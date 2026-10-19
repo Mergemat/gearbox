@@ -93,7 +93,6 @@ impl Ctl {
                 modifiers: Modifiers::default(),
                 key: c.to_string(),
                 key_char: Some(c.to_string()),
-                ..ks("a")
             };
             self.out.push(PlatformInput::KeyDown(KeyDownEvent {
                 keystroke: k.clone(),

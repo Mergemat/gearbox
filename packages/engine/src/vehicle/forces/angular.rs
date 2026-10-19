@@ -65,12 +65,12 @@ pub fn angular_control(ctx: &mut ForceCtx<'_>, no_damping: bool, freeze: bool) {
         }
         if boosted {
             let k = BOOSTED_DAMPING_SCALE;
-            damping_yaw = damping_yaw * k;
-            damping_pitch = damping_pitch * k;
-            damping_roll = damping_roll * k;
+            damping_yaw *= k;
+            damping_pitch *= k;
+            damping_roll *= k;
         }
         if !no_damping {
-            damping_roll = damping_roll * tuning.roll_damping.eval(roll_rate.abs());
+            damping_roll *= tuning.roll_damping.eval(roll_rate.abs());
         }
         let velocity = if control {
             apply_air_input(vehicle, tuning, &mut ctx.body, Vec3::new(pitch_rate, yaw_rate, roll_rate), dt)
@@ -121,7 +121,7 @@ fn roll_stabilization(
                 ];
                 body.add_local_force(out.into());
             }
-            tq = tq - tuning.roll_stabilization_torque.eval(roll);
+            tq -= tuning.roll_stabilization_torque.eval(roll);
         } else {
             vehicle.roll_stabilization_released = 1;
         }
@@ -162,7 +162,7 @@ fn limit_pitch(
     if (fwd > negative_limit && pitch_limit > up) || (pitch_limit > fwd && up > negative_limit) {
         if gas_pressed {
             let c = tuning.pitch_limit_scale.eval(up * HALF_TURN_DEGREES / PI);
-            drag = drag * c;
+            drag *= c;
         }
         if pitch_rate > 0.0 {
             torque = tuning.pitch_limit_torque.eval(pitch_rate);
@@ -171,7 +171,7 @@ fn limit_pitch(
     if (fwd > negative_limit && up > negative_limit) || (pitch_limit > fwd && pitch_limit > up) {
         if brake_pressed {
             let c = tuning.pitch_limit_scale.eval(up * HALF_TURN_DEGREES / PI);
-            drag = drag * c;
+            drag *= c;
         }
         if 0.0 > pitch_rate {
             torque = tuning.pitch_limit_torque.eval(pitch_rate);
@@ -229,7 +229,7 @@ fn apply_air_input(
     let (mut pitch_rate, mut yaw_rate) = (angular_velocity.x, angular_velocity.y);
     let steering_input = -vehicle.controls.steer;
     let response = tuning.yaw_control.eval(sign_one(steering_input * yaw_rate) * yaw_rate.abs());
-    yaw_rate = yaw_rate + response * (steering_input * dt);
+    yaw_rate += response * (steering_input * dt);
     if steering_input != 0.0 {
         vehicle.yaw_input_direction = sign_one(steering_input);
     }
@@ -245,7 +245,7 @@ fn apply_air_input(
         if tuning.pitch_limit_enabled != 0 {
             pitch_delta = limit_pitch(vehicle, tuning, body, pitch_rate, pitch_delta);
         }
-        pitch_rate = pitch_rate + pitch_delta;
+        pitch_rate += pitch_delta;
     }
 
     Vec3::new(pitch_rate, yaw_rate, angular_velocity.z)

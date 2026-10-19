@@ -144,15 +144,15 @@ impl Vehicle {
 
     pub fn effect_mode_is(&self, mode: PedalMode) -> bool {
         PedalMode::from_code(self.forced_effect_flags as u8) == mode
-            || PedalMode::from_code(self.effect_flags as u8) == mode
+            || PedalMode::from_code(self.effect_flags) == mode
     }
 
     pub fn effect_mode_is_free(&self) -> bool {
-        self.forced_effect_flags as u8 & 3 == 0 && self.effect_flags as u8 & 3 == 0
+        self.forced_effect_flags as u8 & 3 == 0 && self.effect_flags & 3 == 0
     }
 
     pub fn has_effect_flag(&self, bit: u8) -> bool {
-        (self.forced_effect_flags as u8 | self.effect_flags as u8) & bit != 0
+        (self.forced_effect_flags as u8 | self.effect_flags) & bit != 0
     }
 
     pub fn any_wheel_contact(&self) -> bool {

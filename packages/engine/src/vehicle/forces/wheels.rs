@@ -60,7 +60,7 @@ impl Vehicle {
         if rolling.abs() > target.abs() && sign_one(push * loose) == sign_one(rolling) {
             target = rolling;
         }
-        push = push * loose;
+        push *= loose;
         if lock {
             wheel.spin = rolling;
             return;
@@ -122,7 +122,7 @@ fn airborne_spin(
     } else if gas > EPS && !lock {
         (limit, rate) = (gas * PEDAL_SPIN_LIMIT, AIR_SPIN_RATE);
     } else {
-        wheel.spin = wheel.spin * AIR_SPIN_DECAY;
+        wheel.spin *= AIR_SPIN_DECAY;
     }
     if !(EPS > rate.abs()) {
         let x = rate * dt + wheel.spin;

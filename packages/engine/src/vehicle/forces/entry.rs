@@ -193,10 +193,10 @@ pub fn bumper_impulse(ctx: &mut ForceCtx<'_>) {
 }
 
 fn post_event(ctx: &mut ForceCtx<'_>, kind: VehicleEventKind) {
-    if let Some(events) = ctx.events.as_deref_mut() {
-        if let Some(event) = crate::arena::vehicle_event(ctx.vehicle, ctx.tick, kind) {
-            events.push(event);
-        }
+    if let Some(events) = ctx.events.as_deref_mut()
+        && let Some(event) = crate::arena::vehicle_event(ctx.vehicle, ctx.tick, kind)
+    {
+        events.push(event);
     }
 }
 

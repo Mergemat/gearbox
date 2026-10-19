@@ -21,11 +21,9 @@ fn primitive(source: &SurfNode, state: &mut State) -> Result<ShapeId> {
     match &source.surf {
         Surf::Sphere { radius, material: archived } => {
             let result = ShapeId::Sphere(SphereId(state.sphere_shape.len() as u32));
-            state.sphere_shape.push(SphereShape {
-                radius: *radius,
-                material: archived.map_or(material, |id| id as u16),
-                ..Default::default()
-            });
+            state
+                .sphere_shape
+                .push(SphereShape { radius: *radius, material: archived.map_or(material, |id| id as u16) });
             Ok(result)
         }
         Surf::Ellipsoid { size, material: archived } => {
@@ -33,7 +31,6 @@ fn primitive(source: &SurfNode, state: &mut State) -> Result<ShapeId> {
             state.ellipsoid_shape.push(EllipsoidShape {
                 radii: Vec3::from_array(*size),
                 material: archived.map_or(material, |id| id as u16),
-                ..Default::default()
             });
             Ok(result)
         }

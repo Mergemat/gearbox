@@ -32,17 +32,14 @@ impl Vehicle {
         let delta = velocity - self.extra_linear_velocity;
         let speed = (delta.y * delta.y + delta.x * delta.x + delta.z * delta.z).sqrt();
         let scale = tuning.support_by_speed.eval(speed) * dt;
-        self.support_linear_x = velocity.x * scale + self.support_linear_x;
-        self.support_linear_y = velocity.y * scale + self.support_linear_y;
-        self.support_linear_z = velocity.z * scale + self.support_linear_z;
+        self.support_linear_x += velocity.x * scale;
+        self.support_linear_y += velocity.y * scale;
+        self.support_linear_z += velocity.z * scale;
         let delta = delta * scale;
         let radius = point - center;
-        self.support_angular_x =
-            (radius.y * delta.z - radius.z * delta.y) * SUPPORT_ANGULAR_SCALE + self.support_angular_x;
-        self.support_angular_z =
-            (radius.x * delta.y - radius.y * delta.x) * SUPPORT_ANGULAR_SCALE + self.support_angular_z;
-        self.support_angular_y =
-            (radius.z * delta.x - radius.x * delta.z) * SUPPORT_ANGULAR_SCALE + self.support_angular_y;
+        self.support_angular_x += (radius.y * delta.z - radius.z * delta.y) * SUPPORT_ANGULAR_SCALE;
+        self.support_angular_z += (radius.x * delta.y - radius.y * delta.x) * SUPPORT_ANGULAR_SCALE;
+        self.support_angular_y += (radius.z * delta.x - radius.x * delta.z) * SUPPORT_ANGULAR_SCALE;
     }
 
     pub fn end_collision_step(&mut self, tuning: &Tuning) {
@@ -95,7 +92,7 @@ pub fn volume_contact(
     let half_z = tuning.contact_volume_half_depth;
     let floor = tuning.contact_volume_top;
     if dx.abs() < half_x && dz.abs() < half_z {
-        if point.y < floor || point.y == floor {
+        if point.y <= floor {
             return ContactKind::Inside;
         }
         project(*normal, velocity);
@@ -121,8 +118,8 @@ pub fn volume_contact(
     if TINY < squared && squared < f32::MAX {
         let inverse = 1.0 / squared.sqrt();
         direction.y *= inverse;
-        direction.x = inverse * direction.x;
-        direction.z = inverse * direction.z;
+        direction.x *= inverse;
+        direction.z *= inverse;
     }
     *normal = direction;
     if floor < point.y { ContactKind::Outside } else { ContactKind::Floor }

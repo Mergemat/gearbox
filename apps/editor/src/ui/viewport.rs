@@ -1356,30 +1356,6 @@ pub fn wheel_centers(f: &crate::engine::frame::Frame) -> [Vec3; 4] {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn surface_rotation_keeps_the_heading_and_follows_the_normal() {
-        let q = surface_rot(90.0, Vec3::Y);
-        assert!(((q * Vec3::Z) - Vec3::X).length() < 1e-5);
-        let n = Vec3::new(0.0, 1.0, -0.3).normalize();
-        let q = surface_rot(0.0, n);
-        assert!(((q * Vec3::Y) - n).length() < 1e-5);
-        assert!((q * Vec3::Z).y > 0.0, "facing +Z up a slope that rises towards +Z");
-    }
-
-    #[test]
-    fn ray_hits_a_box_in_front() {
-        assert_eq!(
-            ray_box(Vec3::ZERO, Vec3::Z, Vec3::new(-1.0, -1.0, 5.0), Vec3::new(1.0, 1.0, 6.0)),
-            Some(5.0)
-        );
-        assert_eq!(ray_box(Vec3::ZERO, Vec3::Z, Vec3::new(2.0, -1.0, 5.0), Vec3::new(3.0, 1.0, 6.0)), None);
-    }
-}
-
 fn open_error_card(e: &str) -> impl IntoElement {
     let (head, rest) = e.split_once(": ").unwrap_or((e, ""));
     let lines: Vec<&str> = rest.split("; ").filter(|l| !l.is_empty()).collect();
@@ -1403,4 +1379,28 @@ fn open_error_card(e: &str) -> impl IntoElement {
             muted("The rest of the editor stays usable: open another map with \u{2318}O.")
                 .text_size(px(theme::FS_BODY)),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn surface_rotation_keeps_the_heading_and_follows_the_normal() {
+        let q = surface_rot(90.0, Vec3::Y);
+        assert!(((q * Vec3::Z) - Vec3::X).length() < 1e-5);
+        let n = Vec3::new(0.0, 1.0, -0.3).normalize();
+        let q = surface_rot(0.0, n);
+        assert!(((q * Vec3::Y) - n).length() < 1e-5);
+        assert!((q * Vec3::Z).y > 0.0, "facing +Z up a slope that rises towards +Z");
+    }
+
+    #[test]
+    fn ray_hits_a_box_in_front() {
+        assert_eq!(
+            ray_box(Vec3::ZERO, Vec3::Z, Vec3::new(-1.0, -1.0, 5.0), Vec3::new(1.0, 1.0, 6.0)),
+            Some(5.0)
+        );
+        assert_eq!(ray_box(Vec3::ZERO, Vec3::Z, Vec3::new(2.0, -1.0, 5.0), Vec3::new(3.0, 1.0, 6.0)), None);
+    }
 }

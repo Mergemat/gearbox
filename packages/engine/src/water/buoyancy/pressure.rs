@@ -102,13 +102,13 @@ pub fn integrate(
         let (force, point) = pressure(triangle, depth, gravity_scale * DENSITY, area, centroid);
         let relative = point - center;
         let acc = &mut forces.hydrostatic;
-        acc.force.x = acc.force.x + 0.0;
-        acc.force.y = force + acc.force.y;
-        acc.force.z = acc.force.z + 0.0;
+        acc.force.x += 0.0;
+        acc.force.y += force;
+        acc.force.z += 0.0;
         let zero_y = relative.y * 0.0;
-        acc.torque.x = (zero_y - relative.z * force) + acc.torque.x;
-        acc.torque.y = (relative.z * 0.0 - relative.x * 0.0) + acc.torque.y;
-        acc.torque.z = (relative.x * force - zero_y) + acc.torque.z;
+        acc.torque.x += zero_y - relative.z * force;
+        acc.torque.y += relative.z * 0.0 - relative.x * 0.0;
+        acc.torque.z += relative.x * force - zero_y;
         surface_drag(
             SurfaceElement { velocity, normal: triangle.normal, point: centroid, center },
             area,

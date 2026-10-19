@@ -278,7 +278,7 @@ fn body_contact(
         let sample = contact::direction_drag(ctx.tuning, local.relative_velocity, normal, true);
         if sample > 0.0 {
             ctx.vehicle.wheel_meter_count = ctx.vehicle.wheel_meter_count.wrapping_add(1);
-            ctx.vehicle.wheel_meter_sum = sample + ctx.vehicle.wheel_meter_sum;
+            ctx.vehicle.wheel_meter_sum += sample;
         }
     }
     if ctx.tuning.suspension_kind != 2 {
@@ -406,11 +406,12 @@ pub fn contact_velocity_impulse(ctx: &mut ForceCtx<'_>, source: &Contact, veloci
 }
 
 pub fn wheel_contact(ctx: &mut ForceCtx<'_>, local: &mut LocalContact, index: usize, no_response: bool) {
-    if local.material_b as u8 == b'D' && ctx.tuning.pipe_side_contact_enabled != 0 {
-        if let Some(normal) = super::forces::bumps::pipe_side_contact(ctx, index, local.point) {
-            local.normal = normal;
-            local.other_point = local.point;
-        }
+    if local.material_b as u8 == b'D'
+        && ctx.tuning.pipe_side_contact_enabled != 0
+        && let Some(normal) = super::forces::bumps::pipe_side_contact(ctx, index, local.point)
+    {
+        local.normal = normal;
+        local.other_point = local.point;
     }
     let (limit, _) = crate::math::sincos(WHEEL_CONTACT_ANGLE);
     let contacting = limit > local.normal.x.abs();
@@ -421,9 +422,9 @@ pub fn wheel_contact(ctx: &mut ForceCtx<'_>, local: &mut LocalContact, index: us
     }
     wheel.contact = flags.0;
     if contacting {
-        wheel.contact_normal_x = wheel.contact_normal_x + local.normal.x;
-        wheel.contact_normal_y = local.normal.y + wheel.contact_normal_y;
-        wheel.contact_normal_z = wheel.contact_normal_z + local.normal.z;
+        wheel.contact_normal_x += local.normal.x;
+        wheel.contact_normal_y += local.normal.y;
+        wheel.contact_normal_z += local.normal.z;
         wheel.material = local.material_b as u8;
         wheel.surface = (local.material_b >> 8) as u8;
     } else if local.material_b as u8 != b'M' {
@@ -451,7 +452,7 @@ pub fn wheel_contact(ctx: &mut ForceCtx<'_>, local: &mut LocalContact, index: us
         let sample = contact::direction_drag(ctx.tuning, local.relative_velocity, local.normal, impact);
         if sample > 0.0 {
             wheel.sample_count = wheel.sample_count.wrapping_add(1);
-            wheel.sample_sum = sample + wheel.sample_sum;
+            wheel.sample_sum += sample;
             if wheel.sample_time == 0 {
                 wheel.sample_time = tick;
             }
@@ -561,6 +562,7 @@ fn wheel_impulse(ctx: &mut ForceCtx<'_>, local: &LocalContact, index: usize, con
             return;
         }
         let point = Vec3::new(local.other_point.x, center.y, local.other_point.z);
+        #[allow(clippy::eq_op)]
         let radius = Vec3::new(point.x - center.x, center.y - center.y, point.z - center.z);
         let impulse = contact::contact_impulse(
             ctx.geometry.mass,

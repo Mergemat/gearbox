@@ -27,7 +27,6 @@ pub(super) fn build(source: &Aux) -> Result<Auxiliary> {
         wheel_impact_min: source.wheel_impact_min,
         body_impact_max: source.body_impact_max,
         body_impact_min: source.body_impact_min,
-        ..VisModel::default()
     };
     let shared = shared(source)?;
     let geometry = VisGeom { impact_event_threshold: 20.0 };

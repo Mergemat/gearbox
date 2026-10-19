@@ -20,7 +20,7 @@ fn table_size(n: usize) -> usize {
         return 11;
     }
     let mut p = (n * 4 / 3) | 1;
-    while (3..).step_by(2).take_while(|&d| d <= p / d).any(|d| p % d == 0) {
+    while (3..).step_by(2).take_while(|&d| d <= p / d).any(|d| p.is_multiple_of(d)) {
         p += 2;
     }
     p

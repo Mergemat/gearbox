@@ -1215,7 +1215,7 @@ impl Editor {
                                     theme::alpha(theme::HAIRLINE, 0.6),
                                 ));
                             }
-                            if pts.len() < 1 {
+                            if pts.is_empty() {
                                 return;
                             }
                             let span = (hi - lo).max(1e-6);

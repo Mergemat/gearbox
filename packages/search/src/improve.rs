@@ -173,7 +173,7 @@ fn pick(weight: &[f64; 6], allowed: &[bool; 6], rng: &mut StdRng) -> Change {
     last
 }
 
-fn native<'o>(origin: &'o dyn Origin, car: Option<&Placement>) -> Result<gearbox_engine::Session> {
+fn native(origin: &dyn Origin, car: Option<&Placement>) -> Result<gearbox_engine::Session> {
     let mut n = origin.native()?;
     if let Some(p) = car {
         place(&mut n, p)?;

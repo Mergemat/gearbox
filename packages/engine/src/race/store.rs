@@ -119,10 +119,10 @@ impl Store {
     }
 
     fn destination(&mut self, owner: u8, run: u32, last: Option<usize>) -> (usize, usize) {
-        if let Some(index) = last {
-            if let Some(slot) = self.chunks[index].entries.iter().position(|entry| entry.time == NO_RUN) {
-                return (index, slot);
-            }
+        if let Some(index) = last
+            && let Some(slot) = self.chunks[index].entries.iter().position(|entry| entry.time == NO_RUN)
+        {
+            return (index, slot);
         }
         let sequence = last.map_or(0, |index| self.chunks[index].sequence.wrapping_add(1));
         let id = self.next_id(owner);

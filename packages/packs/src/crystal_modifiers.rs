@@ -45,7 +45,7 @@ pub fn centroid(positions: impl IntoIterator<Item = [f32; 3]>) -> [f32; 3] {
     for p in positions {
         count += 1.0;
         for i in 0..3 {
-            sum[i] = p[i] + sum[i];
+            sum[i] += p[i];
         }
     }
     if count != 0.0 {
@@ -70,7 +70,7 @@ pub fn scale(positions: &mut [[f32; 3]], value: [f32; 3]) {
 pub fn translate(positions: &mut [[f32; 3]], value: [f32; 3]) {
     for p in positions {
         p[0] += value[0];
-        p[1] = value[1] + p[1];
+        p[1] += value[1];
         p[2] += value[2];
     }
 }

@@ -175,8 +175,7 @@ fn inputs(vehicle: &Vehicle, velocity: Vec3, visual: &mut VisualState, flags: &m
     };
     visual.secondary_action = (ToggleFlags(vehicle.controls.auxiliary_bytes[0] as u32).enabled()
         || ActionFlags(vehicle.controls.actions).contains(ActionFlags::TRANSIENT)
-        || ToggleFlags(vehicle.controls.auxiliary_words[11] as u32).enabled())
-        as u32;
+        || ToggleFlags(vehicle.controls.auxiliary_words[11]).enabled()) as u32;
 }
 
 fn boost(

@@ -11,7 +11,7 @@ pub fn material_ids(buf: &[u8]) -> Result<MaterialIds> {
     let w = 0x09079017u32.to_le_bytes();
     let p = buf.windows(4).position(|x| x == w).context("material without chunk 0x09079017")?;
     let v = u32::from_le_bytes(buf.get(p + 4..p + 8).context("truncated")?.try_into().unwrap());
-    if v < 1 || v > 16 {
+    if !(1..=16).contains(&v) {
         bail!("material chunk 0x09079017 version {v}");
     }
     Ok(MaterialIds { surface: buf[p + 8], gameplay: buf[p + 9] })
@@ -95,7 +95,7 @@ fn material_paths(b: &[u8]) -> Vec<(String, String)> {
 }
 
 fn file_stem(path: &str) -> String {
-    let f = path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(path);
+    let f = path.rsplit(['/', '\\']).next().unwrap_or(path);
     f.split('.').next().unwrap_or("").to_string()
 }
 

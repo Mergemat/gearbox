@@ -222,7 +222,7 @@ impl<'a> PackSource<'a> {
                 unreachable!("Surf::Mesh builds Geometry::Mesh")
             };
             for vertex in &mut mesh.vertices {
-                *vertex = *vertex * scale;
+                *vertex *= scale;
             }
         }
         let gameplay = placed
@@ -393,7 +393,7 @@ impl<'a> PackSource<'a> {
             LAYER_TRIGGER => 2,
             _ => unreachable!(),
         });
-        Ok(BlockModel { geometry: geometry, parts })
+        Ok(BlockModel { geometry, parts })
     }
 
     pub fn item_parts(

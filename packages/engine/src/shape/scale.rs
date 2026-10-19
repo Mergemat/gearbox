@@ -5,7 +5,7 @@ pub fn shape(world: &mut World, state: &mut State, shape_id: ShapeId, scale: f32
     match shape_id {
         ShapeId::Sphere(id) => {
             let sphere = &mut state.sphere_shape[id.index()];
-            sphere.radius = scale * sphere.radius;
+            sphere.radius *= scale;
         }
         ShapeId::Ellipsoid(id) => {
             let ellipsoid = &mut state.ellipsoid_shape[id.index()];

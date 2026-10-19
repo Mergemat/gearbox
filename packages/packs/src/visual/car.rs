@@ -108,10 +108,10 @@ pub(super) fn load(cache: &mut VisualCache, car: crate::assets::Car) -> Result<C
                     Err(e) => cache.report("car-texture", &path, format!("{e:#}")),
                 }
             }
-            if !overrides.contains_key(&s.material) {
+            if let std::collections::btree_map::Entry::Vacant(e) = overrides.entry(s.material) {
                 let id = cache.materials.len();
                 cache.materials.push(material);
-                overrides.insert(s.material, id);
+                e.insert(id);
             }
         }
     }

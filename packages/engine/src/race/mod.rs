@@ -109,12 +109,11 @@ impl Racer {
                 return handle;
             }
         }
-        if let Some(controller) = &self.controller {
-            if let Some(&slot) = crate::race::SEAT_SLOTS.get(controller.seat as usize) {
-                if slot != 6 {
-                    return self.player.seats[slot as usize];
-                }
-            }
+        if let Some(controller) = &self.controller
+            && let Some(&slot) = crate::race::SEAT_SLOTS.get(controller.seat as usize)
+            && slot != 6
+        {
+            return self.player.seats[slot as usize];
         }
         self.player.entity
     }

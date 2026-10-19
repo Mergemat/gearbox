@@ -11,7 +11,7 @@ struct Buffer {
 }
 impl Buffer {
     fn view(&mut self, data: &[u8], target: Option<u32>) -> usize {
-        while self.bytes.len() % 4 != 0 {
+        while !self.bytes.len().is_multiple_of(4) {
             self.bytes.push(0);
         }
         let offset = self.bytes.len();

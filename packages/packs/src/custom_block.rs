@@ -16,7 +16,7 @@ pub struct BlockItem {
 
 pub fn mobil_key(id: u32) -> (bool, usize, usize, usize) {
     let v = id / 1_000_000;
-    (v % 10 == 0, (id / 1000 % 1000) as usize, (v / 10 % 100) as usize, (id % 1000) as usize)
+    (v.is_multiple_of(10), (id / 1000 % 1000) as usize, (v / 10 % 100) as usize, (id % 1000) as usize)
 }
 
 pub fn read(ctx: &Ctx<'_>, start: usize) -> Result<BlockItem> {

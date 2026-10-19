@@ -207,7 +207,7 @@ impl Ctx<'_> {
 
     pub fn prefab(&self, r: &mut Reader) -> Result<Prefab> {
         let version = r.u32()?;
-        ensure!(version >= 9 && version <= 11, "prefab version {version}");
+        ensure!((9..=11).contains(&version), "prefab version {version}");
         r.skip(8)?;
         let url = r.string()?;
         r.i32()?;

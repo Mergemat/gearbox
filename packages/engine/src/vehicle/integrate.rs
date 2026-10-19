@@ -9,15 +9,15 @@ pub fn integrate_body(vehicle: &mut Vehicle, geometry: &ForceGeometry, dyna: &mu
     let body = dyna.body_mut(handle);
     let state = &mut body.state;
     let pending = vehicle.extra_linear_velocity;
-    state.pos.x = (pending.x + state.vel.x) * dt + state.pos.x;
-    state.pos.y = (state.vel.y + pending.y) * dt + state.pos.y;
-    state.pos.z = (pending.z + state.vel.z) * dt + state.pos.z;
+    state.pos.x += (pending.x + state.vel.x) * dt;
+    state.pos.y += (state.vel.y + pending.y) * dt;
+    state.pos.z += (pending.z + state.vel.z) * dt;
     let angular = vehicle.extra_angular_velocity + state.ang_vel;
     rotate_about_center(state, body.model.center(), angular, dt);
     let scale = dt / geometry.mass;
-    state.vel.x = body.acc.force.x * scale + state.vel.x;
-    state.vel.y = body.acc.force.y * scale + state.vel.y;
-    state.vel.z = body.acc.force.z * scale + state.vel.z;
+    state.vel.x += body.acc.force.x * scale;
+    state.vel.y += body.acc.force.y * scale;
+    state.vel.z += body.acc.force.z * scale;
     let torque = body.acc.torque;
     let inertia = vehicle.world_inverse_inertia.to_array();
     let delta = Vec3::new(
@@ -51,7 +51,7 @@ fn rotate_about_center(state: &mut BodyState, center: Vec3, angular: Vec3, dt: f
         (center.x * previous[3] + center.y * previous[4]) + center.z * previous[5],
         (center.y * previous[7] + center.x * previous[6]) + center.z * previous[8],
     );
-    state.pos = state.pos - (new_center - old_center);
+    state.pos -= new_center - old_center;
 }
 
 pub fn premultiply(rotation: Mat3, value: Mat3) -> Mat3 {

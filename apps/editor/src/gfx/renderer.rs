@@ -639,13 +639,13 @@ impl Renderer {
             times.wait_us =
                 self.refresh_done((self.seq > 0).then_some(self.seq), std::time::Duration::from_millis(50));
             let done = self.done.load(Ordering::Acquire);
-            if self.seq.saturating_sub(done) >= 2 {
-                if let Some(out) = self.newest_done() {
-                    times.encode_us = t0.elapsed().as_secs_f32() * 1e6;
-                    times.skipped = true;
-                    times.pending = true;
-                    return Ok((out, times));
-                }
+            if self.seq.saturating_sub(done) >= 2
+                && let Some(out) = self.newest_done()
+            {
+                times.encode_us = t0.elapsed().as_secs_f32() * 1e6;
+                times.skipped = true;
+                times.pending = true;
+                return Ok((out, times));
             }
         }
         let (d, q) = (&self.gpu.device, &self.gpu.queue);

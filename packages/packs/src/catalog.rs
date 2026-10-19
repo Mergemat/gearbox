@@ -285,14 +285,13 @@ impl Crawler<'_> {
                     .find(|ov| (ov.kind == VariantKind::Ground) == ground && ov.index == index)
                     .context("custom archetype variant")?;
                 let og = &ov.mobils[group];
-                if og[sub].solid_frequency == 0 {
-                    if let Some(companion) =
+                if og[sub].solid_frequency == 0
+                    && let Some(companion) =
                         (1..og.len()).map(|i| (sub + i) % og.len()).find(|&i| og[i].solid_frequency != 0)
-                    {
-                        let id = mobil.id - sub as u32 + companion as u32;
-                        if !customized.contains(&id) {
-                            v.mobils[group][companion] = v.mobils[group][sub].clone();
-                        }
+                {
+                    let id = mobil.id - sub as u32 + companion as u32;
+                    if !customized.contains(&id) {
+                        v.mobils[group][companion] = v.mobils[group][sub].clone();
                     }
                 }
             }

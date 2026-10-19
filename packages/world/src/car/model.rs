@@ -190,13 +190,12 @@ fn body(tuning: &Tuning, center: Vec3, half: Vec3, average: Vec3) -> DynaModel {
         substep_distance: tuning.substep_distance,
         externally_simulated: 1,
         kind: 0,
-        ..Default::default()
     }
 }
 
 fn water_shape(bounds: Aabb, world: &mut World) -> ShapeId {
     let result = ShapeId::Box(BoxId(world.box_shape.len() as u32));
-    world.box_shape.push(gearbox_engine::collision::BoxShape { material: 0, bounds, ..Default::default() });
+    world.box_shape.push(gearbox_engine::collision::BoxShape { material: 0, bounds });
     result
 }
 

@@ -20,15 +20,15 @@ fn road_visual_and_collision_occupy_the_same_block() {
     let collision = assets.block_model("RoadTechStraight", false, 0, 0, 0).unwrap();
     let mut positions = Vec::new();
     for part in collision {
-        if let Some(node) = &part.surface.surf {
-            if let gearbox_packs::surface::Surf::Mesh { vertices, .. } = &node.surf {
-                let loc = part.chain.iter().fold(gearbox_packs::assets::Loc::IDENTITY, |loc, c| loc.then(c));
-                let m = loc.matrix();
-                for &p in vertices {
-                    positions.push(std::array::from_fn(|i| {
-                        m[i * 3] * p[0] + m[i * 3 + 1] * p[1] + m[i * 3 + 2] * p[2] + loc.position[i]
-                    }));
-                }
+        if let Some(node) = &part.surface.surf
+            && let gearbox_packs::surface::Surf::Mesh { vertices, .. } = &node.surf
+        {
+            let loc = part.chain.iter().fold(gearbox_packs::assets::Loc::IDENTITY, |loc, c| loc.then(c));
+            let m = loc.matrix();
+            for &p in vertices {
+                positions.push(std::array::from_fn(|i| {
+                    m[i * 3] * p[0] + m[i * 3 + 1] * p[1] + m[i * 3 + 2] * p[2] + loc.position[i]
+                }));
             }
         }
     }

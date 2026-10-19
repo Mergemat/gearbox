@@ -54,40 +54,40 @@ pub fn surface_factors(ctx: &ForceCtx<'_>) -> SurfaceFactors {
             continue;
         }
         let material = ctx.geometry.material(wheel.material);
-        result.steering = material.steering_by_speed.eval(speed) + result.steering;
-        result.thrust = material.thrust_by_speed.eval(speed) + result.thrust;
-        result.grip = material.grip_by_immersion.eval(vehicle.immersion) + result.grip;
-        result.alignment = material.thrust_by_alignment.eval(alignment) + result.alignment;
+        result.steering += material.steering_by_speed.eval(speed);
+        result.thrust += material.thrust_by_speed.eval(speed);
+        result.grip += material.grip_by_immersion.eval(vehicle.immersion);
+        result.alignment += material.thrust_by_alignment.eval(alignment);
         count += 1;
     }
     if count == 0 {
         return SurfaceFactors { steering: 1.0, thrust: 1.0, grip: 1.0, alignment: 0.0 };
     }
-    result.steering = result.steering / count as f32;
-    result.thrust = result.thrust / count as f32;
-    result.grip = result.grip / count as f32;
-    result.alignment = result.alignment / count as f32;
+    result.steering /= count as f32;
+    result.thrust /= count as f32;
+    result.grip /= count as f32;
+    result.alignment /= count as f32;
     result
 }
 
 pub fn scale_surface(response: &mut SurfaceResponse, scale: f32) {
-    response.speed_limit = scale * response.speed_limit;
-    response.brake = scale * response.brake;
-    response.grip = scale * response.grip;
-    response.rolling = scale * response.rolling;
-    response.thrust = scale * response.thrust;
-    response.sliding = scale * response.sliding;
-    response.contact = scale * response.contact;
+    response.speed_limit *= scale;
+    response.brake *= scale;
+    response.grip *= scale;
+    response.rolling *= scale;
+    response.thrust *= scale;
+    response.sliding *= scale;
+    response.contact *= scale;
     response.gripping = crate::numeric::lroundf(response.gripping as f32 * scale) as u32;
-    response.visual_steering_rate = scale * response.visual_steering_rate;
-    response.immersion_brake_drain = scale * response.immersion_brake_drain;
-    response.steering_rate = scale * response.steering_rate;
-    response.yaw_drag = scale * response.yaw_drag;
+    response.visual_steering_rate *= scale;
+    response.immersion_brake_drain *= scale;
+    response.steering_rate *= scale;
+    response.yaw_drag *= scale;
     if response.lateral_thrust > 0.0 {
-        response.lateral_thrust = response.lateral_thrust * scale;
+        response.lateral_thrust *= scale;
     }
     if response.lateral_drag > 0.0 {
-        response.lateral_drag = response.lateral_drag * scale;
+        response.lateral_drag *= scale;
     }
 }
 
@@ -110,25 +110,25 @@ pub fn average_surfaces(ctx: &mut ForceCtx<'_>) -> (SurfaceResponse, SurfaceFact
         if material.gripping != 0 {
             gripping += 1;
         }
-        response.speed_limit = material.speed_limit_scale + response.speed_limit;
-        response.thrust = material.thrust_scale + response.thrust;
-        response.brake = material.brake_scale + response.brake;
-        response.grip = material.grip_scale + response.grip;
-        response.rolling = material.rolling_response + response.rolling;
-        response.sliding = material.sliding_response + response.sliding;
-        response.contact = material.contact_response + response.contact;
+        response.speed_limit += material.speed_limit_scale;
+        response.thrust += material.thrust_scale;
+        response.brake += material.brake_scale;
+        response.grip += material.grip_scale;
+        response.rolling += material.rolling_response;
+        response.sliding += material.sliding_response;
+        response.contact += material.contact_response;
         response.gripping = response.gripping.wrapping_add(material.gripping);
-        response.visual_steering_rate = material.steering_visual_rate + response.visual_steering_rate;
-        response.immersion_brake_drain = material.immersion_brake_drain + response.immersion_brake_drain;
-        response.steering_rate = material.steering_rate + response.steering_rate;
+        response.visual_steering_rate += material.steering_visual_rate;
+        response.immersion_brake_drain += material.immersion_brake_drain;
+        response.steering_rate += material.steering_rate;
         sum_optional(&mut response.lateral_thrust, material.lateral_thrust);
         sum_optional(&mut response.lateral_drag, material.lateral_drag);
         count += 1;
-        response.yaw_drag = material.yaw_drag + response.yaw_drag;
+        response.yaw_drag += material.yaw_drag;
         response.pivot_enabled &= material.pivot_enabled;
-        normal.x = wheel.contact_normal_x + normal.x;
-        normal.y = wheel.contact_normal_y + normal.y;
-        normal.z = wheel.contact_normal_z + normal.z;
+        normal.x += wheel.contact_normal_x;
+        normal.y += wheel.contact_normal_y;
+        normal.z += wheel.contact_normal_z;
         if ctx.tuning.adhesion_enabled != 0 {
             class = material_class(wheel.material);
         }
@@ -215,7 +215,7 @@ pub fn drain_meter(ctx: &mut ForceCtx<'_>, response: &SurfaceResponse) {
         None
     };
     if let Some(pedal) = input {
-        rate = rate + response.immersion_brake_drain * ctx.dt * pedal;
+        rate += response.immersion_brake_drain * ctx.dt * pedal;
     }
     let velocity = ctx.local_velocity;
     let speed = (velocity.x * velocity.x + velocity.y * velocity.y + velocity.z * velocity.z).sqrt() * KMH;
