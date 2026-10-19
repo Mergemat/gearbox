@@ -34,7 +34,7 @@ jobs:
           - os: windows-latest
             packages: --workspace --exclude gearbox-editor
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --release --locked ${{ matrix.packages }}
 
@@ -48,7 +48,7 @@ jobs:
       publish: ${{ steps.ref.outputs.publish }}
       prerelease: ${{ steps.ref.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Bump, commit and tag
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -105,7 +105,7 @@ jobs:
     env:
       TAG: ${{ needs.prepare.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.ref }}
       - run: rustup target add ${{ matrix.target }}
@@ -145,7 +145,7 @@ jobs:
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.tag }}
           fetch-depth: 0
