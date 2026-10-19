@@ -1,0 +1,11 @@
+name: Feature
+description: An idea for Gearbox
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+      description: What you want to do and why.
+    validations:
+      required: true
