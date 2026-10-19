@@ -22,3 +22,6 @@ dirs = "6"
 
 image = { version = "0.25", default-features = false, features = ["png", "webp"] }
 image_dds = { version = "0.7", default-features = false, features = ["ddsfile", "image"] }
+
+[lints]
+workspace = true

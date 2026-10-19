@@ -15,3 +15,6 @@ serde = { version = "1", features = ["derive"] }
 zstd = "0.13"
 gearbox-engine = { path = "../engine" }
 gearbox-world = { path = "../world" }
+
+[lints]
+workspace = true

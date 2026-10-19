@@ -24,3 +24,6 @@ gearbox-engine = { path = "../../packages/engine" }
 gearbox-world = { path = "../../packages/world" }
 gearbox-search = { path = "../../packages/search" }
 gearbox-trace = { path = "../../packages/trace" }
+
+[lints]
+workspace = true

@@ -11,3 +11,6 @@ publish = false
 description = "Trackmania 2020 physics on typed values"
 
 [dependencies]
+
+[lints]
+workspace = true
