@@ -154,11 +154,8 @@ impl<'a> Decoder<'a> {
             if params.0 != 0x2f0c_8000 || params.1.len() != 36 {
                 continue;
             }
-            let words: Vec<_> = params
-                .1
-                .chunks_exact(4)
-                .map(|bytes| u32::from_le_bytes(bytes.try_into().expect("four bytes")))
-                .collect();
+            let words: Vec<_> =
+                params.1.as_chunks::<4>().0.iter().map(|bytes| u32::from_le_bytes(*bytes)).collect();
             if words[1] != u32::MAX || words[2] != ordinal {
                 continue;
             }

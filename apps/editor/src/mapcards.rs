@@ -74,7 +74,7 @@ fn thumbnail(jpeg: &[u8], side: u32) -> Option<Arc<gpui::RenderImage>> {
     let img = img.flipv().thumbnail(side, side).to_rgba8();
     let (w, h) = img.dimensions();
     let mut px = img.into_raw();
-    for p in px.chunks_exact_mut(4) {
+    for p in px.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
     }
     let img = image::RgbaImage::from_raw(w, h, px)?;

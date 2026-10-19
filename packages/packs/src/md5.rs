@@ -18,8 +18,8 @@ pub fn md5(data: &[u8]) -> [u8; 16] {
     msg.extend_from_slice(&bits.to_le_bytes());
     let (mut a0, mut b0, mut c0, mut d0) = (0x67452301u32, 0xefcdab89u32, 0x98badcfeu32, 0x10325476u32);
     let kt: Vec<u32> = (0..64).map(k).collect();
-    for chunk in msg.chunks_exact(64) {
-        let m: Vec<u32> = chunk.chunks_exact(4).map(|w| u32::from_le_bytes(w.try_into().unwrap())).collect();
+    for chunk in msg.as_chunks::<64>().0 {
+        let m: Vec<u32> = chunk.as_chunks::<4>().0.iter().map(|w| u32::from_le_bytes(*w)).collect();
         let (mut a, mut b, mut c, mut d) = (a0, b0, c0, d0);
         for i in 0..64 {
             let (f, g) = match i / 16 {

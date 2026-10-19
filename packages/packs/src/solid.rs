@@ -189,7 +189,7 @@ pub fn collision(ctx: &Ctx<'_>, start: usize) -> Result<Surface> {
                 ((x * 0.0 + y * 0.0) + z * 1.0) + 0.0,
             ]
         }));
-        triangles.extend(indices.chunks_exact(3).map(|t| MeshTri {
+        triangles.extend(indices.as_chunks::<3>().0.iter().map(|t| MeshTri {
             v: [base + t[0] as i32, base + t[1] as i32, base + t[2] as i32],
             flags: ids,
             material: 0,

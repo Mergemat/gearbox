@@ -4,7 +4,7 @@ use std::ops::Range;
 use anyhow::Result;
 use gearbox_engine::Controls;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 
 use crate::follow::steer_toward;
 use crate::input::Timeline;

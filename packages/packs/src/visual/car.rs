@@ -120,7 +120,7 @@ pub(super) fn load(cache: &mut VisualCache, car: crate::assets::Car) -> Result<C
         let mesh = cache.meshes[part.mesh].clone();
         let mut wheel_tris = BTreeMap::<usize, Vec<u32>>::new();
         let mut body = Vec::new();
-        for tri in mesh.indices.chunks_exact(3) {
+        for tri in mesh.indices.as_chunks::<3>().0 {
             let wheel = if mesh.joint_indices.len() == mesh.positions.len() && mesh.blend_weights.is_empty() {
                 let j = mesh.joint_indices[tri[0] as usize][0];
                 if tri.iter().all(|&i| mesh.joint_indices[i as usize][0] == j) {

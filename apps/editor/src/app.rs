@@ -2721,7 +2721,7 @@ impl Editor {
         let p: [f32; 3] = (p + Vec3::Y * 0.5).into();
         let mut id = self.drawing.unwrap_or(0);
         let n = self.doc.guides.len() + 1;
-        self.edit("draw line", Some(&format!("line-{}", self.drawing.map_or(0, |d| d))), |d| {
+        self.edit("draw line", Some(&format!("line-{}", self.drawing.unwrap_or(0))), |d| {
             match d.guide_mut(id) {
                 Some(g) => g.points.push(p),
                 None => {

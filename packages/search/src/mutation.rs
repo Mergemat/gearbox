@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use anyhow::{Result, ensure};
 use gearbox_engine::Controls;
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 #[derive(Clone, Debug)]
 pub struct Mutation {

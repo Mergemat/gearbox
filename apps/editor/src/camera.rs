@@ -170,17 +170,20 @@ impl Camera {
 
     fn proj(&self, aspect: f32) -> Mat4 {
         let near = (self.cur.distance * 0.01).clamp(0.05, 0.5);
-        Mat4::perspective_infinite_reverse_rh(self.fov_y, aspect.max(0.01), near)
+        glam::camera::rh::proj::directx::perspective_infinite_reverse(self.fov_y, aspect.max(0.01), near)
     }
 
     pub fn view_proj(&self, aspect: f32) -> Mat4 {
         let eye = self.cur.eye();
-        self.proj(aspect) * Mat4::look_at_rh(eye, eye + self.cur.dir(), Vec3::Y)
+        self.proj(aspect) * glam::camera::rh::view::look_at_mat4(eye, eye + self.cur.dir(), Vec3::Y)
     }
 
     pub fn view_proj_rel(&self, aspect: f32) -> (glam::DVec3, Mat4) {
         let eye = self.cur.eye();
-        (eye.as_dvec3(), self.proj(aspect) * Mat4::look_at_rh(Vec3::ZERO, self.cur.dir(), Vec3::Y))
+        (
+            eye.as_dvec3(),
+            self.proj(aspect) * glam::camera::rh::view::look_at_mat4(Vec3::ZERO, self.cur.dir(), Vec3::Y),
+        )
     }
 
     pub fn orbit(&mut self, d: Vec2) {
