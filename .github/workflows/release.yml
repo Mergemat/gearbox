@@ -134,7 +134,7 @@ jobs:
           "target/${{ matrix.target }}/release/gearbox-editor" bundle --out dist
           ditto -c -k --keepParent dist/Gearbox.app "dist/Gearbox-$TAG-macos-arm64.zip"
           rm -rf dist/Gearbox.app
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: dist/*
