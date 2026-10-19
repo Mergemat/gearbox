@@ -17,7 +17,7 @@ use gearbox_engine::Controls;
 use glam::{Vec2, Vec3};
 use gpui::{App, Bounds, Context, FocusHandle, Pixels, Window, actions};
 
-use crate::aux::{self, Aux, GateInfo, Key};
+use crate::background::{self, Aux, GateInfo, Key};
 use crate::camera::{Camera, View};
 use crate::doc::{self, Doc, Goal, GoalKind, Id, Origin, Reach, Run, StartState, Undo};
 use crate::gfx::renderer::{Composite, Output};
@@ -1092,13 +1092,13 @@ impl Editor {
         let done = self.aux.as_ref().map(Aux::take).unwrap_or_default();
         for d in done {
             match d {
-                aux::Done::Gates(Ok(g)) => {
+                background::Done::Gates(Ok(g)) => {
                     self.info("world", format!("{} gates ({} checkpoints, {} finishes)", g.len(), g.iter().filter(|g| g.gate.kind != 1).count(), g.iter().filter(|g| g.gate.kind == 1).count()));
                     self.gates = g;
                     self.merge_finish_goals();
                 }
-                aux::Done::Gates(Err(e)) => self.error("world", format!("gates: {e}")),
-                aux::Done::Frames { key, frames, micros, error } => {
+                background::Done::Gates(Err(e)) => self.error("world", format!("gates: {e}")),
+                background::Done::Frames { key, frames, micros, error } => {
                     self.runs_pending.remove(&key);
                     if let Some(e) = error {
                         self.log(LogLevel::Warn, "sim", format!("{key:?}: {e}"));
@@ -1195,7 +1195,7 @@ impl Editor {
         self.picker = Some(Picker::spawn(o.origin.clone(), Arc::new(move || w.wake())));
         let w = self.waker.clone();
         let aux = Aux::spawn(o.origin.clone(), Arc::new(move || w.wake()));
-        aux.send(aux::Job::Gates);
+        aux.send(background::Job::Gates);
         self.aux = Some(aux);
         self.origin = Some(o.origin);
         if let Some(s) = &self.doc.start {
@@ -1377,7 +1377,7 @@ impl Editor {
         if self.runs_pending.insert(key)
             && let Some(a) = &self.aux
         {
-            a.send(aux::Job::Simulate { key, inputs, len, start: start.map(|s| (s.tick, s.placement())) });
+            a.send(background::Job::Simulate { key, inputs, len, start: start.map(|s| (s.tick, s.placement())) });
         }
         None
     }

@@ -1,5 +1,5 @@
 mod app;
-mod aux;
+mod background;
 mod bundle;
 mod camera;
 mod catalog;
