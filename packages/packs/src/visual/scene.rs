@@ -28,12 +28,9 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
             }
         }
     }
-    let env = match map.decoration_collection.as_deref().or(map.collection.as_deref()) {
-        Some("26" | "Stadium") => "Stadium",
-        Some("25") => "Stadium256",
-        Some("29") => "WhiteShore",
-        v => anyhow::bail!("visual environment {v:?}"),
-    };
+    let collection = map.decoration_collection.as_deref().or(map.collection.as_deref());
+    let env = crate::packs::environment(collection)
+        .ok_or_else(|| anyhow::anyhow!("visual environment {collection:?}"))?;
     let decoration = map.decoration.as_deref().and_then(|name| assets.decoration(name, env));
     let cell = [32., 8., decoration.and_then(|d| d.level0).map_or(-64., |v| -(v as f32) * 8.)];
     let mut scene = Scene::default();

@@ -87,12 +87,7 @@ pub fn grid(volume: &gearbox_packs::map_model::WaterVolume) -> Result<(VoxelGrid
 
 pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
     let catalog = assets.geometry(map)?;
-    let env = match map.decoration_collection.as_deref().or(map.collection.as_deref()) {
-        Some("26" | "Stadium") => "Stadium",
-        Some("25") => "Stadium256",
-        Some("29") => "WhiteShore",
-        other => anyhow::bail!("water environment {other:?} not decoded"),
-    };
+    let env = crate::statics::packs::environment(map).map_err(anyhow::Error::msg)?;
     let mut water = Water::default();
     let mut cache = HashMap::new();
     let mut boxes = Vec::new();

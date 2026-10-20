@@ -15,6 +15,18 @@ pub fn name_hash(name: &str) -> String {
     d.iter().flat_map(|&x| [H[(x % 16) as usize] as char, H[(x / 16) as usize] as char]).collect()
 }
 
+pub fn environment(collection: Option<&str>) -> Option<&'static str> {
+    match collection? {
+        "26" | "Stadium" => Some("Stadium"),
+        "25" => Some("Stadium256"),
+        "15" => Some("GreenCoast"),
+        "16" => Some("RedIsland"),
+        "28" => Some("BlueBay"),
+        "29" => Some("WhiteShore"),
+        _ => None,
+    }
+}
+
 const BASE_KEYS: [(&str, &str); 12] = [
     ("Stadium", "5B985F4CC43013C458A4C99A4B285E1E"),
     ("Maniaplanet", "24283C7980351AAB426F880FBA61817C"),

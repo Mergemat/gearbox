@@ -11,12 +11,8 @@ pub use gearbox_engine::static_world::{LAYER_STATIC, LAYER_TRIGGER};
 
 pub fn environment(map: &gearbox_gbx::Map) -> Result<&'static str, String> {
     let c = map.decoration_collection.as_deref().or(map.collection.as_deref());
-    match c {
-        Some("26") | Some("Stadium") => Ok("Stadium"),
-        Some("25") => Ok("Stadium256"),
-        Some("29") => Ok("WhiteShore"),
-        other => Err(format!("collection {other:?} not mapped to an environment yet")),
-    }
+    gearbox_packs::packs::environment(c)
+        .ok_or_else(|| format!("collection {c:?} not mapped to an environment yet"))
 }
 
 pub fn map_cell(assets: &Assets, map: &gearbox_gbx::Map) -> [f32; 3] {

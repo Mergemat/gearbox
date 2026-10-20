@@ -15,9 +15,6 @@ pub(crate) fn select(
                 if layer != id {
                     continue;
                 }
-                if groups.len() > 1 {
-                    todo!("multi-group crystal modifier selection");
-                }
                 let Some(group) = groups.iter().position(|g| g == group) else {
                     continue;
                 };
