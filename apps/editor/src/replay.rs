@@ -225,7 +225,13 @@ mod tests {
             return;
         }
         let got = inputs(&load(&replay).unwrap()).unwrap();
-        assert_eq!(got.to_text(), std::fs::read_to_string(&expected).unwrap());
+        let rig = InputFile::read(&expected).unwrap();
+        assert_eq!((got.t0, got.seed, got.controls.len()), (rig.t0, rig.seed, rig.controls.len()));
+        for (i, (g, r)) in got.controls.iter().zip(&rig.controls).enumerate() {
+            let limited = [0.2, 0.4, 0.6, 0.8, 1.0].iter().any(|k| g.steer == r.steer * k);
+            assert!((g.gas, g.brake) == (r.gas, r.brake) && limited, "tick {i}: {g:?} vs {r:?}");
+        }
+        assert!(got.controls.iter().zip(&rig.controls).any(|(g, r)| g.steer != r.steer));
         let ghost = GhostTrack::read(&replay).unwrap();
         assert!(ghost.samples.len() > 100 && ghost.race_time_ms.is_some());
     }

@@ -11,6 +11,7 @@ use crate::Run;
 
 const COUNTDOWN_MS: i32 = -1500;
 const OVERRUN_TICKS: usize = 100;
+const STEER_LIMIT_KEYS: [(u32, f32); 5] = [(15, 0.2), (17, 0.4), (19, 0.6), (21, 0.8), (23, 1.0)];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
@@ -79,10 +80,15 @@ impl Record {
 
         let t0 = if inputs.start_offset_ms >= 0 { COUNTDOWN_MS } else { inputs.start_offset_ms };
         let countdown = usize::try_from((inputs.start_offset_ms - t0) / 10)?;
-        let driven = inputs.ticks.iter().map(|t| Controls {
+        let keyboard = inputs.ticks.iter().all(|t| t.steer == 0 || t.steer.unsigned_abs() == 127);
+        let limits = match keyboard {
+            true => steer_limits(&inputs.state_words, inputs.ticks.len()),
+            false => vec![1.0; inputs.ticks.len()],
+        };
+        let driven = inputs.ticks.iter().zip(limits).map(|(t, limit)| Controls {
             gas: f32::from(u8::from(t.gas)),
             brake: f32::from(u8::from(t.brake)),
-            steer: f32::from(t.steer) / 127.0,
+            steer: f32::from(t.steer) / 127.0 * limit,
         });
         Ok(Self {
             run: Run {
@@ -125,6 +131,25 @@ impl Record {
     }
 }
 
+fn steer_limits(words: &[(usize, u64)], ticks: usize) -> Vec<f32> {
+    let mut limit = 1.0;
+    let mut held = 0;
+    let mut words = words.iter().peekable();
+    (0..ticks)
+        .map(|tick| {
+            while let Some(&(_, w)) = words.next_if(|(t, _)| *t <= tick) {
+                for (bit, cap) in STEER_LIMIT_KEYS {
+                    if (w & !held) >> bit & 1 != 0 {
+                        limit = if limit == cap { 1.0 } else { cap };
+                    }
+                }
+                held = w;
+            }
+            limit
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,6 +162,33 @@ mod tests {
             player: None,
             build: Some(build.into()),
         }
+    }
+
+    #[test]
+    fn action_keys_set_switch_and_toggle_the_steer_limit() {
+        let key = |bit: u32| 2 | 1u64 << bit;
+        let words = [
+            (0, 2),
+            (2, key(19)),
+            (3, 2),
+            (5, key(15)),
+            (6, 2),
+            (8, key(15)),
+            (9, 2),
+            (10, key(21)),
+            (12, 2),
+        ];
+        let limits = steer_limits(&words, 14);
+        assert_eq!(limits, [1.0, 1.0, 0.6, 0.6, 0.6, 0.2, 0.2, 0.2, 1.0, 1.0, 0.8, 0.8, 0.8, 0.8]);
+    }
+
+    #[test]
+    fn holding_an_action_key_counts_once() {
+        let held = 2 | 1u64 << 17;
+        assert_eq!(
+            steer_limits(&[(0, 2), (1, held), (2, held | 1 << 6), (3, held)], 5),
+            [1.0, 0.4, 0.4, 0.4, 0.4]
+        );
     }
 
     #[test]

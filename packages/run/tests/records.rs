@@ -48,3 +48,17 @@ fn a_record_with_its_own_countdown_keeps_its_start() {
     let map = Map::parse(&std::fs::read(dir.join("179381_No_Grip_Dirt.Map.Gbx")).unwrap()).unwrap();
     assert_eq!(record.drive(&map, &packs).unwrap().finish_ms, Some(record.time_ms));
 }
+
+#[test]
+fn keyboard_records_steer_within_their_action_key_limit() {
+    let Some(data) = std::env::var_os("GBX_TEST_DATA").map(PathBuf::from) else { return };
+    let packs = PackSet::open(&Game::locate(None).unwrap().packs).unwrap();
+    for id in ["212725", "228722"] {
+        let dir = data.join("runs").join(id);
+        let Ok(record) = Record::read(&dir.join("record.Replay.Gbx")) else { continue };
+        let limited = record.run.controls.iter().filter(|c| c.steer != 0.0 && c.steer.abs() < 1.0).count();
+        assert!(limited > 0, "{id}: no limited steering");
+        let map = Map::parse(&std::fs::read(dir.join("map.Map.Gbx")).unwrap()).unwrap();
+        assert_eq!(record.drive(&map, &packs).unwrap().finish_ms, Some(record.time_ms), "{id}");
+    }
+}
