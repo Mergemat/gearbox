@@ -1,3 +1,9 @@
+macro_rules! copy_fields {
+    ($to:expr, $from:expr, [$($field:ident),* $(,)?]) => {
+        $($to.$field = $from.$field;)*
+    };
+}
+
 pub mod absorb;
 pub mod before;
 pub mod contact_response;
