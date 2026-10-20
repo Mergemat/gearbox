@@ -1,9 +1,7 @@
-# Gearbox
+<p align="center"><img src=".github/assets/banner.jpg" alt="Gearbox: Trackmania physics, tick for tick" width="100%"></p>
 
 [![Release](https://img.shields.io/github/v/release/Mergemat/gearbox?include_prereleases)](https://github.com/Mergemat/gearbox/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
-Trackmania physics, tick for tick.
 
 Gearbox simulates a Trackmania 2020 race tick by tick, with the same results
 as the game, from a map file and your own game install. On top of that it
