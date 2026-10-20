@@ -808,7 +808,7 @@ impl Crawler<'_> {
             .ok_or_else(|| anyhow::anyhow!("truncated crystal material {path}"))??;
         let ids = match head.class_id {
             0x09079000 => crate::material::material_ids(&buf)?,
-            0x090fd000 => crate::material::user_material_ids(&buf, head.body_start)?,
+            0x090fd000 => crate::material::user_material(&buf, head.body_start)?.ids,
             class => bail!("crystal material {path} class {class:#x}"),
         };
         self.cat.index.materials.insert(path.to_owned(), (ids.surface, ids.gameplay));

@@ -240,13 +240,7 @@ impl VisualCache {
                 Some([colors[0] as f32 / 255., colors[1] as f32 / 255., colors[2] as f32 / 255., 1.]);
         }
         if let Some(link) = link.filter(|s| !s.is_empty()) {
-            let path = if link.to_ascii_lowercase().ends_with(".gbx") {
-                link
-            } else if link.contains(['\\', '/']) {
-                format!("{link}.Material.Gbx")
-            } else {
-                format!("Stadium\\Media\\Material\\{link}.Material.Gbx")
-            };
+            let path = crate::material::material_link_path(&link);
             match self.material(&path) {
                 Ok(i) => mat.textures = self.materials[i].textures.clone(),
                 Err(e) => self.report("user-material", &key, format!("link {path}: {e:#}")),

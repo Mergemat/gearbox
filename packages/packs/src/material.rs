@@ -17,21 +17,42 @@ pub fn material_ids(buf: &[u8]) -> Result<MaterialIds> {
     Ok(MaterialIds { surface: buf[p + 8], gameplay: buf[p + 9] })
 }
 
-pub fn user_material_ids(buf: &[u8], start: usize) -> Result<MaterialIds> {
+pub struct UserMaterial {
+    pub ids: MaterialIds,
+    pub link: Option<String>,
+    pub has_parameters: bool,
+}
+
+pub fn user_material(buf: &[u8], start: usize) -> Result<UserMaterial> {
     let mut r = Reader::new(buf);
     r.skip(start)?;
     anyhow::ensure!(r.u32()? == 0x090fd000, "user material chunk");
     let version = r.u32()?;
     anyhow::ensure!((8..=11).contains(&version), "user material version {version}");
-    if version >= 11 {
-        r.bool8()?;
-    }
+    let linked = version < 11 || r.bool8()?;
     crate::crystal::id(&mut r)?;
     crate::crystal::id(&mut r)?;
     r.string()?;
     let surface = r.u8()?;
     let gameplay = if version >= 10 { r.u8()? } else { 0 };
-    Ok(MaterialIds { surface, gameplay })
+    let link = if linked && version >= 9 {
+        Some(r.string()?).filter(|s| !s.is_empty()).map(|link| material_link_path(&link))
+    } else {
+        crate::crystal::id(&mut r)?;
+        None
+    };
+    let has_parameters = r.len()? != 0;
+    Ok(UserMaterial { ids: MaterialIds { surface, gameplay }, link, has_parameters })
+}
+
+pub fn material_link_path(link: &str) -> String {
+    if link.to_ascii_lowercase().ends_with(".gbx") {
+        link.to_owned()
+    } else if link.contains(['\\', '/']) {
+        format!("{link}.Material.Gbx")
+    } else {
+        format!("Stadium\\Media\\Material\\{link}.Material.Gbx")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

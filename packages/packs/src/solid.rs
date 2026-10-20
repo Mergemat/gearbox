@@ -203,14 +203,22 @@ fn material_ids(
     resolve: &mut impl FnMut(&str) -> Result<[u8; 2]>,
 ) -> Result<[u8; 2]> {
     let start = match material {
-        NodeLink::External(path) => return resolve(&path),
+        NodeLink::External(path) => return resolve(&crate::material::material_link_path(&path)),
         NodeLink::Inline(start) => start,
         NodeLink::Earlier(index) => node(ctx, index)?.start,
         NodeLink::Null => bail!("null collision material"),
     };
     let n = ctx.layout.nodes.iter().find(|n| n.start == start).context("collision material node")?;
     let ids = match n.class_id {
-        0x090fd000 => crate::material::user_material_ids(ctx.buf, start)?,
+        0x090fd000 => {
+            let material = crate::material::user_material(ctx.buf, start)?;
+            match material.link {
+                Some(link) if material.has_parameters && !link.starts_with("Editors") => {
+                    return resolve(&link);
+                }
+                _ => material.ids,
+            }
+        }
         0x09079000 => crate::material::material_ids(&ctx.buf[start..n.end.context("material end")?])?,
         class => bail!("collision material class {class:#x}"),
     };
