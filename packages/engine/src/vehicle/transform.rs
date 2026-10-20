@@ -77,6 +77,13 @@ impl Session {
 
 impl Vehicle {
     fn transfer_motion(&mut self, previous: &Self) {
+        self.copy_state(previous);
+        self.visual[0] = previous.visual[0].clone();
+        self.visual[0].key = self.key;
+        self.visual[0].state = self.model_choice;
+    }
+
+    pub(crate) fn copy_state(&mut self, previous: &Self) {
         copy_fields! { self, previous, [
             alternate_forward, controls, previous_controls, control_flags, race_start, frozen_until,
             quat, pos, vel, ang_vel, world_inverse_inertia, gravity, slow_start_begin, slow_start_end,
@@ -111,8 +118,5 @@ impl Vehicle {
         ] }
         self.brake_history = previous.brake_history.clone();
         self.wheels = previous.wheels.clone();
-        self.visual[0] = previous.visual[0].clone();
-        self.visual[0].key = self.key;
-        self.visual[0].state = self.model_choice;
     }
 }
