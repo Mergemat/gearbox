@@ -119,7 +119,7 @@ pub fn spawn_vehicle(
         dyna,
         pose,
         spawn::Reset::FULL,
-        &mut spawn::Services { world, state, visuals, ring: &mut ring },
+        &mut spawn::Services { world, state, visuals, ring: &mut ring, events: None },
     );
     Ok((vehicle, ring))
 }

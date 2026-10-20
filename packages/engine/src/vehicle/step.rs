@@ -31,6 +31,7 @@ pub enum Event {
     Force(crate::arena::VehicleEvent),
     Surface(effects::Event),
     Waypoint(super::before::WaypointEvent),
+    Locked { tick: u32, vehicle: u32 },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -129,9 +130,17 @@ pub fn substeps(ctx: &mut StepCtx<'_>) -> Vec<CollisionFrame> {
             ControlPhase::Forced | ControlPhase::Locked
         )
     {
-        todo!("opposing-pipe vehicle response");
+        lock_vehicle(ctx);
     }
     frames
+}
+
+fn lock_vehicle(ctx: &mut StepCtx<'_>) {
+    ctx.vehicle.control_flags = ControlFlags(ctx.vehicle.control_flags).locked().0;
+    ctx.vehicle.control_entity = ctx.tick;
+    if let Some(events) = &mut ctx.events {
+        events.push(Event::Locked { tick: ctx.tick, vehicle: ctx.vehicle.key });
+    }
 }
 
 fn substep(ctx: &mut StepCtx<'_>, now: i64, dt: f32) -> CollisionFrame {
@@ -279,6 +288,7 @@ impl Countdown<'_> {
             state: self.state,
             visuals: self.visuals,
             ring: self.effects,
+            events: None,
         };
         super::spawn::respawn(vehicle, self.assets, self.dyna, pose, reset, &mut services);
     }

@@ -237,22 +237,33 @@ struct LayerIds {
 impl LayerIds {
     fn collector(ctx: &Ctx<'_>, start: usize) -> Result<Self> {
         let container = gearbox_gbx::Container::parse(ctx.buf)?;
-        let mut ids = Self {
-            names: Vec::new(),
-            complete: !ctx
-                .layout
-                .nodes
-                .iter()
-                .any(|n| n.class_id == 0x2e025000 || (n.class_id == 0x09003000 && n.start < start)),
-        };
+        let mut ids = Self { names: Vec::new(), complete: true };
         if let Some(header) = container.header_chunk(0x2e001003) {
             let mut r = Reader::new(header);
             for _ in 0..3 {
                 ids.read(&mut r)?;
             }
         }
+        for node in ctx.layout.nodes.iter().filter(|node| node.start < start) {
+            match node.class_id {
+                0x2e025000 => ids.block(ctx, node.start)?,
+                0x09003000 => {
+                    read_layers(ctx, node.start, &mut |_| Ok([0, 0]), &mut ids, false)?;
+                }
+                _ => {}
+            }
+        }
         Ok(ids)
     }
+    fn block(&mut self, ctx: &Ctx<'_>, start: usize) -> Result<()> {
+        let mut r = cursor(ctx.buf, start)?;
+        ensure!(r.u32()? == 0x2e025000, "block item chunk");
+        ensure!(r.u32()? <= 1, "block item version");
+        self.read(&mut r)?;
+        self.read(&mut r)?;
+        Ok(())
+    }
+
     fn read(&mut self, r: &mut Reader) -> Result<Option<String>> {
         let (token, name) = id(r)?;
         if let Some(name) = name {
@@ -350,6 +361,16 @@ pub fn read(
     mut resolve: impl FnMut(&str) -> Result<[u8; 2]>,
 ) -> Result<Crystal> {
     let mut ids = LayerIds::collector(ctx, start)?;
+    read_layers(ctx, start, &mut resolve, &mut ids, true)
+}
+
+fn read_layers(
+    ctx: &Ctx<'_>,
+    start: usize,
+    resolve: &mut impl FnMut(&str) -> Result<[u8; 2]>,
+    ids: &mut LayerIds,
+    compile: bool,
+) -> Result<Crystal> {
     let mut layers = Vec::<(Option<String>, Vec<u32>, bool, usize)>::new();
     let mut visual_layers = Vec::new();
     let n = ctx.layout.nodes.iter().find(|n| n.start == start).context("crystal node")?;
@@ -366,7 +387,7 @@ pub fn read(
                 let v = r.u32()?;
                 ensure!(v == 2, "crystal materials version {v}");
                 for _ in 0..r.len()? {
-                    out.materials.push(material(ctx, &mut r, &mut ids, &mut resolve)?);
+                    out.materials.push(material(ctx, &mut r, ids, resolve)?);
                 }
             }
             0x09003005 => {
@@ -377,7 +398,7 @@ pub fn read(
                     r.bool32()?;
                     let layer_id = ids.read(&mut r)?;
                     r.string()?;
-                    let enabled = if v >= 1 { r.bool32()? } else { true };
+                    let enabled = (if v >= 1 { r.bool32()? } else { true }) && compile;
                     match kind {
                         0 => {
                             let gv = r.u32()?;

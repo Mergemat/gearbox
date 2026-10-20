@@ -141,6 +141,9 @@ impl ControlFlags {
     pub fn forced(self) -> Self {
         Self(self.0 & !(Self::PHASE & !2) | 2)
     }
+    pub fn locked(self) -> Self {
+        Self(self.0 & !Self::PHASE | 3)
+    }
     pub fn countdown(self) -> Self {
         Self(self.0 & !(Self::PHASE & !1) | 1)
     }

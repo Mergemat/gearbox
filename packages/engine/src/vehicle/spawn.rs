@@ -45,6 +45,7 @@ pub struct Services<'a, V: Visuals> {
     pub state: &'a mut crate::State,
     pub visuals: &'a mut V,
     pub ring: &'a mut EffectRing,
+    pub events: Option<&'a mut Vec<super::effects::Event>>,
 }
 impl<V: Visuals> Services<'_, V> {
     fn submerged(&self, vehicle: &Vehicle, bounds: Aabb) -> bool {
@@ -301,7 +302,7 @@ pub fn reset_at_pose(
     services: &mut Services<impl Visuals>,
 ) {
     if params.keep_effects && vehicle.effect_flags != 0 {
-        todo!("respawn event");
+        super::effects::post(vehicle, u32::MAX, super::effects::EventKind::Restored, &mut services.events);
     }
     reset(vehicle, assets, dyna, params, services);
     vehicle.visual[1] = super::defaults::VISUAL_STATE.clone();

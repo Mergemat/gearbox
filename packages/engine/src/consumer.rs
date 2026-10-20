@@ -123,6 +123,7 @@ impl Session {
                     state: &mut self.state,
                     visuals: &mut visuals,
                     ring: &mut self.effects,
+                    events: None,
                 },
             );
         } else {

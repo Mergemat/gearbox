@@ -6,7 +6,7 @@ use crate::{EntryId, Iso, Mat3, Vec3, math::minss};
 const TINY: f32 = 1.0e-10;
 const MAX_EDGES: usize = 64;
 
-fn unit(v: Vec3) -> Vec3 {
+pub(super) fn unit(v: Vec3) -> Vec3 {
     let l2 = v.y * v.y + v.x * v.x + v.z * v.z;
     if l2 > TINY && f32::MAX > l2 { v * (1.0 / l2.sqrt()) } else { v }
 }
@@ -153,7 +153,7 @@ fn closest_edge(hull: &Convex<'_>, local: Iso, edges: Vec<[u32; 2]>) -> Option<(
         } else {
             todo!("degenerate convex edge");
         };
-        let (distance, t) = segment_distance(center, dir, half);
+        let (distance, t) = segment_distance(center, dir, half, Vec3::ZERO);
         if distance > 1.0 {
             continue;
         }
@@ -213,10 +213,10 @@ fn emit(
     contact.flags.set(ContactFlags::FACE, face);
 }
 
-fn segment_distance(center: Vec3, dir: Vec3, half: f32) -> (f32, f32) {
-    let delta = Vec3::ZERO - center;
+pub(super) fn segment_distance(center: Vec3, dir: Vec3, half: f32, point: Vec3) -> (f32, f32) {
+    let delta = point - center;
     let t = delta.y * dir.y + delta.x * dir.x + delta.z * dir.z;
     let t = if -half > t { -half } else { minss(half, t) };
-    let v = Vec3::ZERO - (dir * t + center);
+    let v = point - (dir * t + center);
     (v.y * v.y + v.x * v.x + v.z * v.z, t)
 }

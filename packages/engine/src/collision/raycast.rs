@@ -1,7 +1,7 @@
 use super::{CollisionWorld, Lists, QUERY_CAPACITY, QueryFilter, QueryResults, Surface};
-use crate::shape::{Geometry, Mesh, Shape};
+use crate::shape::{Geometry, Mesh, Shape, convex::Convex};
 use crate::tree::{Segment, SegmentQuery};
-use crate::{EntryId, Iso, SurfaceId, Vec3};
+use crate::{EntryId, Iso, SurfaceId, Vec3, static_world::Face};
 
 const SAFE_DIV: f32 = 3.4028233e32;
 const BARY_EPS: f32 = 100_000.0;
@@ -139,6 +139,86 @@ pub fn mesh(
     }
 }
 
+fn convex(
+    hull: Convex<'_>,
+    material: u16,
+    entry: EntryId,
+    iso: Iso,
+    ray: Ray,
+    filter: QueryFilter,
+    hit: &mut Option<RayHit>,
+) {
+    let delta = ray.origin - iso.pos;
+    let rotation = iso.rot;
+    let origin =
+        Vec3::new(delta.dot_yxz(rotation.col(0)), delta.dot(rotation.col(1)), delta.dot(rotation.col(2)));
+    let direction = Vec3::new(
+        ray.direction.dot(rotation.col(0)),
+        ray.direction.dot(rotation.col(1)),
+        ray.direction.dot(rotation.col(2)),
+    );
+    let squared = direction.dot_yxz(direction);
+    let (unit, length) = if squared > 1.0e-10 && f32::MAX > squared {
+        let length = squared.sqrt();
+        (direction * (1.0 / length), length)
+    } else {
+        (direction, 0.0)
+    };
+    for face in hull.faces {
+        let approach = unit.dot_yxz(face.normal);
+        if (!filter.two_sided && approach > 0.0) || 0.00001 > approach.abs() {
+            continue;
+        }
+        let distance = -(origin.dot_yxz(face.normal) + face.offset) / approach;
+        if 0.0 > distance {
+            continue;
+        }
+        let fraction = distance / length;
+        if fraction >= hit.as_ref().map_or(FAR, |hit| hit.fraction) {
+            continue;
+        }
+        if !inside(&hull, face, unit * distance + origin) {
+            continue;
+        }
+        let point = direction * fraction + origin;
+        let normal = face.normal;
+        *hit = Some(RayHit {
+            fraction,
+            point: Vec3::from_array(std::array::from_fn(|axis| point.dot_yxz(rotation.rows[axis]))) + iso.pos,
+            normal: Vec3::new(
+                normal.dot_yxz(rotation.rows[0]),
+                normal.dot(rotation.rows[1]),
+                normal.dot(rotation.rows[2]),
+            ),
+            material,
+            entry,
+            triangle: 0,
+        });
+        if !filter.two_sided {
+            break;
+        }
+    }
+}
+
+fn inside(hull: &Convex<'_>, face: &Face, point: Vec3) -> bool {
+    let indices = hull.indices(face);
+    let mut previous = hull.vertices[indices[0] as usize];
+    let normal = face.normal;
+    for &index in indices.iter().rev() {
+        let next = hull.vertices[index as usize];
+        let edge = previous - next;
+        let delta = point - next;
+        let side = (normal.z * edge.y - normal.y * edge.z) * delta.x
+            + (normal.x * edge.z - normal.z * edge.x) * delta.y
+            + (normal.y * edge.x - normal.x * edge.y) * delta.z;
+        if side > 0.0 {
+            return false;
+        }
+        previous = next;
+    }
+    true
+}
+
 impl CollisionWorld {
     pub fn ray_candidates(&self, geometry: Geometry<'_>, ray: Ray, filter: QueryFilter) -> QueryResults {
         let segment = Segment::new(ray.origin, ray.direction);
@@ -186,7 +266,8 @@ impl CollisionWorld {
             let Surface { shape, iso, .. } = geometry.entry(r);
             match geometry.shape(shape) {
                 Shape::Mesh(m) => mesh(geometry.mesh(m), r, iso, ray, Vec3::ZERO, filter, &mut hit),
-                _ => todo!("ray narrowphase for non-mesh shape"),
+                Shape::Convex(c) => convex(geometry.convex(c), c.material, r, iso, ray, filter, &mut hit),
+                shape => todo!("ray narrowphase for shape {}", shape.code()),
             }
         }
         hit
