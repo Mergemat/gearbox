@@ -356,9 +356,6 @@ impl Crawler<'_> {
         head: &crate::unpack::GbxHead,
         source: String,
     ) -> EntModel {
-        if so.mesh_collidable && so.mesh == NodeLink::Null {
-            return EntModel::None;
-        }
         let shape = match so.shape {
             NodeLink::Inline(s) => Some(self.add_surface(s, source, head, owner)),
             NodeLink::External(p) => self.shape_file(&p),
@@ -372,6 +369,7 @@ impl Crawler<'_> {
                     }
                 }
             }
+            NodeLink::Null if so.mesh_collidable && so.mesh == NodeLink::Null => return EntModel::None,
             NodeLink::Null if so.mesh_collidable => match self.mesh_collision(owner, so.mesh) {
                 Ok(s) if s.surf.is_some() => Some(self.add_surface(s, source, head, owner)),
                 Ok(_) => return EntModel::None,
