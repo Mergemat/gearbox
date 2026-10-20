@@ -41,6 +41,13 @@ pub fn add_map_items(
     );
     let mut catalog =
         gearbox_packs::catalog::crawl_embedded(&files, &items, &assets.index, assets.surface_count());
+    for file in &map.embedded.files {
+        let Some(name) = file.item_model.as_ref().and_then(|model| model.ident[0].as_ref()) else { continue };
+        let Some(path) = file.model_path() else { continue };
+        if let Some(item) = catalog.index.items.get(&path).cloned() {
+            catalog.index.items.entry(name.clone()).or_insert(item);
+        }
+    }
     custom_block_gates(&mut catalog, map);
     let errors = catalog.index.errors.clone();
     assets.add_catalog(catalog);

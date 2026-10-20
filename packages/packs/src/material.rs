@@ -22,14 +22,16 @@ pub fn user_material_ids(buf: &[u8], start: usize) -> Result<MaterialIds> {
     r.skip(start)?;
     anyhow::ensure!(r.u32()? == 0x090fd000, "user material chunk");
     let version = r.u32()?;
-    anyhow::ensure!((10..=11).contains(&version), "user material version {version}");
+    anyhow::ensure!((8..=11).contains(&version), "user material version {version}");
     if version >= 11 {
         r.bool8()?;
     }
     crate::crystal::id(&mut r)?;
     crate::crystal::id(&mut r)?;
     r.string()?;
-    Ok(MaterialIds { surface: r.u8()?, gameplay: r.u8()? })
+    let surface = r.u8()?;
+    let gameplay = if version >= 10 { r.u8()? } else { 0 };
+    Ok(MaterialIds { surface, gameplay })
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -81,11 +81,14 @@ fn item_waypoint(file: &[u8]) -> Result<[u32; 12]> {
             r.skip(8)?;
         }
         let version = r.u32()?;
-        ensure!(matches!(version, 11..=13), "unsupported item waypoint chunk version {version}");
+        ensure!(matches!(version, 10..=13), "unsupported item waypoint chunk version {version}");
         let kind = r.u32()?;
         ensure!(kind <= 5, "item waypoint type {kind}");
         let common: Vec<_> = layout.nodes.iter().filter(|n| n.class_id == 0x2e02_7000).collect();
         if common.is_empty() {
+            if layout.nodes.iter().any(|node| node.class_id == 0x0914_5000) {
+                return Ok(IDENTITY);
+            }
             let edition = layout.nodes.iter().any(|n| n.class_id == 0x2e02_6000);
             ensure!(edition, "item has no supported entity model");
             let source = layout
@@ -137,41 +140,15 @@ pub fn block_item_waypoint(file: &[u8], ground: bool, variant: usize) -> Result<
         .iter()
         .find(|n| n.class_id == 0x2e02_5000)
         .context("custom block has no block-item model")?;
-    let mut r = Reader::new(&buf);
-    r.skip(node.start)?;
-    ensure!(r.u32()? == 0x2e02_5000, "block-item chunk");
-    let version = r.u32()?;
-    ensure!(version <= 1, "block-item version {version}");
-    let name = r.u32()?;
-    ensure!(matches!(name, 0x4000_0000 | 0x8000_0000), "unsupported block archetype lookback {name:#x}");
-    let name = r.string()?;
-    let collection = r.u32()?;
-    ensure!(collection == 26, "custom block archetype collection {collection}");
     let ctx = Ctx { buf: &buf, layout: &layout, path: "" };
-    let n = r.u32()?;
-    ensure!(n < 4096, "custom block mobil count {n}");
-    let mut selected = None;
-    for _ in 0..n {
-        let id = r.u32()?;
-        let source = ctx.noderef(&mut r, |c, r, class| {
-            ensure!(class == 0x0900_3000, "custom block crystal class {class:#x}");
-            let start = r.pos();
-            c.skip_node(r)?;
-            Ok(start)
-        })?;
-        if (id / 1_000_000 % 10 == 0) == ground && (id / 1000 % 1000) as usize == variant {
-            ensure!(selected.is_none(), "multiple custom block mobils for a waypoint");
-            selected = Some(source);
-        }
-    }
-    ensure!(version == 0 || r.u8()? == 0, "unsupported custom block waypoint properties");
-    let source = match selected.context("custom block waypoint mobil missing")? {
-        crate::prefab::NodeLink::Inline(p) => Some(p),
-        crate::prefab::NodeLink::Earlier(i) => {
-            Some(layout.nodes.iter().find(|n| n.index == i).context("custom block shared crystal")?.start)
-        }
-        crate::prefab::NodeLink::Null => None,
-        crate::prefab::NodeLink::External(p) => anyhow::bail!("external custom block crystal {p}"),
-    };
-    Ok((name, source.map(|p| crystal::spawn(&ctx, p)).transpose()?.flatten()))
+    let block = crate::custom_block::read(&ctx, node.start)?;
+    ensure!(block.collection == 26, "custom block archetype collection {}", block.collection);
+    let mut selected = block.mobils.iter().filter(|mobil| {
+        let (is_ground, index, _, _) = crate::custom_block::mobil_key(mobil.id);
+        is_ground == ground && index == variant
+    });
+    let mobil = selected.next().context("custom block waypoint mobil missing")?;
+    ensure!(selected.next().is_none(), "multiple custom block mobils for a waypoint");
+    let pose = mobil.crystal.map(|source| crystal::spawn(&ctx, source)).transpose()?.flatten();
+    Ok((block.archetype, pose))
 }

@@ -55,8 +55,13 @@ impl EmbeddedFile {
 impl EmbeddedData {
     pub fn item_file(&self, model: &str) -> Result<&EmbeddedFile> {
         let name = model.replace('/', "\\");
-        let mut matches =
-            self.files.iter().filter(|f| f.model_path().is_some_and(|p| p.eq_ignore_ascii_case(&name)));
+        let mut matches = self.files.iter().filter(|f| {
+            f.model_path().is_some_and(|p| p.eq_ignore_ascii_case(&name))
+                || f.item_model
+                    .as_ref()
+                    .and_then(|m| m.ident[0].as_deref())
+                    .is_some_and(|p| p.eq_ignore_ascii_case(&name))
+        });
         let file = matches.next().with_context(|| format!("missing embedded item {model}"))?;
         ensure!(matches.next().is_none(), "ambiguous embedded item {model}");
         Ok(file)

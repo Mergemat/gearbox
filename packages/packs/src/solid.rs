@@ -151,17 +151,8 @@ pub fn collision(ctx: &Ctx<'_>, start: usize) -> Result<Surface> {
     let mut materials = Vec::new();
     for m in ctx.layout.nodes.iter().filter(|n| n.start > start && n.start < end && n.class_id == 0x090fd000)
     {
-        let mut r = cursor(ctx.buf, m.start)?;
-        ensure!(r.u32()? == 0x090fd000, "user material chunk");
-        let version = r.u32()?;
-        ensure!((10..=11).contains(&version), "user material version {version}");
-        if version >= 11 {
-            r.bool8()?;
-        }
-        skip_id(&mut r)?;
-        skip_id(&mut r)?;
-        r.string()?;
-        materials.push([r.u8()?, r.u8()?]);
+        let ids = crate::material::user_material_ids(ctx.buf, m.start)?;
+        materials.push([ids.surface, ids.gameplay]);
     }
     ensure!(
         materials.len() == material_count,

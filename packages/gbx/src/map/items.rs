@@ -52,11 +52,12 @@ pub(super) fn read(r: &mut Reader, block_count: usize) -> Result<Vec<Item>> {
 }
 
 fn index(value: i32, count: usize) -> Result<Option<usize>> {
-    ensure!(
-        value == -1 || (value >= 0 && (value as usize) < count),
-        "item reference {value} outside {count} entries"
-    );
-    Ok((value != -1).then_some(value as usize))
+    if value < 0 {
+        return Ok(None);
+    }
+    let value = value as usize;
+    ensure!(value < count, "item reference {value} outside {count} entries");
+    Ok(Some(value))
 }
 fn indices(r: &mut Reader, count: usize) -> Result<Vec<Option<usize>>> {
     (0..r.len()?).map(|_| index(r.i32()?, count)).collect()

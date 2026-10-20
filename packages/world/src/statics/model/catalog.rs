@@ -144,6 +144,7 @@ impl Catalog {
                     metadata.ground_heights = std::rc::Rc::new(
                         columns
                             .iter()
+                            .filter(|column| column.target.is_some())
                             .map(|column| {
                                 let height = column.target.as_deref().and_then(|target| {
                                     let flat = assets

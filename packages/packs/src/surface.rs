@@ -223,7 +223,9 @@ pub fn read_node(
                     }
                 }
                 let mut material_ids = Vec::new();
-                if version >= 3 {
+                if version < 3 {
+                    r.data()?;
+                } else {
                     let primary = version >= 4 || n == 0;
                     if primary {
                         let k = count(&mut r, 1 << 16)?;
