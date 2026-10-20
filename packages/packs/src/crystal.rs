@@ -247,7 +247,27 @@ fn material(
         } else {
             ids.read(r)?;
         }
-        ids.complete &= r.len()? == 0;
+        for _ in 0..r.len()? {
+            ids.read(r)?;
+            ids.read(r)?;
+            r.u32()?;
+        }
+        let colors = r.len()?;
+        r.skip(colors * 4)?;
+        for _ in 0..r.len()? {
+            ids.read(r)?;
+            ids.read(r)?;
+            r.skip(12)?;
+            ids.read(r)?;
+        }
+        for _ in 0..r.len()? {
+            ids.read(r)?;
+        }
+        for _ in 0..r.len()? {
+            r.u32()?;
+            r.string()?;
+        }
+        ids.read(r)?;
         let start = c
             .layout
             .nodes
