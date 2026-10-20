@@ -1079,7 +1079,8 @@ pub fn crawl_embedded(
 
 const KEEP_CATALOGS: usize = 4;
 
-pub const PAKS: [&str; 3] = ["stadium.pak", "whiteshore.pak", "stadium256.pak"];
+pub const PAKS: [&str; 6] =
+    ["stadium.pak", "stadium256.pak", "greencoast.pak", "redisland.pak", "bluebay.pak", "whiteshore.pak"];
 
 pub fn cached(set: &PackSet) -> Result<Catalog> {
     crawl_cached(set, &PAKS, &crate::install::cache_dir())

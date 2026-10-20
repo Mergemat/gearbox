@@ -1,5 +1,5 @@
 use crate::statics::items::ItemSpec;
-use crate::statics::model::{BlockKey, ModelSource};
+use crate::statics::model::{BlockKey, ModelSource, PartLocation};
 use crate::statics::packs::PackSource;
 use crate::statics::place::{self, Iso};
 
@@ -65,7 +65,12 @@ pub fn items(map: &gearbox_gbx::Map, src: &mut PackSource<'_>) -> Result<Vec<Vec
                     entity: p.entity,
                     shape: p.shape,
                     transform: gearbox_engine::Iso::from_array(
-                        place::transform(place::compose(iso, p.local)).map(f32::from_bits),
+                        place::transform(match p.location {
+                            PartLocation::Local(local) => place::compose(iso, local),
+                            PartLocation::Block => iso,
+                            PartLocation::World(pose) => pose,
+                        })
+                        .map(f32::from_bits),
                     ),
                     layer: p.layer,
                     flags: 0,

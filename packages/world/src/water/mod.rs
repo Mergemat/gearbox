@@ -101,8 +101,8 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
         if !cache.contains_key(&cache_key) {
             let bytes = assets.packs.read_path(&asset.path)?;
             let volumes =
-                gearbox_packs::map_model::water_volumes(&bytes, &asset.path, cache_key.1, cache_key.2)?;
-            ensure!(volumes.is_empty() || env == "Stadium", "water material collection not decoded: {env}");
+                gearbox_packs::map_model::water_volumes(&bytes, &asset.path, cache_key.1, cache_key.2)
+                    .with_context(|| format!("water block {}", asset.path))?;
             let mut models = Vec::new();
             for volume in volumes {
                 let (grid, local) = grid(&volume)?;

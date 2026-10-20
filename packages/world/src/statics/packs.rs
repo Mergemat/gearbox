@@ -4,7 +4,7 @@ use gearbox_engine::static_world::{Entity, LAYER_GATE};
 use gearbox_packs::assets::{Assets, ModifierRef, PlacedSurface, Role};
 use gearbox_packs::surface::Surf;
 
-use crate::statics::model::{BlockKey, BlockModel, Catalog, Geometry, ModelSource, Part};
+use crate::statics::model::{BlockKey, BlockModel, Catalog, Geometry, ModelSource, Part, PartLocation};
 use crate::statics::place::Iso;
 
 pub use gearbox_engine::static_world::{LAYER_STATIC, LAYER_TRIGGER};
@@ -118,6 +118,12 @@ fn add_block_triggers(
     Ok(())
 }
 
+#[derive(Clone)]
+struct CachedBlock<'a> {
+    model: BlockModel,
+    trees: Vec<PlacedSurface<'a>>,
+}
+
 pub struct PackSource<'a> {
     pub assets: &'a Assets,
     pub catalog: Catalog,
@@ -126,7 +132,7 @@ pub struct PackSource<'a> {
     pub gameplay: HashMap<u32, u8>,
     shape_cache: HashMap<(usize, Vec<u8>, u32, bool), u32>,
     tree_scales: HashMap<(usize, i32), f32>,
-    models: HashMap<(BlockKey, Mods), Option<BlockModel>>,
+    models: HashMap<(BlockKey, Mods), Option<CachedBlock<'a>>>,
     pub problems: HashMap<String, String>,
     mods_cache: std::cell::RefCell<HashMap<ModsKey, Mods>>,
 }
@@ -355,15 +361,17 @@ impl<'a> PackSource<'a> {
         Ok(out)
     }
 
-    fn build(&mut self, key: &BlockKey, mods: &Mods) -> Result<BlockModel, String> {
+    fn build(&mut self, key: &BlockKey, mods: &Mods) -> Result<CachedBlock<'a>, String> {
         let geometry = self.catalog.geometry(key).ok_or("no placement metadata")?;
         let mut parts = Vec::new();
+        let mut trees = Vec::new();
         for mut placed in self.surfaces(key, mods)? {
             if placed.role == Role::SpecialTrigger {
                 placed.role = Role::BlockSpecialTrigger;
             }
             if self.assets.index.surfaces[placed.id].tree.is_some() {
-                return Err("block prefab tree instances".into());
+                trees.push(placed);
+                continue;
             }
             let (layer, entity) = match placed.role {
                 Role::Collision | Role::DynaStaticShape => (LAYER_STATIC, Entity::None),
@@ -375,10 +383,16 @@ impl<'a> PackSource<'a> {
                 Role::DynaShape => continue,
             };
             let shape = self.shape(&placed)?;
+            let local = chain_iso(&placed.chain);
             parts.push(Part {
                 shape,
-                local: chain_iso(&placed.chain),
-                block_location: matches!(placed.role, Role::BlockTrigger(_)),
+                location: if matches!(placed.role, Role::BlockTrigger(_))
+                    || (layer == LAYER_TRIGGER && local == crate::statics::place::IDENTITY)
+                {
+                    PartLocation::Block
+                } else {
+                    PartLocation::Local(local)
+                },
                 layer,
                 entity,
             });
@@ -389,7 +403,20 @@ impl<'a> PackSource<'a> {
             LAYER_TRIGGER => 2,
             _ => unreachable!(),
         });
-        Ok(BlockModel { geometry, parts })
+        Ok(CachedBlock { model: BlockModel { geometry, parts }, trees })
+    }
+
+    fn tree_instance(&mut self, placed: &PlacedSurface<'_>, pose: Iso) -> Result<(Iso, u32), String> {
+        let params = self.assets.index.surfaces[placed.id].tree.ok_or("tree parameters missing")?;
+        let (pose, scale) = crate::statics::veget::placement(pose, params);
+        let bin = gearbox_engine::numeric::lroundf(
+            ((scale - params.scale_variation) / (1.0 - params.scale_variation)) * 7.0,
+        );
+        if !(0..8).contains(&bin) {
+            return Err(format!("tree scale cache slot {bin}"));
+        }
+        let scale = if bin == 7 { 1.0 } else { *self.tree_scales.entry((placed.id, bin)).or_insert(scale) };
+        Ok((pose, self.shape_scaled(placed, scale)?))
     }
 
     pub fn item_parts(
@@ -430,31 +457,19 @@ impl<'a> PackSource<'a> {
             }
             let local = (!placed.chain.is_empty()).then(|| chain_iso(&placed.chain));
             let pose = local.map_or(iso, |local| crate::statics::place::compose(iso, local));
-            let (transform, scale) = match assets.index.surfaces[placed.id].tree {
-                Some(params) => {
-                    let (pose, scale) = crate::statics::veget::placement(pose, params);
-                    let bin = gearbox_engine::numeric::lroundf(
-                        ((scale - params.scale_variation) / (1.0 - params.scale_variation)) * 7.0,
-                    );
-                    if !(0..8).contains(&bin) {
-                        return Err(format!("tree scale cache slot {bin}"));
-                    }
-                    let scale = if bin == 7 {
-                        1.0
-                    } else {
-                        *self.tree_scales.entry((placed.id, bin)).or_insert(scale)
-                    };
-                    (crate::statics::place::transform(pose), scale)
+            let (transform, shape) = match assets.index.surfaces[placed.id].tree {
+                Some(_) => {
+                    let (pose, shape) = self.tree_instance(&placed, pose)?;
+                    (crate::statics::place::transform(pose), shape)
                 }
                 None => (
                     local.map_or_else(
                         || crate::statics::place::transform_matrix(location),
                         |_| crate::statics::place::transform(pose),
                     ),
-                    1.0,
+                    self.shape(&placed)?,
                 ),
             };
-            let shape = self.shape_scaled(&placed, scale)?;
             out.push((placed.role, shape, gearbox_engine::Iso::from_array(transform.map(f32::from_bits))));
         }
         crate::sort_by_key(&mut out, |p| matches!(p.0, Role::Waypoint(_)));
@@ -469,7 +484,7 @@ impl<'a> PackSource<'a> {
         Ok(out)
     }
 
-    fn model_with(&mut self, key: &BlockKey, mods: Mods) -> Option<BlockModel> {
+    fn model_with(&mut self, key: &BlockKey, mods: Mods) -> Option<CachedBlock<'a>> {
         let cache_key = (key.clone(), mods);
         if let Some(model) = self.models.get(&cache_key) {
             return model.clone();
@@ -501,7 +516,7 @@ impl ModelSource for PackSource<'_> {
             info.and_then(|block| block.material_modifier.clone()).map(|path| (path, None, false)),
             info.and_then(|block| block.material_modifier2.clone()).map(|path| (path, None, false)),
         ];
-        self.model_with(key, mods)
+        self.model_with(key, mods).map(|cached| cached.model)
     }
 
     fn block_model_at(
@@ -511,8 +526,25 @@ impl ModelSource for PackSource<'_> {
         b: &gearbox_gbx::map::Block,
     ) -> Option<BlockModel> {
         let key = BlockKey::of(b);
-        match self.modifiers(map, grid, b, 0) {
-            Ok(mods) => self.model_with(&key, mods),
+        let built = (|| {
+            let mods = self.modifiers(map, grid, b, 0)?;
+            let Some(cached) = self.model_with(&key, mods) else { return Ok(None) };
+            let mut model = cached.model;
+            let parent = crate::statics::model::block_iso_with(b, &model.geometry);
+            for placed in cached.trees {
+                let pose = crate::statics::place::compose(parent, chain_iso(&placed.chain));
+                let (pose, shape) = self.tree_instance(&placed, pose)?;
+                model.parts.push(Part {
+                    shape,
+                    location: PartLocation::World(pose),
+                    layer: LAYER_STATIC,
+                    entity: Entity::None,
+                });
+            }
+            Ok(Some(model))
+        })();
+        match built {
+            Ok(model) => model,
             Err(e) => {
                 self.problems.insert(key.name.clone(), e);
                 None

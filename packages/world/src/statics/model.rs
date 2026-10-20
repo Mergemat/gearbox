@@ -23,10 +23,16 @@ impl BlockKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PartLocation {
+    Local(Iso),
+    Block,
+    World(Iso),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Part {
     pub shape: u32,
-    pub local: Iso,
-    pub block_location: bool,
+    pub location: PartLocation,
     pub layer: u8,
     pub entity: gearbox_engine::static_world::Entity,
 }
