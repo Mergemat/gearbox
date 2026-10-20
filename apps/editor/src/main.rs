@@ -79,7 +79,6 @@ fn parse() -> Result<Options> {
             "--pick-map" => o.pick_map = true,
             "--script" => o.script = Some(PathBuf::from(val()?)),
             "--smoke" => o.smoke = true,
-            "--showcase" => o.showcase = true,
             "--game" => o.game = Some(PathBuf::from(val()?)),
             "--record" => o.record = Some(PathBuf::from(val()?)),
             s if s.starts_with("--") => bail!("unknown option {s}"),
