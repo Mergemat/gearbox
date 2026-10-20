@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use gearbox_gbx::Map;
+use gearbox_gbx::{Map, Replay};
 use gearbox_packs::install::Game;
 use gearbox_packs::packs::PackSet;
 use gearbox_run::Record;
@@ -61,4 +61,16 @@ fn keyboard_records_steer_within_their_action_key_limit() {
         let map = Map::parse(&std::fs::read(dir.join("map.Map.Gbx")).unwrap()).unwrap();
         assert_eq!(record.drive(&map, &packs).unwrap().finish_ms, Some(record.time_ms), "{id}");
     }
+}
+
+#[test]
+fn a_record_with_respawns_drives_to_its_finish() {
+    let Some(data) = std::env::var_os("GBX_TEST_DATA").map(PathBuf::from) else { return };
+    let Ok(bytes) = std::fs::read(data.join("runs/river/record.Replay.Gbx")) else { return };
+    let replay = Replay::parse(&bytes).unwrap();
+    let record = Record::from_replay(&replay).unwrap();
+    assert_eq!(record.respawns.len(), 9);
+    let packs = PackSet::open(&Game::locate(None).unwrap().packs).unwrap();
+    let map = Map::parse(replay.map_gbx.as_deref().unwrap()).unwrap();
+    assert_eq!(record.drive(&map, &packs).unwrap().finish_ms, Some(record.time_ms));
 }
