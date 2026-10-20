@@ -316,10 +316,11 @@ pub(crate) fn node(r: &mut Reader) -> Result<()> {
                 for _ in 0..r.len()? {
                     r.i32()?;
                 }
-                for _ in 0..4 {
-                    r.bool32()?;
-                }
-                if version < 5 {
+                r.u32()?;
+                r.bool32()?;
+                r.u32()?;
+                r.u32()?;
+                if version < 6 {
                     r.vec3()?;
                 }
                 if version >= 11 {
@@ -358,7 +359,7 @@ pub(crate) fn node(r: &mut Reader) -> Result<()> {
                 if version >= 8 {
                     r.i32()?;
                 }
-                if version >= 11 {
+                if version >= 10 {
                     r.i32()?;
                     r.i32()?;
                 }

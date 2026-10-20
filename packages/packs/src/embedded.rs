@@ -24,7 +24,7 @@ pub struct Files<'a> {
 }
 
 fn norm(p: &str) -> String {
-    p.replace('/', "\\").to_lowercase()
+    p.trim_start_matches('\u{feff}').replace('/', "\\").to_lowercase()
 }
 
 impl<'a> Files<'a> {

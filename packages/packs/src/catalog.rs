@@ -356,6 +356,9 @@ impl Crawler<'_> {
         head: &crate::unpack::GbxHead,
         source: String,
     ) -> EntModel {
+        if so.mesh_collidable && so.mesh == NodeLink::Null {
+            return EntModel::None;
+        }
         let shape = match so.shape {
             NodeLink::Inline(s) => Some(self.add_surface(s, source, head, owner)),
             NodeLink::External(p) => self.shape_file(&p),
@@ -523,17 +526,18 @@ impl Crawler<'_> {
         p: crate::prefab::Prefab,
         owner: &str,
         head: &crate::unpack::GbxHead,
-    ) {
+    ) -> EntModel {
         let path = owner;
+        let mut empty = true;
         let mut ents = Vec::with_capacity(p.ents.len());
         for (k, e) in p.ents.into_iter().enumerate() {
+            let shared = matches!(e.model, NodeLink::Earlier(_));
             let model = match e.model {
                 NodeLink::Null | NodeLink::Earlier(_) => EntModel::None,
                 NodeLink::External(x) => self.external_model(&x),
                 NodeLink::Inline(Model::Prefab(p)) => {
                     let nested = format!("{name}#ent{k}#prefab");
-                    self.store_prefab(&nested, *p, owner, head);
-                    EntModel::Prefab(nested)
+                    self.store_prefab(&nested, *p, owner, head)
                 }
                 NodeLink::Inline(Model::StaticObject(so)) => {
                     self.static_object(so, path, head, format!("{name}#ent{k}"))
@@ -559,6 +563,7 @@ impl Crawler<'_> {
                 }
                 NodeLink::Inline(Model::Other(c)) => EntModel::Other { class_id: Some(c), path: None },
             };
+            empty &= !shared && matches!(model, EntModel::None);
             ents.push(Ent {
                 model,
                 rotation: e.rotation,
@@ -568,6 +573,7 @@ impl Crawler<'_> {
             });
         }
         self.cat.index.prefabs.insert(name.to_string(), Prefab { ents });
+        if empty { EntModel::None } else { EntModel::Prefab(name.to_string()) }
     }
 
     fn item(&mut self, path: &str) -> Result<Item> {
@@ -639,6 +645,10 @@ impl Crawler<'_> {
                         &l.head,
                         path,
                     )),
+                    NodeLink::Inline(Model::Prefab(prefab)) => {
+                        let name = format!("{path}#variant{}", variants.len());
+                        self.store_prefab(&name, *prefab, path, &l.head)
+                    }
                     _ => bail!("unsupported inline item variant"),
                 };
                 if version >= 1 {
@@ -701,8 +711,7 @@ impl Crawler<'_> {
             let p = ctx.prefab(&mut r)?;
             prefab_end = r.pos();
             let name = format!("{path}#prefab{}", n.index);
-            self.store_prefab(&name, p, path, &l.head);
-            models.push(EntModel::Prefab(name));
+            models.push(self.store_prefab(&name, p, path, &l.head));
         }
         let mut refs: Vec<String> =
             l.head.ref_files.keys().filter_map(|&i| l.head.ref_path(path, i)).collect();

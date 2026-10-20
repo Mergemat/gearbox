@@ -47,6 +47,9 @@ pub fn add_map_items(
         if let Some(item) = catalog.index.items.get(&path).cloned() {
             catalog.index.items.entry(name.clone()).or_insert(item);
         }
+        if let Some(block) = catalog.index.custom_blocks.get(&format!("{path}_CustomBlock")).cloned() {
+            catalog.index.custom_blocks.entry(format!("{name}_CustomBlock")).or_insert(block);
+        }
     }
     custom_block_gates(&mut catalog, map);
     let errors = catalog.index.errors.clone();
