@@ -22,6 +22,7 @@ pub mod surface;
 pub mod tuning;
 pub mod unpack;
 pub mod veget;
+pub mod water;
 
 pub mod crystal;
 pub mod crystal_mesh;

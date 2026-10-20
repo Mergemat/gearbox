@@ -1,3 +1,5 @@
+mod terrain;
+
 use crate::statics::{BlockKey, MapAssets, place};
 use anyhow::{Context, Result, ensure};
 use gearbox_engine::world_water::{Column, Entry, Grid, Layer, ModelBox, Volume, VoxelGrid, Water};
@@ -120,17 +122,18 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
             boxes.push(ModelBox { model, placement, inverse: placement.inverse() });
         }
     }
-    if boxes.is_empty() {
-        return Ok(water);
-    }
     ensure!(map.size[0] > 0 && map.size[2] > 0, "invalid water grid extent");
     let size = [map.size[0] as u32, map.size[2] as u32];
     let cells = size[0] as usize * size[1] as usize;
     let default_column = Column { surface: 0.0, bottom: 1.0, material: EMPTY };
+    let columns = terrain::columns(map, assets, &catalog, env, default_column)?;
+    if boxes.is_empty() && columns.iter().all(|column| column.surface <= column.bottom) {
+        return Ok(water);
+    }
     let mut volume = Volume {
         grid: map_grid(size),
         default_column,
-        columns: vec![default_column; cells],
+        columns,
         box_grid: map_grid(size),
         boxes,
         heads: vec![EMPTY; cells],
@@ -140,7 +143,8 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
         let grid = &water.models[model_box.model as usize].grid;
         let extent = [grid.cell[0] * grid.size[0] as f32, grid.cell[1] * grid.size[1] as f32];
         let half = Vec3::new(extent[0] * 0.5, 0.0, extent[1] * 0.5);
-        let bounds = Aabb::new(half, half).transform(&model_box.placement);
+        let center = Vec3::new(grid.origin[0] + half.x, 0.0, grid.origin[1] + half.z);
+        let bounds = Aabb::new(center, half).transform(&model_box.placement);
         let x0 = ((bounds.center.x - bounds.half.x) / MAP_CELL).floor() as i32;
         let x1 = ((bounds.center.x + bounds.half.x) / MAP_CELL).floor() as i32;
         let z0 = ((bounds.center.z - bounds.half.z) / MAP_CELL).floor() as i32;
