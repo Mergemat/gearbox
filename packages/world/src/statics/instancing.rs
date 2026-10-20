@@ -15,26 +15,29 @@ pub fn unit_coord(coord: [i32; 3], unit: [i32; 3], dir: u8, size: [u32; 3]) -> R
     Ok([coord[0] + x, coord[1] + y, coord[2] + z])
 }
 
-pub fn hidden_baked(map: &gearbox_gbx::Map, src: &dyn ModelSource) -> Result<Vec<bool>> {
-    let mut ground = std::collections::HashSet::new();
+pub fn hidden_terrain(map: &gearbox_gbx::Map, src: &dyn ModelSource) -> Result<[Vec<bool>; 2]> {
+    let mut covered_by_block = std::collections::HashMap::new();
     for block in &map.blocks {
         if block.free.is_some() || !block.is_ground() {
             continue;
         }
         let Some(geometry) = src.block_geometry(&BlockKey::of(block)) else { continue };
-        for unit in geometry.units {
-            ground.insert(unit_coord(block.coord, unit, block.dir, geometry.size)?);
+        for &unit in &geometry.units {
+            let coord = unit_coord(block.coord, unit, block.dir, geometry.size)?;
+            *covered_by_block.entry(coord).or_insert(false) |= !geometry.terrain();
         }
     }
-    Ok(map
-        .baked_blocks
-        .iter()
-        .map(|block| {
-            block.free.is_none()
-                && src.block_geometry(&BlockKey::of(block)).is_some_and(|geometry| geometry.terrain())
-                && ground.contains(&block.coord)
-        })
-        .collect())
+    let hidden = |blocks: &[gearbox_gbx::map::Block], by_terrain: bool| -> Vec<bool> {
+        blocks
+            .iter()
+            .map(|block| {
+                block.free.is_none()
+                    && src.block_geometry(&BlockKey::of(block)).is_some_and(|geometry| geometry.terrain())
+                    && covered_by_block.get(&block.coord).is_some_and(|&by_block| by_block || by_terrain)
+            })
+            .collect()
+    };
+    Ok([hidden(&map.blocks, false), hidden(&map.baked_blocks, true)])
 }
 
 pub fn neighbour(c: [i32; 3], dir: u32) -> [i32; 3] {
