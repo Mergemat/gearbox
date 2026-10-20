@@ -244,8 +244,8 @@ pub fn main(args: Vec<String>) -> Result<()> {
         .map(|placement| -> Result<_> {
             let mut n = origin.native()?;
             n.seed = inputs.seed;
-            let first = inputs.index(n.race_ms())?;
-            let at = inputs.index(config.window_start_ms)?;
+            let first = inputs.tick(n.race_ms())?;
+            let at = inputs.tick(config.window_start_ms)?;
             ensure!(first <= at, "placement precedes origin");
             for c in &inputs.controls[first..at] {
                 n.step(*c);

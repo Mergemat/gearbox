@@ -146,10 +146,10 @@ pub fn search_seeded(
     ensure!(config.iterations > 0 && config.batch_size > 0, "iterations and batch size must be positive");
     config.mutation.validate()?;
     config.objective.validate(config.window_start_ms, config.until_ms)?;
-    let window = base.index(config.window_start_ms)?..base.index(config.window_end_ms)?;
+    let window = base.tick(config.window_start_ms)?..base.tick(config.window_end_ms)?;
     ensure!(window.start < window.end, "input window must be nonempty");
     ensure!(config.window_end_ms <= config.until_ms, "input window extends past evaluation end");
-    base.index(config.until_ms)?;
+    base.tick(config.until_ms)?;
     if let Method::Receding { .. } = config.method {
         return receding(origin, base, config, &mut progress);
     }
@@ -162,7 +162,7 @@ pub fn search_seeded(
 
     let mut native = origin.native()?;
     native.seed = base.seed;
-    let start = base.index(native.race_ms())?;
+    let start = base.tick(native.race_ms())?;
     ensure!(start <= window.start, "window starts before the start state's race time {}", native.race_ms());
     let ticks_to_end = (i64::from(config.until_ms) - i64::from(native.race_ms())) / 10;
     ensure!(
@@ -261,7 +261,7 @@ pub fn search_seeded(
                         let frontier = parent
                             .evaluation
                             .frontier_ms
-                            .and_then(|ms| parent.inputs.index(ms).ok())
+                            .and_then(|ms| parent.inputs.tick(ms).ok())
                             .map(|f| {
                                 f.saturating_sub(FOCUS_BEFORE).max(window.start)
                                     ..(f + FOCUS_AFTER).min(window.end)
@@ -452,8 +452,8 @@ fn receding(
             || matches!(config.objective, Objective::Path { .. } | Objective::Goals(_)),
         "receding search requires goals, a gate, race or path target"
     );
-    let start = base.index(config.window_start_ms)?;
-    let end = base.index(config.window_end_ms)?;
+    let start = base.tick(config.window_start_ms)?;
+    let end = base.tick(config.window_end_ms)?;
     ensure!(start < end, "empty receding window");
     let segments = (end - start).div_ceil(commit_ticks);
     ensure!(config.iterations >= segments, "need at least one attempt per committed segment");
@@ -463,7 +463,7 @@ fn receding(
     let eval = EvalOptions { from_ms: Some(config.window_start_ms), ..config.evaluation };
     let before = evaluate_with(&mut n, &base, &config.objective, config.until_ms, eval)?;
     n.restore(&original);
-    let initial = base.index(n.race_ms())?;
+    let initial = base.tick(n.race_ms())?;
     ensure!(initial <= start, "window precedes origin");
     for c in &base.controls[initial..start] {
         n.step(*c);

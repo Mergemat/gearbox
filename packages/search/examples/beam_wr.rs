@@ -134,7 +134,7 @@ fn main() -> Result<()> {
     let mut n = start.native()?;
     n.seed = wr.seed;
     let wr = if n.race_ms() < wr.t0 { wr.starting_at(n.race_ms())? } else { wr };
-    let first = wr.index(n.race_ms())?;
+    let first = wr.tick(n.race_ms())?;
     let mut crossings: Vec<(u32, i32, usize)> = Vec::new();
     let mut finish = None;
     for (k, c) in wr.controls.iter().enumerate().skip(first) {
@@ -221,7 +221,7 @@ fn main() -> Result<()> {
             let mut m = origin.native()?;
             m.seed = g.seed;
             let mut line = vec![gearbox_search::Body::from(m.body()).position()];
-            for c in &g.controls[g.index(m.race_ms())?..] {
+            for c in &g.controls[g.tick(m.race_ms())?..] {
                 m.step(*c);
                 line.push(gearbox_search::Body::from(m.body()).position());
                 if m.race().and_then(|r| r.finish).is_some() {

@@ -39,8 +39,8 @@ fn main() -> Result<()> {
     let wr = Timeline { t0: inputs.t0, seed: inputs.seed, controls: inputs.controls.clone() };
     let wr = if n.race_ms() < wr.t0 { wr.starting_at(n.race_ms())? } else { wr };
     n.seed = wr.seed;
-    let k0 = wr.index(0)?;
-    let mut k = wr.index(n.race_ms())?;
+    let k0 = wr.tick(0)?;
+    let mut k = wr.tick(n.race_ms())?;
     let (mut path, mut cp) = (Vec::new(), None);
     while k < wr.controls.len() {
         if k >= k0 {
@@ -182,7 +182,7 @@ fn main() -> Result<()> {
     let game_cp = |line: &Timeline| -> Result<(Option<i32>, Vec<[f32; 3]>)> {
         let mut n = start.native()?;
         n.seed = line.seed;
-        let mut k = line.index(n.race_ms())?;
+        let mut k = line.tick(n.race_ms())?;
         let mut trail = Vec::new();
         while k < line.controls.len() {
             if k >= k0 {

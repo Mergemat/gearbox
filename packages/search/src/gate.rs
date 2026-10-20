@@ -134,8 +134,8 @@ pub fn reference_gate(
 ) -> Result<Option<Gate>> {
     let saved = native.save();
     let result = (|| {
-        let start = inputs.index(native.race_ms())?;
-        let end = inputs.index(until_ms)?;
+        let start = inputs.tick(native.race_ms())?;
+        let end = inputs.tick(until_ms)?;
         for c in &inputs.controls[start..end] {
             native.step(*c);
             if native.race().is_some_and(|r| r.checkpoints.len() >= ordinal) {

@@ -24,7 +24,7 @@ fn search_is_independent_of_worker_scheduling() {
     )
     .unwrap();
     let mut base = Timeline::read(&root.join("inputs/k17165s.txt.in")).unwrap();
-    let range = base.index(1200).unwrap()..base.index(1300).unwrap();
+    let range = base.tick(1200).unwrap()..base.tick(1300).unwrap();
     for c in &mut base.controls[range] {
         c.gas = 0.0;
         c.brake = 1.0;

@@ -1,0 +1,22 @@
+[package]
+name = "gearbox-run"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
+description = "Runs: the inputs gearbox drives, and records read from replays and ghosts"
+
+[dependencies]
+anyhow = "1"
+gearbox-engine = { path = "../engine" }
+gearbox-gbx = { path = "../gbx" }
+gearbox-packs = { path = "../packs" }
+gearbox-trace = { path = "../trace" }
+gearbox-world = { path = "../world" }
+
+[lints]
+workspace = true

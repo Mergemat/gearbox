@@ -1728,6 +1728,7 @@ dependencies = [
  "gearbox-engine",
  "gearbox-gbx",
  "gearbox-packs",
+ "gearbox-run",
  "gearbox-search",
  "gearbox-trace",
  "gearbox-world",
@@ -1745,6 +1746,7 @@ dependencies = [
  "gearbox-engine",
  "gearbox-gbx",
  "gearbox-packs",
+ "gearbox-run",
  "gearbox-search",
  "gearbox-trace",
  "gearbox-world",
@@ -1799,6 +1801,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gearbox-run"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gearbox-engine",
+ "gearbox-gbx",
+ "gearbox-packs",
+ "gearbox-trace",
+ "gearbox-world",
+]
+
+[[package]]
 name = "gearbox-search"
 version = "0.1.0"
 dependencies = [
@@ -1806,6 +1820,7 @@ dependencies = [
  "clap",
  "gearbox-engine",
  "gearbox-packs",
+ "gearbox-run",
  "gearbox-trace",
  "gearbox-world",
  "rand 0.10.3",

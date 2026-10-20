@@ -9,23 +9,17 @@ use rand::{SeedableRng, rngs::StdRng};
 
 #[test]
 fn malformed_inputs_and_uncovered_times_are_errors() {
-    for text in [
-        "",
-        "T0 0\n",
-        "T0 0 1 extra\n1 0 0\n",
-        "T0 0\n1 0\n",
-        "T0 0\n1 0 NaN\n",
-        "T0 0\n1 0 inf\n",
-        "T0 0\n1 0 1.1\n",
-    ] {
+    for text in
+        ["", "T0 0 1 extra\n1 0 0\n", "T0 0\n1 0\n", "T0 0\n1 0 NaN\n", "T0 0\n1 0 inf\n", "T0 0\n1 0 1.1\n"]
+    {
         assert!(Timeline::parse(text).is_err(), "accepted {text:?}");
     }
     let input = Timeline::parse("T0 -1450 4294967295\n1 0 -0.5\n0 1 0.25\n").unwrap();
     assert_eq!((input.t0, input.seed), (-1450, Some(u32::MAX)));
-    assert_eq!(input.index(-1440).unwrap(), 1);
-    assert_eq!(input.end_ms().unwrap(), -1430);
+    assert_eq!(input.tick(-1440).unwrap(), 1);
+    assert_eq!(input.end_ms(), -1430);
     for ms in [-1460, -1449, -1420] {
-        assert!(input.index(ms).is_err());
+        assert!(input.tick(ms).is_err());
     }
 }
 
@@ -50,12 +44,12 @@ fn neutral_throttle_seeds_are_distinct() {
 fn padding_a_late_timeline_keeps_every_tick_on_its_race_time() {
     let late = Timeline::parse("T0 30 5\n1 0 0.5\n0 1 -0.5\n").unwrap();
     let padded = late.starting_at(-20).unwrap();
-    assert_eq!((padded.t0, padded.seed, padded.end_ms().unwrap()), (-20, Some(5), 50));
+    assert_eq!((padded.t0, padded.seed, padded.end_ms()), (-20, Some(5), 50));
     for ms in (-20..30).step_by(10) {
-        assert_eq!(padded.controls[padded.index(ms).unwrap()], Controls::default());
+        assert_eq!(padded.controls[padded.tick(ms).unwrap()], Controls::default());
     }
     for ms in [30, 40] {
-        assert_eq!(padded.controls[padded.index(ms).unwrap()], late.controls[late.index(ms).unwrap()]);
+        assert_eq!(padded.controls[padded.tick(ms).unwrap()], late.controls[late.tick(ms).unwrap()]);
     }
     assert!(late.starting_at(40).is_err());
     assert!(late.starting_at(-25).is_err());

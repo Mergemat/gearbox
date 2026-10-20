@@ -200,32 +200,10 @@ fn summary(path: PathBuf) -> Result<()> {
 }
 
 fn replay_inputs(path: PathBuf, out: PathBuf) -> Result<()> {
-    let replay = load(&path)?;
-    let ghost = replay
-        .ghosts
-        .iter()
-        .find(|g| g.race_time_ms.is_some() && !g.inputs.is_empty())
-        .context("no finished ghost with inputs")?;
-    let inputs = ghost.inputs.first().context("no inputs")?.decode()?;
-    anyhow::ensure!(inputs.ticks.windows(2).any(|w| w[0] != w[1]), "ghost inputs never change");
-    let (dropped, kept): (Vec<_>, Vec<_>) = inputs.events.iter().partition(|e| {
-        matches!(e.kind, gearbox_gbx::inputs::EventKind::Horn(_))
-            || (e.tick == 0 && matches!(e.kind, gearbox_gbx::inputs::EventKind::Respawn))
-    });
-    anyhow::ensure!(kept.is_empty(), "inputs export does not support input events: {kept:?}");
-    if !dropped.is_empty() {
-        eprintln!("dropped {} horn/start-respawn events", dropped.len());
-    }
-    let seed = ghost.validation_seed.map(|s| s as u32).filter(|&s| s != 0);
-    let mut text = match seed {
-        Some(seed) => format!("T0 {} {seed}\n", inputs.start_offset_ms),
-        None => format!("T0 {}\n", inputs.start_offset_ms),
-    };
-    for t in &inputs.ticks {
-        text += &format!("{} {} {}\n", t.gas as u8, t.brake as u8, t.steer as f32 / 127.0);
-    }
-    std::fs::write(&out, text)?;
-    println!("wrote {} ticks from {} ms, start seed {seed:?}", inputs.ticks.len(), inputs.start_offset_ms);
+    let record = gearbox_run::Record::read(&path)?;
+    record.run.write(&out)?;
+    let run = &record.run;
+    println!("wrote {} ticks from {} ms, start seed {:?}", run.controls.len(), run.t0, run.seed);
     Ok(())
 }
 

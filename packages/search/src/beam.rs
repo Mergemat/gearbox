@@ -284,7 +284,7 @@ pub fn build_line(
     ensure!(until_k <= base.controls.len() && from_k < until_k, "the range must lie inside the run");
     let mut native = origin.native()?;
     native.seed = base.seed;
-    let start = base.index(native.race_ms())?;
+    let start = base.tick(native.race_ms())?;
     ensure!(start <= from_k, "the range starts before the start state");
     let mut p = Progress::new(native.race_ms());
     let body = Body::from(native.body());

@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "apps/cli", "apps/editor",
-    "packages/engine", "packages/gbx", "packages/packs", "packages/search", "packages/trace", "packages/world",
+    "packages/engine", "packages/gbx", "packages/packs", "packages/run", "packages/search", "packages/trace", "packages/world",
 ]
 
 [workspace.package]

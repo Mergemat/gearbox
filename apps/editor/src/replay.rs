@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, ensure};
-use gearbox_engine::Controls;
 use gearbox_gbx::record::CLASS_VEHICLE_VIS;
 use gearbox_gbx::{Ghost, Replay};
 
@@ -21,29 +20,8 @@ pub fn driven_ghost(replay: &Replay) -> Result<&Ghost> {
 }
 
 pub fn inputs(replay: &Replay) -> Result<InputFile> {
-    let ghost = driven_ghost(replay)?;
-    let d = ghost.inputs.first().context("no inputs")?.decode()?;
-    ensure!(d.ticks.windows(2).any(|w| w[0] != w[1]), "ghost inputs never change");
-    let kept: Vec<_> = d
-        .events
-        .iter()
-        .filter(|e| {
-            !(matches!(e.kind, gearbox_gbx::inputs::EventKind::Horn(_))
-                || (e.tick == 0 && matches!(e.kind, gearbox_gbx::inputs::EventKind::Respawn)))
-        })
-        .collect();
-    ensure!(kept.is_empty(), "input events other than horns and a start respawn are not supported: {kept:?}");
-    let seed = ghost.validation_seed.map(|s| s as u32).filter(|&s| s != 0);
-    let controls = d
-        .ticks
-        .iter()
-        .map(|t| Controls {
-            gas: t.gas as u8 as f32,
-            brake: t.brake as u8 as f32,
-            steer: t.steer as f32 / 127.0,
-        })
-        .collect();
-    Ok(InputFile { t0: d.start_offset_ms, seed, controls })
+    let run = gearbox_run::Record::from_replay(replay)?.run;
+    Ok(InputFile { t0: run.t0, seed: run.seed, controls: run.controls })
 }
 
 pub fn replays_for_map(map: &Path) -> Vec<PathBuf> {

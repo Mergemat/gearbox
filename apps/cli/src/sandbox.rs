@@ -77,7 +77,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
         let c = inputs
             .as_ref()
             .map(|t| {
-                t.index(s.race_ms()).and_then(|i| {
+                t.tick(s.race_ms()).and_then(|i| {
                     t.controls.get(i).copied().ok_or_else(|| anyhow::anyhow!("prefix exceeds input coverage"))
                 })
             })
@@ -151,7 +151,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
                 std::fs::write(output.join("snap.json"), serde_json::to_vec_pretty(&snap.pose)?)?;
                 if refine > 0 {
                     let t0 = s.race_ms();
-                    let until_ms = snap.rollout.inputs.end_ms()?;
+                    let until_ms = snap.rollout.inputs.end_ms();
                     let config = Config {
                         window_start_ms: t0,
                         window_end_ms: until_ms,

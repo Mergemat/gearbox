@@ -267,7 +267,7 @@ fn mixed_goals_credit_real_recorded_gate_crossings_in_order() {
         gearbox_search::session::open(&packs(), &data.join("tmx/kacky/54999_uberbug.Map.Gbx"), Some(&inputs))
             .unwrap();
     let initial = Pose::from_body(Body::from(s.body()));
-    let gate = gearbox_search::gate::reference_gate(&mut s, 1, &inputs, inputs.end_ms().unwrap())
+    let gate = gearbox_search::gate::reference_gate(&mut s, 1, &inputs, inputs.end_ms())
         .unwrap()
         .expect("recorded finish");
     let objective = Objective::Goals(Goals {
@@ -285,7 +285,7 @@ fn mixed_goals_credit_real_recorded_gate_crossings_in_order() {
         stay_within: None,
         track: None,
     });
-    let result = evaluate(&mut s, &inputs, &objective, inputs.end_ms().unwrap()).unwrap();
+    let result = evaluate(&mut s, &inputs, &objective, inputs.end_ms()).unwrap();
     eprintln!("recorded mixed goals: {}", result.score);
     assert!(result.score.reached());
     assert!(matches!(result.score, Score::Goals { times, .. } if times == [-1530, -1530, 5509, 5509, 5509]));
@@ -326,7 +326,7 @@ fn a_crossing_in_the_tick_that_reaches_a_point_counts_after_it() {
             stay_within: None,
             track: None,
         });
-        evaluate(s, &inputs, &goals, inputs.end_ms().unwrap()).unwrap().score
+        evaluate(s, &inputs, &goals, inputs.end_ms()).unwrap().score
     };
     let same = score(point, &mut s);
     assert!(matches!(&same, Score::Goals { times, .. } if *times == [ms, finish]), "{same}");
@@ -425,11 +425,11 @@ fn full_rollouts_stop_counting_signatures_at_the_crossing() {
     let mut s =
         gearbox_search::session::open(&packs(), &data.join("tmx/kacky/54999_uberbug.Map.Gbx"), Some(&inputs))
             .unwrap();
-    let gate = gearbox_search::gate::reference_gate(&mut s, 1, &inputs, inputs.end_ms().unwrap())
+    let gate = gearbox_search::gate::reference_gate(&mut s, 1, &inputs, inputs.end_ms())
         .unwrap()
         .expect("recorded finish");
     while s.race_ms() < 5450 {
-        let c = inputs.controls[inputs.index(s.race_ms()).unwrap()];
+        let c = inputs.controls[inputs.tick(s.race_ms()).unwrap()];
         s.step(c);
     }
     let mut pose = Pose::from_body(Body::from(s.body()));
@@ -448,8 +448,7 @@ fn full_rollouts_stop_counting_signatures_at_the_crossing() {
     let mut run = |full_rollout| {
         s.restore(&start);
         let options = EvalOptions { full_rollout, trick_bonus: 1.0, trace: true, ..Default::default() };
-        gearbox_search::objective::evaluate_with(&mut s, &gas, &objective, gas.end_ms().unwrap(), options)
-            .unwrap()
+        gearbox_search::objective::evaluate_with(&mut s, &gas, &objective, gas.end_ms(), options).unwrap()
     };
     let first = run(false);
     let full = run(true);

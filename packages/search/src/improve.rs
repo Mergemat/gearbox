@@ -351,7 +351,7 @@ fn drive_on(
     }
     let mut n = native(origin, car)?;
     n.seed = line.seed;
-    let mut k = line.index(n.race_ms())?;
+    let mut k = line.tick(n.race_ms())?;
     while k < from {
         n.step(line.controls[k]);
         k += 1;

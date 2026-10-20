@@ -27,7 +27,7 @@ pub fn drive_on(
         line.controls.resize(until, last);
     }
     let (mut trail, mut speed_at_end, mut i) = (Vec::new(), 0.0, 0);
-    let mut k = line.index(n.race_ms())?;
+    let mut k = line.tick(n.race_ms())?;
     while k < until {
         let body = Body::from(n.body());
         if k >= to && !follow.is_empty() {

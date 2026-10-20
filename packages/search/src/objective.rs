@@ -351,8 +351,8 @@ pub fn evaluate_resumable(
     if let Some(r) = &resume {
         native.restore(&r.cp.state);
     }
-    let start = inputs.index(native.race_ms())?;
-    let end = inputs.index(until_ms)?;
+    let start = inputs.tick(native.race_ms())?;
+    let end = inputs.tick(until_ms)?;
     ensure!(start <= end, "evaluation ends before current state");
     let (
         mut goals_progress,

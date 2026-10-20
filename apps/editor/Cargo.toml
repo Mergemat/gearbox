@@ -29,6 +29,7 @@ wgpu = { version = "30", default-features = false, features = ["metal", "wgsl"] 
 gearbox-engine = { path = "../../packages/engine" }
 gearbox-world = { path = "../../packages/world" }
 gearbox-trace = { path = "../../packages/trace" }
+gearbox-run = { path = "../../packages/run" }
 gearbox-search = { path = "../../packages/search" }
 gearbox-packs = { path = "../../packages/packs" }
 gearbox-gbx = { path = "../../packages/gbx" }

@@ -72,7 +72,7 @@ fn main() -> Result<()> {
     let mut n = start.native()?;
     n.seed = run.seed;
     let run = if n.race_ms() < run.t0 { run.starting_at(n.race_ms())? } else { run };
-    let first = run.index(n.race_ms())?;
+    let first = run.tick(n.race_ms())?;
     let ahead_k = (ahead * 100.0).round() as usize;
     let mut bodies: Vec<Body> = Vec::new();
     let mut saved: Vec<(usize, i32, Savestate)> = Vec::new();

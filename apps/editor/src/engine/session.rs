@@ -202,11 +202,7 @@ impl Worker {
             InputSel::Memory(f, _) => Some(f.clone()),
         };
         self.set_busy(Some(format!("Building {stem} from the map and packs …")));
-        let session = gearbox_search::session::open(
-            &self.packs,
-            &source.0,
-            given.as_ref().map(InputFile::timeline).as_ref(),
-        )?;
+        let session = gearbox_search::session::open(&self.packs, &source.0, given.as_ref())?;
         let inputs = given.unwrap_or_else(|| InputFile::blank(session.race_ms()));
         self.set_busy(Some(format!("Reading the collision world of {stem} …")));
         let (world, world_error) = match catch_unwind(AssertUnwindSafe(|| display::extract(&session))) {

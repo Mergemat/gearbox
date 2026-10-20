@@ -22,6 +22,7 @@ gearbox-packs = { path = "../../packages/packs" }
 gearbox-gbx = { path = "../../packages/gbx" }
 gearbox-engine = { path = "../../packages/engine" }
 gearbox-world = { path = "../../packages/world" }
+gearbox-run = { path = "../../packages/run" }
 gearbox-search = { path = "../../packages/search" }
 gearbox-trace = { path = "../../packages/trace" }
 
