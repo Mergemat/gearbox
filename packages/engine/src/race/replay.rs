@@ -35,6 +35,16 @@ pub struct InputState {
     pub buttons: u32,
 }
 impl InputState {
+    pub fn from_packed_bits(packed: u64) -> Self {
+        let low = packed as u32;
+        let bits = low & 31
+            | (low >> 26) & 32
+            | ((packed >> 32) as u32 & 1) << 6
+            | (low >> 20) & 0x780
+            | ((packed >> 33) as u32 & 1) << 12;
+        Self { bits: InputBits(bits), buttons: (low >> 5) & 0x3f_ffff, ..Default::default() }
+    }
+
     pub fn same(&self, other: &Self) -> bool {
         self.bits.packed(self.buttons) == other.bits.packed(other.buttons)
             && self.shorts == other.shorts
@@ -50,15 +60,10 @@ impl Player {
         [self.previous_input, self.current_input]
     }
 
-    pub fn replay_inputs(&mut self, steer: f32, gas: f32, brake: f32, seed: u32) {
+    pub fn replay_inputs(&mut self, input: InputState, seed: u32) {
         self.replay_seed = seed;
-        self.previous_input = InputState {
-            bits: InputBits::REPLAY,
-            axes: [self.current_input.axes[0], self.current_input.axes[1], self.current_input.axes[2], 0.0],
-            ..Default::default()
-        };
-        self.current_input =
-            InputState { bits: InputBits::REPLAY, axes: [steer, gas, brake, 0.0], ..Default::default() };
+        self.previous_input = self.current_input;
+        self.current_input = input;
     }
 }
 

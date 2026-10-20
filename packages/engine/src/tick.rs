@@ -2,7 +2,7 @@ use crate::{
     arena,
     collision::{DynaCollision, Geometry},
     dyna::Tick,
-    race,
+    race::{self, replay::InputState},
     session::{Controls, Session},
     vehicle::{before, post, step, vis},
 };
@@ -11,8 +11,8 @@ use std::sync::Arc;
 pub const DT: f32 = 0.010000001;
 
 impl Session {
-    pub(crate) fn tick(&mut self, now: u32, controls: Controls, seed: Option<u32>) {
-        self.replay_inputs(controls, seed);
+    pub(crate) fn tick(&mut self, now: u32, controls: Controls, seed: Option<u32>, input: InputState) {
+        self.replay_inputs(input, seed);
         let scene = self.scene_update(now);
         self.arena_begin(now);
         self.apply_controls(now, controls);
@@ -30,11 +30,11 @@ impl Session {
         self.state.scene.insert(self.config.scene, scene);
     }
 
-    fn replay_inputs(&mut self, controls: Controls, seed: Option<u32>) {
+    fn replay_inputs(&mut self, input: InputState, seed: Option<u32>) {
         if let Some(seed) = seed {
             for racer in &mut self.race.players {
                 if racer.has_entity(self.vehicle.key) {
-                    racer.player.replay_inputs(controls.steer, controls.gas, controls.brake, seed);
+                    racer.player.replay_inputs(input, seed);
                 }
             }
         }

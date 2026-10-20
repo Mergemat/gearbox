@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
-use gearbox_engine::{Controls, Session};
-use gearbox_gbx::inputs::EventKind;
+use gearbox_engine::{Controls, Session, race::replay::InputState};
+use gearbox_gbx::inputs::{DecodedInputs, EventKind};
 use gearbox_gbx::{Ghost, Map, Replay};
 use gearbox_packs::packs::PackSet;
 use gearbox_world::OpenOptions;
@@ -22,6 +22,7 @@ pub struct Record {
     pub player: Option<String>,
     pub build: Option<String>,
     steer_limits: Vec<f32>,
+    input_states: Vec<InputState>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,6 +96,7 @@ impl Record {
         } else {
             std::iter::repeat_n(1.0, countdown).chain(limits.iter().copied()).collect()
         };
+        let input_states = input_states(&inputs, countdown);
         let driven = inputs.ticks.iter().zip(limits).map(|(t, limit)| Controls {
             gas: f32::from(u8::from(t.gas)),
             brake: f32::from(u8::from(t.brake)),
@@ -112,6 +114,7 @@ impl Record {
             player: ghost.nickname.clone().or_else(|| ghost.login.clone()),
             build: ghost.exe_version.clone(),
             steer_limits,
+            input_states,
         })
     }
 
@@ -134,20 +137,9 @@ impl Record {
         if !self.respawns.is_empty() {
             session.track_respawns();
         }
-        let last = self.run.controls.last().copied().unwrap_or_default();
         let finish = |s: &Session| s.race().and_then(|r| r.finish).map(|t| t as i32);
-        let controls = self.run.controls.iter().chain(std::iter::repeat_n(&last, OVERRUN_TICKS));
-        'drive: for (tick, &c) in controls.enumerate() {
-            if let Some(&limit) = self.steer_limits.get(tick) {
-                session.steer_limit = limit;
-            }
-            for respawn in self.respawns.iter().filter(|r| r.tick == tick) {
-                if !session.respawn(respawn.standing) {
-                    break 'drive;
-                }
-            }
-            session.step(c);
-            if finish(&session).is_some() {
+        for tick in 0..self.run.controls.len() + OVERRUN_TICKS {
+            if !self.step(&mut session, tick) || finish(&session).is_some() {
                 break;
             }
         }
@@ -157,6 +149,47 @@ impl Record {
             position: session.vehicle().pos.to_array(),
         }
     }
+
+    pub fn step(&self, session: &mut Session, tick: usize) -> bool {
+        session.seed = self.run.seed;
+        if let Some(&limit) = self.steer_limits.get(tick) {
+            session.steer_limit = limit;
+        }
+        for respawn in self.respawns.iter().filter(|r| r.tick == tick) {
+            if !session.respawn(respawn.standing) {
+                return false;
+            }
+        }
+        let controls = self.run.controls.get(tick).or(self.run.controls.last()).copied().unwrap_or_default();
+        let input = self.input_states.get(tick).or(self.input_states.last()).copied().unwrap_or_default();
+        session.step_with_input(controls, input);
+        true
+    }
+}
+
+fn input_states(inputs: &DecodedInputs, countdown: usize) -> Vec<InputState> {
+    let mut words = inputs.state_words.iter().peekable();
+    let mut extras = inputs.extra_words.iter().peekable();
+    let mut state = InputState::default();
+    let mut states = vec![state; countdown];
+    for (tick, controls) in inputs.ticks.iter().enumerate() {
+        while let Some(&(_, word)) = words.next_if(|(t, _)| *t <= tick) {
+            let packed = InputState::from_packed_bits(word);
+            state.bits = packed.bits;
+            state.buttons = packed.buttons;
+        }
+        while let Some(&(_, word)) = extras.next_if(|(t, _)| *t <= tick) {
+            state.shorts = [word as u16, (word >> 16) as u16];
+        }
+        state.axes = [
+            f32::from(controls.steer) / 127.0,
+            f32::from(u8::from(controls.gas)),
+            f32::from(u8::from(controls.brake)),
+            0.0,
+        ];
+        states.push(state);
+    }
+    states
 }
 
 fn steer_limits(words: &[(usize, u64)], ticks: usize) -> Vec<f32> {
@@ -191,6 +224,7 @@ mod tests {
             player: None,
             build: Some(build.into()),
             steer_limits: Vec::new(),
+            input_states: Vec::new(),
         }
     }
 

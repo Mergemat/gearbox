@@ -2,7 +2,10 @@ use crate::{
     Iso, State, World, arena,
     collision::ByteGrid,
     dyna::{BodyHandle, BodyState, Dyna},
-    race::{self, Race, RaceState},
+    race::{
+        self, Race, RaceState,
+        replay::{InputBits, InputState},
+    },
     vehicle::{Tuning, Vehicle, impacts::ImpactModel, model::ForceGeometry, post, spawn, step},
     water::drag::FluidTuning,
 };
@@ -100,11 +103,20 @@ pub struct Session {
 pub struct Savestate(Session);
 
 impl Session {
-    pub fn step(&mut self, mut controls: Controls) {
+    pub fn step(&mut self, controls: Controls) {
+        let input = InputState {
+            bits: InputBits::REPLAY,
+            axes: [controls.steer, controls.gas, controls.brake, 0.0],
+            ..Default::default()
+        };
+        self.step_with_input(controls, input);
+    }
+
+    pub fn step_with_input(&mut self, mut controls: Controls, input: InputState) {
         if self.config.model(self.vehicle.model_choice).assets.tuning.car_model_kind().uses_legacy_gearbox() {
             controls.steer *= self.steer_limit;
         }
-        self.tick(self.clock.now, controls, self.seed);
+        self.tick(self.clock.now, controls, self.seed, input);
         self.clock.now += 10;
         self.clock.race_ms += 10;
     }

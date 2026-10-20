@@ -88,6 +88,7 @@ impl PlayerInputs {
         let mut mode = Mode::NotStarted;
         let mut cur = TickInput::default();
         let mut horn = false;
+        let mut state = 0;
         let mut out = Vec::with_capacity(self.ticks);
         let mut events = Vec::new();
         let mut truncated_at = None;
@@ -99,6 +100,8 @@ impl PlayerInputs {
                 if !r.bit()? {
                     if r.bit()? {
                         let states = r.num(2)?;
+                        state = (state & !(3 << 5)) | states << 5;
+                        state_words.push((tick, state));
                         if mode == Mode::Vehicle {
                             let h = states & 2 != 0;
                             if h != horn {
@@ -108,7 +111,8 @@ impl PlayerInputs {
                         }
                     } else {
                         let states = r.num(state_bits)?;
-                        state_words.push((tick, states));
+                        state = states;
+                        state_words.push((tick, state));
                         mode = match states & 0xF {
                             0 => Mode::NotStarted,
                             2..=4 => Mode::Vehicle,
@@ -136,9 +140,7 @@ impl PlayerInputs {
                 }
                 if !r.bit()? {
                     let w = r.num(32)? as u32;
-                    if w != 0 {
-                        extra_words.push((tick, w));
-                    }
+                    extra_words.push((tick, w));
                 }
                 match mode {
                     Mode::Vehicle => {
