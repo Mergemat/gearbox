@@ -3,6 +3,8 @@ use gearbox_gbx::reader::Reader;
 
 use crate::{packs::PackSet, unpack};
 
+const ZONES: [&str; 3] = [".zoneflat.gbx", ".zonefrontier.gbx", ".zonetransition.gbx"];
+
 #[derive(Clone, Debug)]
 pub struct TerrainWater {
     pub blocks: Vec<String>,
@@ -41,13 +43,14 @@ pub fn terrain(packs: &PackSet, environment: &str) -> Result<TerrainWater> {
     let mut water = TerrainWater { blocks: Vec::new(), surface: reader.f32()?, bottom: reader.f32()? };
     for &index in head.ref_files.keys() {
         let Some(path) = head.ref_path(&path, index) else { continue };
-        if !path.to_ascii_lowercase().ends_with(".zoneflat.gbx") {
+        let lower = path.to_ascii_lowercase();
+        if !ZONES.iter().any(|zone| lower.ends_with(zone)) {
             continue;
         }
         let bytes = packs.read_path(&path)?;
         let zone = unpack::parse_head(&bytes).context("terrain zone header")??;
         let mut reader = chunk(&bytes, zone.body_start, 0x0305c003)?;
-        ensure!(reader.u32()? == 0, "unsupported terrain zone version");
+        reader.u32()?;
         let block = reader.id()?.context("terrain zone name")?;
         reader.id()?;
         let water_at = chunk(&bytes, reader.pos(), 0x0305c00b)?.pos();

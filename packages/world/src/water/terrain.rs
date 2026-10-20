@@ -12,7 +12,7 @@ pub fn columns(
 ) -> Result<Vec<Column>> {
     let water = gearbox_packs::water::terrain(assets.packs, environment)?;
     let mut columns = vec![empty; map.size[0] as usize * map.size[2] as usize];
-    for block in &map.blocks {
+    for block in map.blocks.iter().chain(&map.baked_blocks) {
         if block.free.is_some() || !block.is_ground() || !water.blocks.contains(&block.name) {
             continue;
         }

@@ -93,7 +93,10 @@ impl Grid {
         map: &'m gearbox_gbx::Map,
         cell: &[(usize, usize)],
     ) -> Option<&'m gearbox_gbx::map::Block> {
-        cell.iter().map(|&k| Grid::block(map, k)).find(|block| block.flags & 0x1000_0000 == 0)
+        cell.iter().find_map(|&key| {
+            let block = Grid::block(map, key);
+            (block.flags & 0x1000_0000 == 0 && !self.geometry[&key].terrain()).then_some(block)
+        })
     }
 }
 
