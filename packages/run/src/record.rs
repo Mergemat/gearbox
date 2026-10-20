@@ -114,7 +114,11 @@ impl Record {
     }
 
     pub fn drive(&self, map: &Map, packs: &PackSet) -> Result<Driven> {
-        let mut session = self.open(map, packs)?;
+        Ok(self.drive_from(self.open(map, packs)?))
+    }
+
+    pub fn drive_from(&self, mut session: Session) -> Driven {
+        session.seed = self.run.seed;
         let last = self.run.controls.last().copied().unwrap_or_default();
         let finish = |s: &Session| s.race().and_then(|r| r.finish).map(|t| t as i32);
         for &c in self.run.controls.iter().chain(std::iter::repeat_n(&last, OVERRUN_TICKS)) {
@@ -123,11 +127,11 @@ impl Record {
                 break;
             }
         }
-        Ok(Driven {
+        Driven {
             finish_ms: finish(&session),
             waypoints: session.crossing_waypoints().len(),
             position: session.body().pos.to_array(),
-        })
+        }
     }
 }
 
