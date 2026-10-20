@@ -34,5 +34,6 @@ pub mod crystal_modifiers;
 pub mod visual;
 
 mod crystal_deformation;
+mod crystal_subdivision;
 
 mod reader_math;

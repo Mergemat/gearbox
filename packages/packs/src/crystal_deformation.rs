@@ -465,6 +465,9 @@ fn apply(g: &mut crate::crystal::Geometry, groups: &[usize], modifier: &Deformat
     g.faces = faces;
     g.face_uvs = face_uvs;
     g.face_groups = face_groups;
+    let age = g.ages.first().map_or(0, |a| a.0);
+    g.ages = (0..g.faces.len() as u32).map(|i| (age, i)).collect();
+    g.edges.clear();
 }
 
 pub(crate) fn face_normal(positions: &[[f32; 3]], face: &[u32]) -> [f32; 3] {

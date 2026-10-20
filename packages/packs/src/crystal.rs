@@ -11,7 +11,40 @@ pub struct Geometry {
     pub face_groups: Vec<usize>,
     pub(crate) normals: Vec<[f32; 3]>,
     pub(crate) group_parents: Vec<u32>,
+    pub(crate) edges: Vec<[u32; 2]>,
+    pub(crate) ages: Vec<(u32, u32)>,
     pub(crate) archive_version: u32,
+}
+
+impl Geometry {
+    pub(crate) fn remove_faces(&mut self, removed: &[usize]) {
+        let mut gone = vec![false; self.faces.len()];
+        for &f in removed {
+            gone[f] = true;
+        }
+        fn keep<T>(items: &mut Vec<T>, gone: &[bool]) {
+            let mut i = 0;
+            items.retain(|_| {
+                i += 1;
+                !gone[i - 1]
+            });
+        }
+        keep(&mut self.faces, &gone);
+        keep(&mut self.face_uvs, &gone);
+        keep(&mut self.face_groups, &gone);
+        keep(&mut self.normals, &gone);
+        keep(&mut self.ages, &gone);
+    }
+}
+
+pub(crate) fn next_age(list: &[Geometry]) -> u32 {
+    list.iter().flat_map(|g| &g.ages).map(|a| a.0 + 1).max().unwrap_or(0)
+}
+
+pub(crate) fn push_geometry(list: &mut Vec<Geometry>, mut g: Geometry) {
+    let age = next_age(list);
+    g.ages = (0..g.faces.len() as u32).map(|i| (age, i)).collect();
+    list.push(g);
 }
 
 #[derive(Clone, Debug, Default)]
@@ -100,20 +133,23 @@ fn geometry(r: &mut Reader, materials: usize) -> Result<Geometry> {
         r.skip(8)?;
     }
     let positions = (0..r.len()?).map(|_| r.vec3()).collect::<Result<Vec<_>>>()?;
-    let edges = r.len()?;
-    if v < 35 {
-        r.skip(edges * 8)?;
+    let n = r.len()?;
+    let edges = if v < 35 {
+        (0..n).map(|_| Ok([r.u32()?, r.u32()?])).collect::<Result<Vec<_>>>()?
     } else {
         let count = r.len()?;
-        let stride = if positions.len() >= 65535 {
-            8
-        } else if positions.len() >= 255 {
-            4
-        } else {
-            2
-        };
-        r.skip(count * stride)?;
-    }
+        (0..count)
+            .map(|_| {
+                Ok(if positions.len() >= 65535 {
+                    [r.u32()?, r.u32()?]
+                } else if positions.len() >= 255 {
+                    [r.u16()? as u32, r.u16()? as u32]
+                } else {
+                    [r.u8()? as u32, r.u8()? as u32]
+                })
+            })
+            .collect::<Result<Vec<_>>>()?
+    };
     let count = r.len()?;
     let (uv_table, uv_indices) = if v >= 37 {
         let uv = (0..r.len()?).map(|_| Ok([r.f32()?, r.f32()?])).collect::<Result<Vec<_>>>()?;
@@ -181,7 +217,17 @@ fn geometry(r: &mut Reader, materials: usize) -> Result<Geometry> {
     }
     let normals =
         faces.iter().map(|(face, _)| crate::crystal_deformation::face_normal(&positions, face)).collect();
-    Ok(Geometry { positions, faces, face_uvs, face_groups, normals, group_parents, archive_version: v })
+    Ok(Geometry {
+        positions,
+        faces,
+        face_uvs,
+        face_groups,
+        normals,
+        group_parents,
+        edges,
+        ages: Vec::new(),
+        archive_version: v,
+    })
 }
 
 struct LayerIds {
@@ -346,11 +392,11 @@ pub fn read(
                                     false,
                                     out.visual_geometry.len(),
                                 ));
-                                out.visual_geometry.push(g.clone());
+                                push_geometry(&mut out.visual_geometry, g.clone());
                             }
                             if enabled && collidable {
                                 layers.push((layer_id, group_ids, false, out.geometry.len()));
-                                out.geometry.push(g);
+                                push_geometry(&mut out.geometry, g);
                             }
                         }
                         14 => {
@@ -363,7 +409,7 @@ pub fn read(
                             };
                             if enabled {
                                 layers.push((layer_id, group_ids, true, out.triggers.len()));
-                                out.triggers.push(g);
+                                push_geometry(&mut out.triggers, g);
                             }
                         }
                         2 | 4 => {
@@ -440,6 +486,32 @@ pub fn read(
                                 r.skip(n * 52)?;
                             }
                         }
+                        1 => {
+                            ensure!(r.u32()? == 0, "crystal modifier version");
+                            let mut refs = Vec::new();
+                            for _ in 0..r.len()? {
+                                refs.push((r.u32()?, ids.read(&mut r)?));
+                            }
+                            let version = r.u32()?;
+                            ensure!(version == 0, "crystal smooth subdivision version {version}");
+                            let levels = r.u32()?;
+                            if enabled {
+                                crate::crystal_subdivision::smooth(&mut out, &layers, &refs, levels);
+                            }
+                        }
+                        8 => {
+                            ensure!(r.u32()? == 0, "crystal modifier version");
+                            let mut refs = Vec::new();
+                            for _ in 0..r.len()? {
+                                refs.push((r.u32()?, ids.read(&mut r)?));
+                            }
+                            let version = r.u32()?;
+                            ensure!(version == 0, "crystal subdivision version {version}");
+                            r.u32()?;
+                            if enabled {
+                                crate::crystal_subdivision::subdivide(&mut out, &layers, &refs);
+                            }
+                        }
                         9 => {
                             ensure!(r.u32()? == 0, "crystal modifier version");
                             let mut refs = Vec::new();
@@ -490,8 +562,8 @@ pub fn read(
             0x09003000 => {
                 r.u32()?;
                 let g = geometry(&mut r, out.materials.len())?;
-                out.visual_geometry.push(g.clone());
-                out.geometry.push(g);
+                push_geometry(&mut out.visual_geometry, g.clone());
+                push_geometry(&mut out.geometry, g);
             }
             0x09003007 => {
                 r.u32()?;
@@ -533,34 +605,38 @@ pub fn collision(c: &Crystal) -> Result<Surface> {
     let mut vertices = Vec::<[f32; 3]>::new();
     let mut triangles = Vec::new();
     let mut material_slots = Vec::new();
-    for g in c.geometry.iter().rev() {
-        for (face, material) in g.faces.iter().rev() {
-            let ids = if *material < 0 {
-                [0, 0]
-            } else {
-                *c.materials.get(*material as usize).context("crystal face material")?
-            };
-            let slot = material_slots.iter().position(|m| m == material).unwrap_or_else(|| {
-                material_slots.push(*material);
-                material_slots.len() - 1
-            }) as i16;
-            if ids[0] == 28 {
-                continue;
+    let mut order: Vec<_> = c
+        .geometry
+        .iter()
+        .flat_map(|g| g.faces.iter().zip(&g.ages).map(move |(face, age)| (*age, g, face)))
+        .collect();
+    order.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, g, (face, material)) in order {
+        let ids = if *material < 0 {
+            [0, 0]
+        } else {
+            *c.materials.get(*material as usize).context("crystal face material")?
+        };
+        let slot = material_slots.iter().position(|m| m == material).unwrap_or_else(|| {
+            material_slots.push(*material);
+            material_slots.len() - 1
+        }) as i16;
+        if ids[0] == 28 {
+            continue;
+        }
+        let tris: &[[usize; 3]] = match face.len() {
+            3 => &[[0, 1, 2]],
+            4 => &[[0, 1, 3], [1, 2, 3]],
+            n => bail!("crystal polygon with {n} vertices needs compilation"),
+        };
+        for tri in tris {
+            let mut indices = [0; 3];
+            for (dst, &src) in indices.iter_mut().zip(tri) {
+                let p = g.positions[face[src] as usize];
+                *dst = vertices.len() as i32;
+                vertices.push(p);
             }
-            let tris: &[[usize; 3]] = match face.len() {
-                3 => &[[0, 1, 2]],
-                4 => &[[0, 1, 3], [1, 2, 3]],
-                n => bail!("crystal polygon with {n} vertices needs compilation"),
-            };
-            for tri in tris {
-                let mut indices = [0; 3];
-                for (dst, &src) in indices.iter_mut().zip(tri) {
-                    let p = g.positions[face[src] as usize];
-                    *dst = vertices.len() as i32;
-                    vertices.push(p);
-                }
-                triangles.push(MeshTri { v: indices, flags: ids, material: slot });
-            }
+            triangles.push(MeshTri { v: indices, flags: ids, material: slot });
         }
     }
     let (welded, remap) = crate::crystal_mesh::weld(&vertices);
@@ -607,28 +683,42 @@ pub fn collision(c: &Crystal) -> Result<Surface> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crystal_modifiers::Layer;
 
-    fn faces_as_bytes(g: &Geometry) -> Vec<u8> {
+    type Run = dyn Fn(&mut Crystal, &mut Vec<Layer>, &[(u32, Option<String>)], &[&str]);
+
+    fn faces_newest_first(c: &Crystal) -> Vec<u8> {
+        let mut firsts = Vec::new();
+        let mut first = 0u32;
+        for g in &c.geometry {
+            firsts.push(first);
+            first += g.group_parents.len() as u32;
+        }
+        let mut order = Vec::new();
+        for (g, first) in c.geometry.iter().zip(firsts) {
+            for (f, age) in g.ages.iter().enumerate() {
+                order.push((*age, g, first, f));
+            }
+        }
+        order.sort_by(|a, b| b.0.cmp(&a.0));
         let mut out = Vec::new();
-        for ((face, _), &group) in g.faces.iter().zip(&g.face_groups).rev() {
+        for (_, g, first, f) in order {
+            let face = &g.faces[f].0;
             if !(3..=4).contains(&face.len()) {
                 continue;
             }
-            out.extend((group as u32).to_le_bytes());
+            out.extend((first + g.face_groups[f] as u32).to_le_bytes());
             out.extend((face.len() as u32).to_le_bytes());
             for &v in face {
-                for x in g.positions[v as usize] {
-                    out.extend(x.to_le_bytes());
-                }
+                out.extend(g.positions[v as usize].into_iter().flat_map(f32::to_le_bytes));
             }
         }
         out
     }
 
-    #[test]
-    fn chaos_matches_the_recorded_layers() {
+    fn matches_recorded(layer: &str, run: &Run) {
         let Some(dir) =
-            std::env::var_os("GBX_TEST_DATA").map(|d| std::path::Path::new(&d).join("crystal/chaos"))
+            std::env::var_os("GBX_TEST_DATA").map(|d| std::path::Path::new(&d).join("crystal").join(layer))
         else {
             return;
         };
@@ -638,88 +728,19 @@ mod tests {
             let path = entry.path();
             let params = std::fs::read_to_string(path.join("params.txt")).unwrap();
             let lines: Vec<&str> = params.lines().collect();
-            let head: Vec<&str> = lines[0].split_whitespace().collect();
-            let chaos = crate::crystal_modifiers::Chaos {
-                from: head[0].parse().unwrap(),
-                to: head[1].parse().unwrap(),
-                seed: head[2].parse().unwrap(),
-            };
-            let groups: Vec<u32> = lines[1].split_whitespace().map(|s| s.parse().unwrap()).collect();
-            let materials: usize = lines[2].parse().unwrap();
             let bytes = std::fs::read(path.join("geometry.bin")).unwrap();
-            let g = geometry(&mut Reader::new(&bytes), materials).unwrap();
-            let all = (0..g.group_parents.len() as u32).collect();
-            let mut crystal = Crystal { geometry: vec![g], ..Crystal::default() };
-            let layers = vec![(Some("L".to_string()), all, false, 0)];
-            let refs: Vec<_> = groups.iter().map(|&j| (j, Some("L".to_string()))).collect();
-            crate::crystal_modifiers::chaos(&mut crystal, &layers, &refs, &chaos);
-            let expected = std::fs::read(path.join("expected.bin")).unwrap();
-            assert!(faces_as_bytes(&crystal.geometry[0]) == expected, "{}", path.display());
-            checked += 1;
-        }
-        assert!(checked > 0);
-    }
-}
-
-#[cfg(test)]
-mod mirror_tests {
-    use super::*;
-
-    #[test]
-    fn mirror_matches_the_recorded_layers() {
-        let Some(dir) =
-            std::env::var_os("GBX_TEST_DATA").map(|d| std::path::Path::new(&d).join("crystal/mirror"))
-        else {
-            return;
-        };
-        let Ok(entries) = std::fs::read_dir(&dir) else { return };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let params = std::fs::read_to_string(path.join("params.txt")).unwrap();
-            let lines: Vec<&str> = params.lines().collect();
-            let head: Vec<&str> = lines[0].split_whitespace().collect();
-            let mirror = crate::crystal_modifiers::Mirror {
-                axis: head[0].parse().unwrap(),
-                distance: head[1].parse().unwrap(),
-                independently: false,
+            let g = geometry(&mut Reader::new(&bytes), lines[2].parse().unwrap()).unwrap();
+            let all: Vec<u32> = (0..g.group_parents.len() as u32).collect();
+            let groups: Vec<u32> = match lines[1] {
+                "all" => all.clone(),
+                list => list.split_whitespace().map(|s| s.parse().unwrap()).collect(),
             };
-            let groups: Vec<u32> = lines[1].split_whitespace().map(|s| s.parse().unwrap()).collect();
-            let materials: usize = lines[2].parse().unwrap();
-            let bytes = std::fs::read(path.join("geometry.bin")).unwrap();
-            let g = geometry(&mut Reader::new(&bytes), materials).unwrap();
-            let all = (0..g.group_parents.len() as u32).collect();
-            let mut crystal = Crystal { geometry: vec![g], ..Crystal::default() };
+            let mut crystal = Crystal::default();
+            push_geometry(&mut crystal.geometry, g);
             let mut layers = vec![(Some("L".to_string()), all, false, 0)];
             let refs: Vec<_> = groups.iter().map(|&j| (j, Some("L".to_string()))).collect();
-            crate::crystal_modifiers::mirror(
-                &mut crystal,
-                &mut layers,
-                &Some("M".to_string()),
-                &refs,
-                &mirror,
-            )
-            .unwrap();
-            let mut firsts = Vec::new();
-            let mut first = 0u32;
-            for g in &crystal.geometry {
-                firsts.push(first);
-                first += g.group_parents.len() as u32;
-            }
-            let mut got = Vec::new();
-            for (g, first) in crystal.geometry.iter().zip(firsts).rev() {
-                for ((face, _), &group) in g.faces.iter().zip(&g.face_groups).rev() {
-                    if !(3..=4).contains(&face.len()) {
-                        continue;
-                    }
-                    got.extend((first + group as u32).to_le_bytes());
-                    got.extend((face.len() as u32).to_le_bytes());
-                    for &v in face {
-                        for x in g.positions[v as usize] {
-                            got.extend(x.to_le_bytes());
-                        }
-                    }
-                }
-            }
+            run(&mut crystal, &mut layers, &refs, &lines[0].split_whitespace().collect::<Vec<_>>());
+            let got = faces_newest_first(&crystal);
             let expected = std::fs::read(path.join("expected.bin")).unwrap();
             if got != expected {
                 let at = got
@@ -734,6 +755,46 @@ mod mirror_tests {
                     expected.len()
                 );
             }
+            checked += 1;
         }
+        assert!(checked > 0);
+    }
+
+    #[test]
+    fn chaos_matches_the_recorded_layers() {
+        matches_recorded("chaos", &|c, layers, refs, head| {
+            let chaos = crate::crystal_modifiers::Chaos {
+                from: head[0].parse().unwrap(),
+                to: head[1].parse().unwrap(),
+                seed: head[2].parse().unwrap(),
+            };
+            crate::crystal_modifiers::chaos(c, layers, refs, &chaos);
+        });
+    }
+
+    #[test]
+    fn mirror_matches_the_recorded_layers() {
+        matches_recorded("mirror", &|c, layers, refs, head| {
+            let mirror = crate::crystal_modifiers::Mirror {
+                axis: head[0].parse().unwrap(),
+                distance: head[1].parse().unwrap(),
+                independently: false,
+            };
+            crate::crystal_modifiers::mirror(c, layers, &Some("M".to_string()), refs, &mirror).unwrap();
+        });
+    }
+
+    #[test]
+    fn smooth_subdivision_matches_the_recorded_layers() {
+        matches_recorded("smooth", &|c, layers, refs, head| {
+            crate::crystal_subdivision::smooth(c, layers, refs, head[0].parse().unwrap());
+        });
+    }
+
+    #[test]
+    fn subdivision_matches_the_recorded_layers() {
+        matches_recorded("subdivide", &|c, layers, refs, _| {
+            crate::crystal_subdivision::subdivide(c, layers, refs);
+        });
     }
 }

@@ -154,9 +154,11 @@ pub(crate) fn mirror(
                 face_groups: new_groups,
                 normals,
                 group_parents: vec![u32::MAX; sources.len()],
+                edges: Vec::new(),
+                ages: Vec::new(),
                 archive_version: geometry[groups[0].1].archive_version,
             };
-            geometry.push(mirrored);
+            crate::crystal::push_geometry(geometry, mirrored);
             let index = geometry.len() - 1;
             let first: u32 = geometry[..index].iter().map(|g| g.group_parents.len() as u32).sum();
             layers.push((layer_id.clone(), (first..first + sources.len() as u32).collect(), trigger, index));
@@ -180,9 +182,9 @@ impl Lcg {
     }
 }
 
-type Layer = (Option<String>, Vec<u32>, bool, usize);
+pub(crate) type Layer = (Option<String>, Vec<u32>, bool, usize);
 
-fn selected_groups(layers: &[Layer], refs: &[(u32, Option<String>)]) -> Vec<(bool, usize, usize)> {
+pub(crate) fn selected_groups(layers: &[Layer], refs: &[(u32, Option<String>)]) -> Vec<(bool, usize, usize)> {
     refs.iter()
         .filter_map(|(group, id)| {
             layers.iter().find_map(|(layer, groups, trigger, index)| {
@@ -193,7 +195,7 @@ fn selected_groups(layers: &[Layer], refs: &[(u32, Option<String>)]) -> Vec<(boo
         .collect()
 }
 
-fn creatable(face: &[u32]) -> bool {
+pub(crate) fn creatable(face: &[u32]) -> bool {
     (3..=4).contains(&face.len())
 }
 
