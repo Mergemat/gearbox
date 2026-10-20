@@ -132,7 +132,7 @@ impl Record {
     pub fn drive_from(&self, mut session: Session) -> Driven {
         session.seed = self.run.seed;
         if !self.respawns.is_empty() {
-            session.keep_respawns();
+            session.track_respawns();
         }
         let last = self.run.controls.last().copied().unwrap_or_default();
         let finish = |s: &Session| s.race().and_then(|r| r.finish).map(|t| t as i32);

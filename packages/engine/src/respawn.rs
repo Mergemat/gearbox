@@ -82,7 +82,7 @@ fn shift_timers(v: &mut Vehicle, delta: i32) {
 }
 
 impl Session {
-    pub fn keep_respawns(&mut self) {
+    pub fn track_respawns(&mut self) {
         self.respawns.get_or_insert_with(Default::default);
     }
 
@@ -127,20 +127,16 @@ impl Session {
         {
             let count = controller.start_adjustments;
             if count & 3 != 0 {
-                controller.start_adjustments = (count.wrapping_sub(1) ^ count) & 3 ^ count;
+                controller.start_adjustments = count & !3 | (count - 1) & 3;
             }
         }
         self.vehicle.control_flags = self.vehicle.control_flags & !0xd | 2;
         self.respawn_at(now, checkpoint.waypoint, Reset { keep_effects: true, ..Reset::FULL });
-        let saved = &checkpoint.state;
         let vehicle = &mut self.vehicle;
-        vehicle.wheel_meter_enabled = saved.wheel_meter_enabled;
-        vehicle.wheel_meter = saved.wheel_meter;
-        vehicle.wheel_meter_sum = saved.wheel_meter_sum;
-        vehicle.wheel_meter_count = saved.wheel_meter_count;
-        vehicle.water_reentry_until = saved.water_reentry_until;
-        vehicle.water_exit_until = saved.water_exit_until;
-        vehicle.immersion = saved.immersion;
+        copy_fields! { vehicle, checkpoint.state, [
+            wheel_meter_enabled, wheel_meter, wheel_meter_sum, wheel_meter_count, water_reentry_until,
+            water_exit_until, immersion,
+        ] }
         let at = pending.unwrap_or(now + DELAY_MS);
         vehicle.control_flags &= !0xf;
         vehicle.frozen_until = at;
