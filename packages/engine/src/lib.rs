@@ -10,6 +10,7 @@ pub mod collision;
 pub mod consumer;
 pub mod dyna;
 pub mod race;
+pub mod respawn;
 pub mod session;
 pub mod shape;
 pub mod tick;

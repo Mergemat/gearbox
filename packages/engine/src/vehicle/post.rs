@@ -558,11 +558,16 @@ pub fn post(vehicle: &mut Vehicle, ctx: &mut Context<'_>, recent_event_duration:
             Quat::new(vehicle.quat.w, -vehicle.quat.x, -vehicle.quat.y, -vehicle.quat.z)
                 .rotate(vehicle.vel)
                 .z;
-        let state = ctx.dyna.state(BodyHandle(vehicle.body));
-        vehicle.quat = state.quat;
-        vehicle.pos = state.pos;
-        vehicle.vel = state.vel;
-        vehicle.ang_vel = state.ang_vel;
+        if vehicle.body != u32::MAX {
+            let state = ctx.dyna.state(BodyHandle(vehicle.body));
+            vehicle.quat = state.quat;
+            vehicle.pos = state.pos;
+            vehicle.vel = state.vel;
+            vehicle.ang_vel = state.ang_vel;
+        } else if vehicle.frozen_until == u32::MAX || ctx.tick > vehicle.frozen_until {
+            vehicle.vel = Vec3::ZERO;
+            vehicle.ang_vel = Vec3::ZERO;
+        }
         if matches!(ctx.tuning.model_kind, 9 | 14 | 15) {
             todo!("wheel spin of model 9/14/15");
         }

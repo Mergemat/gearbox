@@ -41,16 +41,6 @@ pub struct VehicleAssets {
     pub fluid: FluidTuning,
     pub post: post::Model,
 }
-impl VehicleAssets {
-    pub fn view(&self) -> step::Assets<'_> {
-        step::Assets {
-            tuning: &self.tuning,
-            geometry: &self.geometry,
-            impacts: &self.impacts,
-            fluid: &self.fluid,
-        }
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct VehicleModel {
@@ -58,6 +48,18 @@ pub struct VehicleModel {
     pub spawn: spawn::Assets,
     pub body: crate::dyna::DynaModel,
     pub collision: crate::collision::CompoundInstance,
+}
+
+impl VehicleModel {
+    pub fn view(&self) -> step::Assets<'_> {
+        step::Assets {
+            tuning: &self.assets.tuning,
+            geometry: &self.assets.geometry,
+            impacts: &self.assets.impacts,
+            fluid: &self.assets.fluid,
+            body: &self.body,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -91,6 +93,7 @@ pub struct Session {
     pub clock: Clock,
     pub seed: Option<u32>,
     pub steer_limit: f32,
+    pub respawns: Option<Box<crate::respawn::Respawns>>,
 }
 
 #[derive(Clone, Debug)]

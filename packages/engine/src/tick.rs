@@ -21,8 +21,12 @@ impl Session {
         self.dyna_step(now);
         self.after_dyna();
         self.post(now);
+        let crossed = self.respawns.is_some().then(|| self.crossing_waypoints().len());
         self.race_contacts(now, &frames);
         self.transform_car(now);
+        if let Some(crossed) = crossed {
+            self.remember_for_respawn(now, crossed);
+        }
         self.state.scene.insert(self.config.scene, scene);
     }
 
@@ -82,7 +86,7 @@ impl Session {
             manager: self.config.manager,
             dyna: &mut self.dyna,
             vehicle: &mut self.vehicle,
-            assets: model.assets.view(),
+            assets: model.view(),
             tick: now,
             dt: DT,
             ghost_contacts: 0,
@@ -127,6 +131,31 @@ impl Session {
     }
 
     fn countdown(&mut self, now: u32) {
+        let rules_start = self.config.rules_start;
+        self.with_spawner(now, |spawner, vehicle, racers| {
+            for racer in racers {
+                race::countdown::update(racer, vehicle, rules_start, now, spawner);
+            }
+        });
+    }
+
+    pub(crate) fn respawn_at(&mut self, now: u32, landmark: u32, reset: crate::vehicle::spawn::Reset) {
+        self.with_spawner(now, |spawner, vehicle, _| {
+            let pose = crate::vehicle::spawn::arena_pose(
+                spawner.initial_pose,
+                spawner.parent_pose,
+                spawner.waypoints,
+                landmark,
+            );
+            spawner.respawn_with(vehicle, pose, reset);
+        });
+    }
+
+    fn with_spawner<R>(
+        &mut self,
+        now: u32,
+        f: impl FnOnce(&mut step::Countdown<'_>, &mut crate::vehicle::Vehicle, &mut [race::Racer]) -> R,
+    ) -> R {
         let model = self.config.model(self.vehicle.model_choice);
         let mut visuals = vis::Refresh {
             config: vis::Config {
@@ -136,7 +165,7 @@ impl Session {
                 recent_event_duration: self.config.recent_event_duration,
             },
         };
-        let mut respawn = step::Countdown {
+        let mut spawner = step::Countdown {
             world: &self.world,
             state: &mut self.state,
             dyna: &mut self.dyna,
@@ -147,9 +176,7 @@ impl Session {
             parent_pose: None,
             waypoints: &self.race.rules.waypoints,
         };
-        for racer in &mut self.race.players {
-            race::countdown::update(racer, &mut self.vehicle, self.config.rules_start, now, &mut respawn);
-        }
+        f(&mut spawner, &mut self.vehicle, &mut self.race.players)
     }
 
     fn continuous(&mut self) {

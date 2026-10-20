@@ -38,6 +38,22 @@ impl Handles {
         self.slots[handle.0 as usize]
     }
 
+    pub fn free(&mut self, handle: BodyHandle) {
+        let h = handle.0 as usize;
+        let slot = self.slots[h];
+        let last = self.used - 1;
+        if slot < last {
+            let moved = self.reverse[last as usize];
+            self.slots[h] = last;
+            self.reverse[slot as usize] = moved;
+            self.slots[moved as usize] = slot;
+            self.reverse[last as usize] = handle.0;
+        }
+        self.next[h] = self.head;
+        self.head = handle.0;
+        self.used -= 1;
+    }
+
     pub fn take(&mut self) -> BodyHandle {
         if self.head == NULL_INDEX {
             let old = self.slots.len() as u32;
@@ -228,6 +244,37 @@ impl Dyna {
             acc: ForceAcc::default(),
         });
         handle
+    }
+
+    pub fn remove(&mut self, handle: BodyHandle, collision: &mut impl Collision) {
+        self.pending_removals.push(handle);
+        let slot = self.handles.slot(handle);
+        super::solver::islands::deactivate(&mut self.bodies, &mut self.active, &[slot], false);
+        let body = &mut self.bodies[slot as usize];
+        for item in [body.item.take(), body.owner_item.take()].into_iter().flatten() {
+            collision.set_body(item, BodyHandle(NULL_INDEX));
+        }
+        let parent = std::mem::replace(&mut body.record.parent, NULL_INDEX);
+        body.flags.set(BodyOptions::NO_STATIC_COLLISION, true);
+        if parent != NULL_INDEX {
+            let slot = self.handles.slot(BodyHandle(parent));
+            self.bodies[slot as usize].record.parent = NULL_INDEX;
+        }
+    }
+
+    pub(crate) fn process_removals(&mut self) {
+        for handle in std::mem::take(&mut self.pending_removals) {
+            let slot = self.handles.slot(handle) as usize;
+            let last = self.bodies.len() - 1;
+            if slot < last {
+                let index = self.bodies[last].index.index;
+                if index != u16::MAX {
+                    self.active[index as usize] = slot as u32;
+                }
+            }
+            self.bodies.swap_remove(slot);
+            self.handles.free(handle);
+        }
     }
 
     pub fn body(&self, h: BodyHandle) -> &Body {

@@ -23,6 +23,7 @@ pub struct Assets<'a> {
     pub geometry: &'a ForceGeometry,
     pub impacts: &'a ImpactModel,
     pub fluid: &'a crate::water::drag::FluidTuning,
+    pub body: &'a crate::dyna::DynaModel,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -271,22 +272,21 @@ pub struct Countdown<'a> {
     pub parent_pose: Option<crate::Iso>,
     pub waypoints: &'a [crate::race::RaceWaypoint],
 }
-impl crate::race::countdown::CountdownRespawn for Countdown<'_> {
-    fn respawn(&mut self, vehicle: &mut Vehicle, landmark: u32) {
-        let pose = super::spawn::arena_pose(self.initial_pose, self.parent_pose, self.waypoints, landmark);
+impl Countdown<'_> {
+    pub fn respawn_with(&mut self, vehicle: &mut Vehicle, pose: crate::Iso, reset: super::spawn::Reset) {
         let mut services = super::spawn::Services {
             world: self.world,
             state: self.state,
             visuals: self.visuals,
             ring: self.effects,
         };
-        super::spawn::respawn(
-            vehicle,
-            self.assets,
-            self.dyna,
-            pose,
-            super::spawn::Reset::FULL,
-            &mut services,
-        );
+        super::spawn::respawn(vehicle, self.assets, self.dyna, pose, reset, &mut services);
+    }
+}
+
+impl crate::race::countdown::CountdownRespawn for Countdown<'_> {
+    fn respawn(&mut self, vehicle: &mut Vehicle, landmark: u32) {
+        let pose = super::spawn::arena_pose(self.initial_pose, self.parent_pose, self.waypoints, landmark);
+        self.respawn_with(vehicle, pose, super::spawn::Reset::FULL);
     }
 }

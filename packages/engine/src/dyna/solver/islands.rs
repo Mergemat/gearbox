@@ -91,6 +91,10 @@ pub fn can_sleep(bodies: &mut [Body], ids: &[u32], now: u32, linear: f32, angula
 }
 
 pub fn sleep(bodies: &mut [Body], active: &mut Vec<u32>, ids: &[u32]) {
+    deactivate(bodies, active, ids, true);
+}
+
+pub fn deactivate(bodies: &mut [Body], active: &mut Vec<u32>, ids: &[u32], stop: bool) {
     for &id in ids {
         let index = bodies[id as usize].index.index;
         if index == u16::MAX {
@@ -103,8 +107,10 @@ pub fn sleep(bodies: &mut [Body], active: &mut Vec<u32>, ids: &[u32]) {
             bodies[replacement as usize].index.index = index;
         }
         bodies[id as usize].index.index = u16::MAX;
-        bodies[id as usize].state.vel = crate::Vec3::ZERO;
-        bodies[id as usize].state.ang_vel = crate::Vec3::ZERO;
+        if stop {
+            bodies[id as usize].state.vel = crate::Vec3::ZERO;
+            bodies[id as usize].state.ang_vel = crate::Vec3::ZERO;
+        }
         active.pop();
     }
 }

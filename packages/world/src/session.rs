@@ -55,6 +55,7 @@ pub fn open(map: &gearbox_gbx::Map, packs: &PackSet, options: OpenOptions) -> Re
         clock,
         seed: options.seed,
         steer_limit: 1.0,
+        respawns: None,
     })
 }
 

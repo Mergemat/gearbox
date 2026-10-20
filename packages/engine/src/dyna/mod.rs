@@ -91,9 +91,7 @@ impl Dyna {
         for body in &mut self.bodies {
             body.record.added_mass = 0.0;
         }
-        if !self.pending_removals.is_empty() {
-            todo!("removing bodies");
-        }
+        self.process_removals();
     }
 
     pub fn step(&mut self, tick: Tick, collision: &mut impl Collision) {

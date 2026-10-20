@@ -52,12 +52,24 @@ pub fn set_body_enabled(ctx: &mut StepCtx<'_>, enabled: bool, registration: Opti
     }
     ctx.vehicle.body_enabled = BodyFlags(flags).with_enabled(enabled).0;
     if !enabled {
-        todo!("disable vehicle body");
+        disable_body(ctx);
+        return;
     }
     if ctx.vehicle.body != u32::MAX {
         return;
     }
-    let mut params = registration.expect("new vehicle requires U8b body construction values");
+    let mut params = registration.unwrap_or_else(|| BodyParams {
+        model: ctx.assets.body.clone(),
+        item: ctx.vehicle.item,
+        ..BodyParams::default()
+    });
+    if let Some(id) = params.item {
+        let pose = Iso::from_quat_pos(ctx.vehicle.quat, ctx.vehicle.pos);
+        let item = &mut ctx.state.dynamic_item[id.index()];
+        item.iso = pose;
+        item.quat = ctx.vehicle.quat;
+        item.pos = ctx.vehicle.pos;
+    }
     params.forces = ForceModels::Vehicle;
     ctx.vehicle.auxiliary_body = 0;
     ctx.vehicle.item = params.item;
@@ -77,6 +89,18 @@ pub fn set_body_enabled(ctx: &mut StepCtx<'_>, enabled: bool, registration: Opti
         todo!("linked vehicle bodies");
     }
     registration_events(ctx);
+}
+
+fn disable_body(ctx: &mut StepCtx<'_>) {
+    if ctx.vehicle.body == u32::MAX {
+        return;
+    }
+    if ctx.vehicle.auxiliary_body != 0 {
+        todo!("auxiliary body of a disabled vehicle");
+    }
+    let handle = BodyHandle(ctx.vehicle.body);
+    ctx.dyna.remove(handle, &mut DynaCollision { world: ctx.world, state: ctx.state, manager: ctx.manager });
+    ctx.vehicle.body = u32::MAX;
 }
 
 fn registration_events(ctx: &mut StepCtx<'_>) {
@@ -142,10 +166,7 @@ pub fn before_dyna(ctx: &mut StepCtx<'_>, scratch: &mut Scratch, options: Option
             0,
         );
     }
-    let frozen = ctx.vehicle.frozen_until;
-    if frozen != u32::MAX && ctx.tick <= frozen {
-        todo!("vehicle frozen until deadline");
-    }
+    let frozen = ctx.vehicle.frozen_until != u32::MAX && ctx.tick <= ctx.vehicle.frozen_until;
     let parked = matches!(
         ControlFlags(ctx.vehicle.control_flags).phase(),
         ControlPhase::Forced | ControlPhase::Locked
@@ -153,7 +174,7 @@ pub fn before_dyna(ctx: &mut StepCtx<'_>, scratch: &mut Scratch, options: Option
     if !matches!(ctx.vehicle.zone_mode, 0 | 3) {
         todo!("vehicle in zone mode");
     }
-    set_body_enabled(ctx, !parked, options.registration);
+    set_body_enabled(ctx, !(parked || frozen), options.registration);
     if !BodyFlags(ctx.vehicle.body_enabled).enabled() && ctx.vehicle.replica != 0 {
         todo!("disabled vehicle body hook");
     }

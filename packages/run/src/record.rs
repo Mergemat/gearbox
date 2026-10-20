@@ -16,11 +16,18 @@ const STEER_LIMIT_KEYS: [(u32, f32); 5] = [(15, 0.2), (17, 0.4), (19, 0.6), (21,
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
     pub run: Run,
+    pub respawns: Vec<Respawn>,
     pub time_ms: i32,
     pub checkpoints_ms: Vec<i32>,
     pub player: Option<String>,
     pub build: Option<String>,
     steer_limits: Vec<f32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Respawn {
+    pub tick: usize,
+    pub standing: bool,
 }
 
 #[derive(Debug)]
@@ -63,17 +70,16 @@ impl Record {
     pub fn from_ghost(ghost: &Ghost) -> Result<Self> {
         let time_ms = ghost.race_time_ms.context("the ghost didn't finish")?;
         let inputs = ghost.inputs.first().context("the ghost has no inputs")?.decode()?;
-        let events: Vec<_> = inputs
+        let respawns: Vec<Respawn> = inputs
             .events
             .iter()
-            .filter(|e| {
-                !matches!(e.kind, EventKind::Horn(_)) && !(e.tick == 0 && e.kind == EventKind::Respawn)
+            .filter(|e| e.tick != 0)
+            .filter_map(|e| match e.kind {
+                EventKind::Respawn => Some(Respawn { tick: e.tick, standing: false }),
+                EventKind::SecondaryRespawn => Some(Respawn { tick: e.tick, standing: true }),
+                EventKind::Horn(_) => None,
             })
             .collect();
-        if let Some(e) = events.first() {
-            let first = format!("{:?} at tick {}", e.kind, e.tick);
-            return Err(Unsupported(format!("{} input events, first {first}", events.len())).into());
-        }
         if let Some(tick) = inputs.truncated_at {
             return Err(Unsupported(format!("inputs end early, at tick {tick}")).into());
         }
@@ -81,6 +87,7 @@ impl Record {
 
         let t0 = if inputs.start_offset_ms >= 0 { COUNTDOWN_MS } else { inputs.start_offset_ms };
         let countdown = usize::try_from((inputs.start_offset_ms - t0) / 10)?;
+        let respawns = respawns.into_iter().map(|r| Respawn { tick: r.tick + countdown, ..r }).collect();
         let keyboard = inputs.ticks.iter().all(|tick| tick.steer == 0 || tick.steer.unsigned_abs() == 127);
         let limits = steer_limits(&inputs.state_words, inputs.ticks.len());
         let steer_limits = if keyboard {
@@ -99,6 +106,7 @@ impl Record {
                 seed: ghost.validation_seed.map(|s| s as u32).filter(|&s| s != 0),
                 controls: std::iter::repeat_n(Controls::default(), countdown).chain(driven).collect(),
             },
+            respawns,
             time_ms,
             checkpoints_ms: ghost.checkpoints_ms.iter().flatten().copied().collect(),
             player: ghost.nickname.clone().or_else(|| ghost.login.clone()),
@@ -123,12 +131,20 @@ impl Record {
 
     pub fn drive_from(&self, mut session: Session) -> Driven {
         session.seed = self.run.seed;
+        if !self.respawns.is_empty() {
+            session.keep_respawns();
+        }
         let last = self.run.controls.last().copied().unwrap_or_default();
         let finish = |s: &Session| s.race().and_then(|r| r.finish).map(|t| t as i32);
         let controls = self.run.controls.iter().chain(std::iter::repeat_n(&last, OVERRUN_TICKS));
-        for (tick, &c) in controls.enumerate() {
+        'drive: for (tick, &c) in controls.enumerate() {
             if let Some(&limit) = self.steer_limits.get(tick) {
                 session.steer_limit = limit;
+            }
+            for respawn in self.respawns.iter().filter(|r| r.tick == tick) {
+                if !session.respawn(respawn.standing) {
+                    break 'drive;
+                }
             }
             session.step(c);
             if finish(&session).is_some() {
@@ -138,7 +154,7 @@ impl Record {
         Driven {
             finish_ms: finish(&session),
             waypoints: session.crossing_waypoints().len(),
-            position: session.body().pos.to_array(),
+            position: session.vehicle().pos.to_array(),
         }
     }
 }
@@ -169,6 +185,7 @@ mod tests {
     fn record(build: &str) -> Record {
         Record {
             run: Run { t0: COUNTDOWN_MS, seed: None, controls: vec![] },
+            respawns: vec![],
             time_ms: 0,
             checkpoints_ms: vec![],
             player: None,
