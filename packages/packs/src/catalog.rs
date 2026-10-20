@@ -577,6 +577,15 @@ impl Crawler<'_> {
     fn item(&mut self, path: &str) -> Result<Item> {
         let (buf, l) = self.read(path)?;
         let ctx = Ctx { buf: &buf, layout: &l, path };
+        let mut material_modifier = None;
+        let mut modifiers = l.nodes.iter().filter(|node| node.class_id == 0x0915d000);
+        if let Some(node) = modifiers.next() {
+            anyhow::ensure!(modifiers.next().is_none(), "item has multiple material modifiers");
+            let key = format!("{path}#modifier");
+            let modifier = crate::material::modifier_at(&buf, &l, path, node.start)?;
+            self.store_modifier(&key, modifier)?;
+            material_modifier = Some(key);
+        }
         let mut models = Vec::new();
         if let Some(n) = l.nodes.iter().find(|n| n.class_id == 0x2e026000) {
             let mut r = crate::crystal::cursor(&buf, n.start)?;
@@ -613,7 +622,7 @@ impl Crawler<'_> {
                     });
                 }
             }
-            return Ok(Item { models, ..Default::default() });
+            return Ok(Item { models, material_modifier, ..Default::default() });
         }
         if let Some(n) = l.nodes.iter().find(|n| n.class_id == 0x2f0bc000) {
             let mut r = gearbox_gbx::reader::Reader::new(&buf);
@@ -654,7 +663,7 @@ impl Crawler<'_> {
                 }
                 variants.push(vec![model]);
             }
-            return Ok(Item { variants, ..Default::default() });
+            return Ok(Item { variants, material_modifier, ..Default::default() });
         }
         for n in l.nodes.iter().filter(|n| n.class_id == 0x2e027000) {
             let w = 0x2e027000u32.to_le_bytes();
@@ -714,7 +723,6 @@ impl Crawler<'_> {
         let mut refs: Vec<String> =
             l.head.ref_files.keys().filter_map(|&i| l.head.ref_path(path, i)).collect();
         refs.sort();
-        let mut material_modifier = None;
         for x in refs {
             let lx = x.to_lowercase();
             if lx.ends_with(".prefab.gbx") {
@@ -802,30 +810,35 @@ impl Crawler<'_> {
         if self.cat.index.modifiers.contains_key(path) || !self.seen.insert(format!("modifier:{path}")) {
             return;
         }
-        let r = (|| -> Result<Modifier> {
+        let result = (|| {
             let m = crate::material::modifier(&self.set.read_path(path)?, path)?;
-            let skinned = match &m.skin {
-                Some(s) => crate::material::skin_materials(&self.set.read_path(s)?)?,
-                None => m.inline_skinned.clone(),
-            };
-            Ok(Modifier { skin: m.skin, folder: m.folder, skinned })
+            self.store_modifier(path, m)
         })();
-        match r {
-            Ok(m) => {
-                let repl: Vec<String> = m
-                    .skinned
-                    .iter()
-                    .filter_map(|(_, p)| crate::material::replacement(p, &m.folder, None, &m.skinned))
-                    .collect();
-                self.cat.index.modifiers.insert(path.to_string(), m);
-                for r in repl {
-                    if self.set.class_of(&r).is_some() {
-                        self.material(&r);
-                    }
-                }
-            }
-            Err(e) => self.cat.index.errors.push(format!("{path}: {e}")),
+        if let Err(e) = result {
+            self.cat.index.errors.push(format!("{path}: {e}"));
         }
+    }
+
+    fn store_modifier(&mut self, path: &str, source: crate::material::Modifier) -> Result<()> {
+        let skinned = match &source.skin {
+            Some(skin) => crate::material::skin_materials(&self.set.read_path(skin)?)?,
+            None => source.inline_skinned,
+        };
+        let modifier = Modifier { skin: source.skin, folder: source.folder, skinned };
+        let replacements: Vec<_> = modifier
+            .skinned
+            .iter()
+            .filter_map(|(_, path)| {
+                crate::material::replacement(path, &modifier.folder, None, &modifier.skinned)
+            })
+            .collect();
+        self.cat.index.modifiers.insert(path.to_string(), modifier);
+        for replacement in replacements {
+            if self.set.class_of(&replacement).is_some() {
+                self.material(&replacement);
+            }
+        }
+        Ok(())
     }
 }
 

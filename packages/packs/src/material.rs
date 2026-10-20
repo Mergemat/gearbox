@@ -43,13 +43,16 @@ pub struct Modifier {
 
 pub fn modifier(buf: &[u8], path: &str) -> Result<Modifier> {
     let layout = crate::nodes::layout(buf)?;
-    let head = &layout.head;
-    let w = 0x0915d000u32.to_le_bytes();
-    let p = buf[head.body_start..].windows(4).position(|x| x == w).context("no chunk 0x0915D000")?
-        + head.body_start;
+    let node =
+        layout.nodes.iter().find(|node| node.class_id == 0x0915d000).context("no material modifier")?;
+    modifier_at(buf, &layout, path, node.start)
+}
+
+pub fn modifier_at(buf: &[u8], layout: &crate::nodes::Layout, path: &str, start: usize) -> Result<Modifier> {
     let mut r = Reader::new(buf);
-    r.skip(p + 4)?;
-    let ctx = crate::prefab::Ctx { buf, layout: &layout, path };
+    r.skip(start)?;
+    anyhow::ensure!(r.u32()? == 0x0915d000, "material modifier chunk");
+    let ctx = crate::prefab::Ctx { buf, layout, path };
     let mut inline_skinned = Vec::new();
     let skin = ctx.noderef(&mut r, |c, r, _| {
         let start = r.pos();
