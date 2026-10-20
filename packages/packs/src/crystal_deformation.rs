@@ -460,15 +460,17 @@ fn apply(g: &mut crate::crystal::Geometry, groups: &[usize], modifier: &Deformat
             *v = remap[*v as usize] as u32;
         }
     }
+    g.normals = faces.iter().map(|(face, _)| face_normal(&positions, face)).collect();
     g.positions = positions;
     g.faces = faces;
     g.face_uvs = face_uvs;
     g.face_groups = face_groups;
 }
 
-fn face_normal(positions: &[[f32; 3]], face: &[u32]) -> [f32; 3] {
+pub(crate) fn face_normal(positions: &[[f32; 3]], face: &[u32]) -> [f32; 3] {
     let mut normal = [0.0; 3];
-    let origin = positions[face[0] as usize];
+    let Some(&first) = face.first() else { return normal };
+    let origin = positions[first as usize];
     for pair in face[1..].windows(2) {
         let a = difference(positions[pair[0] as usize], origin);
         let b = difference(positions[pair[1] as usize], origin);

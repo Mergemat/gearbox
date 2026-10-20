@@ -9,6 +9,7 @@ pub struct Geometry {
     pub faces: Vec<(Vec<u32>, i32)>,
     pub face_uvs: Vec<Vec<[f32; 2]>>,
     pub face_groups: Vec<usize>,
+    pub(crate) normals: Vec<[f32; 3]>,
     pub(crate) group_parents: Vec<u32>,
     pub(crate) archive_version: u32,
 }
@@ -178,7 +179,9 @@ fn geometry(r: &mut Reader, materials: usize) -> Result<Geometry> {
         r.skip((f + e + p) * 4)?;
         r.u32()?;
     }
-    Ok(Geometry { positions, faces, face_uvs, face_groups, group_parents, archive_version: v })
+    let normals =
+        faces.iter().map(|(face, _)| crate::crystal_deformation::face_normal(&positions, face)).collect();
+    Ok(Geometry { positions, faces, face_uvs, face_groups, normals, group_parents, archive_version: v })
 }
 
 struct LayerIds {
@@ -437,6 +440,22 @@ pub fn read(
                                 r.skip(n * 52)?;
                             }
                         }
+                        9 => {
+                            ensure!(r.u32()? == 0, "crystal modifier version");
+                            let mut refs = Vec::new();
+                            for _ in 0..r.len()? {
+                                refs.push((r.u32()?, ids.read(&mut r)?));
+                            }
+                            let version = r.u32()?;
+                            ensure!(version == 1, "crystal chaos version {version}");
+                            let from = r.f32()?;
+                            let seed = r.u32()?;
+                            let to = r.f32()?;
+                            if enabled {
+                                let chaos = crate::crystal_modifiers::Chaos { from, to, seed };
+                                crate::crystal_modifiers::chaos(&mut out, &layers, &refs, &chaos);
+                            }
+                        }
                         other => bail!("crystal modifier layer {other} needs compilation"),
                     }
                 }
@@ -556,4 +575,61 @@ pub fn collision(c: &Crystal) -> Result<Surface> {
             })
             .collect(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn faces_as_bytes(g: &Geometry) -> Vec<u8> {
+        let mut out = Vec::new();
+        for ((face, _), &group) in g.faces.iter().zip(&g.face_groups) {
+            if !(3..=4).contains(&face.len()) {
+                continue;
+            }
+            out.extend((group as u32).to_le_bytes());
+            out.extend((face.len() as u32).to_le_bytes());
+            for &v in face {
+                for x in g.positions[v as usize] {
+                    out.extend(x.to_le_bytes());
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn chaos_matches_the_recorded_layers() {
+        let Some(dir) =
+            std::env::var_os("GBX_TEST_DATA").map(|d| std::path::Path::new(&d).join("crystal/chaos"))
+        else {
+            return;
+        };
+        let Ok(entries) = std::fs::read_dir(&dir) else { return };
+        let mut checked = 0;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let params = std::fs::read_to_string(path.join("params.txt")).unwrap();
+            let lines: Vec<&str> = params.lines().collect();
+            let head: Vec<&str> = lines[0].split_whitespace().collect();
+            let chaos = crate::crystal_modifiers::Chaos {
+                from: head[0].parse().unwrap(),
+                to: head[1].parse().unwrap(),
+                seed: head[2].parse().unwrap(),
+            };
+            let groups: Vec<u32> = lines[1].split_whitespace().map(|s| s.parse().unwrap()).collect();
+            let materials: usize = lines[2].parse().unwrap();
+            let bytes = std::fs::read(path.join("geometry.bin")).unwrap();
+            let g = geometry(&mut Reader::new(&bytes), materials).unwrap();
+            let all = (0..g.group_parents.len() as u32).collect();
+            let mut crystal = Crystal { geometry: vec![g], ..Crystal::default() };
+            let layers = vec![(Some("L".to_string()), all, false, 0)];
+            let refs: Vec<_> = groups.iter().map(|&j| (j, Some("L".to_string()))).collect();
+            crate::crystal_modifiers::chaos(&mut crystal, &layers, &refs, &chaos);
+            let expected = std::fs::read(path.join("expected.bin")).unwrap();
+            assert!(faces_as_bytes(&crystal.geometry[0]) == expected, "{}", path.display());
+            checked += 1;
+        }
+        assert!(checked > 0);
+    }
 }
