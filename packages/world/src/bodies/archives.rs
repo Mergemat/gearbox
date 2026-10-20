@@ -46,7 +46,7 @@ impl<'a> Archives<'a> {
         let (path, start) = match visual {
             NodeLink::Null => return Ok(Vec::new()),
             NodeLink::External(path) => (path.as_str(), 0),
-            NodeLink::Inline(start) => (owner.split('#').next().unwrap_or(owner), *start),
+            NodeLink::Inline(start) => (archive_path(owner), *start),
             NodeLink::Earlier(_) => {
                 anyhow::bail!("earlier dynamic visual modifier traversal: {owner}")
             }
@@ -73,7 +73,7 @@ impl<'a> Archives<'a> {
     }
     pub fn prefab(&mut self, path: &str) -> Result<Prefab> {
         if !self.prefabs.contains_key(path) {
-            let owner = path.split('#').next().unwrap_or(path);
+            let owner = archive_path(path);
             let buf = self.read(owner).with_context(|| format!("dynamic prefab {path}"))?;
             let layout = gearbox_packs::nodes::layout(&buf)?;
             let ctx = Ctx { buf: &buf, layout: &layout, path: owner };
@@ -95,4 +95,8 @@ impl<'a> Archives<'a> {
         }
         self.prefabs.get(path).cloned().with_context(|| format!("dynamic prefab not found: {path}"))
     }
+}
+
+fn archive_path(path: &str) -> &str {
+    path.to_ascii_lowercase().find(".gbx#").map_or(path, |end| &path[..end + 4])
 }

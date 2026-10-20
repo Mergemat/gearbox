@@ -285,55 +285,8 @@ impl VisualCache {
         }
         let mut global_joints = Vec::new();
         if version >= 29 && (custom > 0 || (materials.is_empty() && !material_names.is_empty())) {
-            reference(ctx, &mut r)?;
-            let n = r.len()?;
-            r.skip(n * 4)?;
-            r.u32()?;
-            if r.bool32()? {
-                let v = r.u32()?;
-                r.skip(4 + 4 + 4 + 8 * 4 + 8)?;
-                let n = r.len()?;
-                r.skip(n * 24)?;
-                if v >= 1 {
-                    let n = r.len()?;
-                    r.skip(n * 16)?;
-                }
-            }
-            r.skip(8)?;
-            r.string()?;
-            r.string()?;
-            r.string()?;
-            for _ in 0..r.len()? {
-                crate::crystal::id(&mut r)?;
-                if r.bool32()? {
-                    reference(ctx, &mut r)?;
-                } else {
-                    r.string()?;
-                }
-                r.skip(48 + 6 * 4)?;
-                if r.bool32()? {
-                    r.skip(3 * 4)?;
-                }
-            }
-            for _ in 0..r.len()? {
-                reference(ctx, &mut r)?;
-            }
-            let n = r.len()?;
-            r.skip(n * 8)?;
-            r.skip(3 * 4)?;
-            r.string()?;
-            if version >= 30 {
-                r.u32()?;
-            }
-            for _ in 0..custom {
-                let name = r.string()?;
-                let material = if name.is_empty() {
-                    let m = reference(ctx, &mut r)?;
-                    self.material_ref(ctx, m)?
-                } else {
-                    self.material_or_diagnostic(&name)?
-                };
-                materials.push(material);
+            for material in crate::solid::custom_materials(ctx, &mut r, version, custom)? {
+                materials.push(self.material_ref(ctx, material)?);
             }
             for _ in 0..r.len()? {
                 let (raw, name) = crate::crystal::id(&mut r)?;
@@ -462,7 +415,7 @@ impl VisualCache {
                 let version = r.u32()?;
                 ensure!(version <= 1, "item variant version {version}");
                 let n = r.len()?;
-                ensure!(variant < n, "item variant {variant}/{n}");
+                let variant = if variant < n { variant } else { 0 };
                 let mut selected = None;
                 for i in 0..n {
                     for _ in 0..r.len()? {

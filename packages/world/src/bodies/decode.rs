@@ -357,15 +357,9 @@ impl<'a> Decoder<'a> {
     ) -> Result<()> {
         for item in &map.items {
             let name = item.model.as_deref().context("dynamic item without model")?;
-            let path = source
-                .assets
-                .index
-                .items
-                .get_key_value(name)
-                .map(|(path, _)| path.as_str())
-                .or_else(|| source.assets.find_item(name, &source.env))
-                .context("dynamic item asset absent")?;
-            let models = source.assets.index.items[path].models.clone();
+            let path =
+                source.assets.find_anchored_item(item, &source.env).context("dynamic item asset absent")?;
+            let models = source.assets.index.items[path].models((item.flags >> 8) as usize).to_vec();
             let modifier = source.assets.index.items[path].material_modifier.clone();
             for model in models {
                 if let EntModel::Dyna { dyna_shape: Some(id), is_static: false, .. } = &model {
@@ -376,7 +370,7 @@ impl<'a> Decoder<'a> {
                 }
                 if let EntModel::Prefab(prefab) = model {
                     let placement = Placement {
-                        parent: statics::anchored::item_iso(item).map_err(anyhow::Error::msg)?,
+                        parent: statics::anchored::item_iso(item),
                         phase: item.anim_phase as f32 * 0.125,
                         modifier: modifier.as_deref(),
                         chain: Vec::new(),

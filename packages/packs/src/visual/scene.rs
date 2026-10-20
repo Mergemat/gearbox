@@ -179,7 +179,7 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
                 .embedded_models
                 .get(&norm(name))
                 .map(String::as_str)
-                .or_else(|| assets.find_item(name, env))
+                .or_else(|| assets.find_anchored_item(it, env))
                 .with_context(|| format!("unknown item {name}"))?
                 .to_string();
             let parts = cache.file_parts(&path, (it.flags >> 8) as usize, 0)?;

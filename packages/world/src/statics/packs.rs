@@ -430,16 +430,15 @@ impl<'a> PackSource<'a> {
 
     pub fn item_parts(
         &mut self,
-        name: &str,
-        variant: usize,
+        anchored: &gearbox_gbx::map::Item,
         iso: Iso,
         location: ([f32; 9], [f32; 3]),
     ) -> Result<Vec<(Role, u32, gearbox_engine::Iso)>, String> {
         let assets = self.assets;
-        let path = match assets.index.items.get_key_value(name) {
-            Some((k, _)) => k.as_str(),
-            None => assets.find_item(name, &self.env).ok_or_else(|| format!("unknown item {name}"))?,
-        };
+        let name = anchored.model.as_deref().ok_or("item without a model")?;
+        let path =
+            assets.find_anchored_item(anchored, &self.env).ok_or_else(|| format!("unknown item {name}"))?;
+        let variant = (anchored.flags >> 8) as usize;
         let item = &assets.index.items[path];
         if item.models.is_empty() && item.variants.is_empty() {
             let why = assets
@@ -482,7 +481,7 @@ impl<'a> PackSource<'a> {
             out.push((placed.role, shape, gearbox_engine::Iso::from_array(transform.map(f32::from_bits))));
         }
         crate::sort_by_key(&mut out, |p| matches!(p.0, Role::Waypoint(_)));
-        let models = if item.variants.is_empty() { &item.models } else { &item.variants[variant] };
+        let models = item.models(variant);
         let empty = models.iter().all(|m| matches!(m, gearbox_packs::catalog::EntModel::None));
         if out.is_empty() && !dynamic && !empty {
             return Err(format!(

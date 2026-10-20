@@ -318,6 +318,14 @@ impl Assets {
             .map(|(_, d)| d)
     }
 
+    pub fn find_anchored_item(&self, item: &gearbox_gbx::map::Item, env: &str) -> Option<&str> {
+        let name = item.model.as_deref()?;
+        self.index.items.get_key_value(name).map(|(path, _)| path.as_str()).or_else(|| {
+            let env = crate::packs::environment(item.collection.as_deref()).unwrap_or(env);
+            self.find_item(name, env)
+        })
+    }
+
     pub fn find_item(&self, name: &str, env: &str) -> Option<&str> {
         let file = format!("\\{}.item.gbx", name.to_ascii_lowercase());
         let own = format!("{env}\\Items\\");
@@ -345,12 +353,7 @@ impl Assets {
             .collect();
         let mods = mods.as_slice();
         let mut out = Vec::new();
-        let models = if it.variants.is_empty() {
-            &it.models
-        } else {
-            it.variants.get(variant).with_context(|| format!("item {path} has no variant {variant}"))?
-        };
-        for m in models {
+        for m in it.models(variant) {
             match m {
                 EntModel::Other { class_id: Some(0x2f086000), path: source } => {
                     bail!("{path}: vegetation collision model not decoded ({source:?})")

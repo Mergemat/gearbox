@@ -151,6 +151,16 @@ pub struct Item {
     pub material_modifier: Option<String>,
 }
 
+impl Item {
+    pub fn models(&self, variant: usize) -> &[EntModel] {
+        if self.variants.is_empty() {
+            &self.models
+        } else {
+            self.variants.get(variant).unwrap_or(&self.variants[0])
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Catalog {
     pub index: Index,
@@ -191,13 +201,20 @@ impl Crawler<'_> {
         let Some(n) = l.nodes.iter().find(|n| n.class_id == 0x2e025000) else { return Ok(false) };
         let ctx = Ctx { buf: &buf, layout: &l, path };
         let item = crate::custom_block::read(&ctx, n.start)?;
-        anyhow::ensure!(matches!(item.collection, 25 | 26), "custom block collection {}", item.collection);
+        let collection = item.collection.to_string();
+        let env = crate::packs::environment(Some(&collection))
+            .with_context(|| format!("custom block collection {}", item.collection))?;
+        let own = format!("{env}\\");
         let (_, archetype) = known
             .blocks
             .iter()
-            .filter(|(p, _)| {
-                crate::assets::block_name(p).eq_ignore_ascii_case(&item.archetype)
-                    && p.starts_with("Stadium\\")
+            .filter(|(p, block)| {
+                block
+                    .name
+                    .as_deref()
+                    .unwrap_or_else(|| crate::assets::block_name(p))
+                    .eq_ignore_ascii_case(&item.archetype)
+                    && p.starts_with(&own)
             })
             .min_by_key(|(p, _)| (p.contains("\\Deprecated\\"), *p))
             .ok_or_else(|| anyhow::anyhow!("custom block archetype {} not extracted", item.archetype))?;
@@ -400,7 +417,7 @@ impl Crawler<'_> {
         ctx.surface(&mut r)
     }
 
-    fn mesh_collision(&self, owner: &str, mesh: NodeLink<usize>) -> Result<Surface> {
+    fn mesh_collision(&mut self, owner: &str, mesh: NodeLink<usize>) -> Result<Surface> {
         let path = match &mesh {
             NodeLink::External(p) => p.as_str(),
             _ => owner,
@@ -419,7 +436,7 @@ impl Crawler<'_> {
             NodeLink::Null => bail!("collidable static object has no mesh"),
         };
         let ctx = Ctx { buf: &buf, layout: &l, path };
-        crate::solid::collision(&ctx, start)
+        crate::solid::collision(&ctx, start, |path| self.crystal_material(path))
     }
 
     fn dyna(
@@ -562,6 +579,7 @@ impl Crawler<'_> {
                 NodeLink::Inline(Model::Kinematic(_)) => {
                     EntModel::Other { class_id: Some(0x2f0ca000), path: None }
                 }
+                NodeLink::Inline(Model::Other(0x0915c000 | 0x09160000)) => EntModel::None,
                 NodeLink::Inline(Model::Other(c)) => EntModel::Other { class_id: Some(c), path: None },
             };
             empty &= !shared && matches!(model, EntModel::None);
@@ -593,7 +611,7 @@ impl Crawler<'_> {
         if let Some(n) = l.nodes.iter().find(|n| n.class_id == 0x2e026000) {
             let mut r = crate::crystal::cursor(&buf, n.start)?;
             anyhow::ensure!(r.u32()? == 0x2e026000, "item edition chunk");
-            anyhow::ensure!(r.u32()? == 7, "item edition version");
+            anyhow::ensure!(matches!(r.u32()?, 7 | 8), "item edition version");
             anyhow::ensure!(r.u32()? == 1, "non-ornament crystal item");
             let start = ctx.noderef(&mut r, |_, r, class| {
                 anyhow::ensure!(class == 0x09003000, "edition crystal class {class:#x}");
