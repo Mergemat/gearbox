@@ -391,7 +391,8 @@ impl<'a> Decoder<'a> {
         let decoration =
             map.decoration.as_deref().and_then(|name| source.assets.decoration(name, &source.env)).cloned();
         let Some(decoration) = decoration.filter(|deco| deco.map.is_some()) else { return Ok(()) };
-        let location = statics::decoration::deco_location(map.size, decoration.size);
+        let size = decoration.map_size.context("decoration without map dimensions")?;
+        let location = statics::decoration::deco_location(size, decoration.size);
         for (name, direction, coord, flags) in decoration.blocks {
             let key = statics::BlockKey {
                 name,

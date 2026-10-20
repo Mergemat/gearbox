@@ -40,7 +40,8 @@ pub fn items(map: &gearbox_gbx::Map, src: &mut PackSource<'_>) -> Result<Vec<Vec
             decoration.collection,
         ));
     }
-    let location = deco_location(map.size, decoration.size);
+    let size = decoration.map_size.ok_or("decoration without map dimensions")?;
+    let location = deco_location(size, decoration.size);
     let mut out = Vec::new();
     for block_entry in &decoration.blocks {
         let block_entry = block(block_entry);

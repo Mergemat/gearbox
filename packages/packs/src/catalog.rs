@@ -137,6 +137,7 @@ pub struct Decoration {
     pub map: Option<String>,
     pub collection: Option<String>,
     pub size: [i32; 3],
+    pub map_size: Option<[i32; 3]>,
     pub blocks: Vec<(String, u8, [i32; 3], u32)>,
     #[serde(default)]
     pub level0: Option<u32>,
@@ -864,12 +865,14 @@ fn decoration(set: &PackSet, path: &str) -> Result<Decoration> {
     let name = id.unwrap_or_else(|| stem.strip_prefix("Base").unwrap_or(stem).to_string());
     let refs: Vec<String> = head.ref_files.keys().filter_map(|&i| head.ref_path(path, i)).collect();
     let map = refs.iter().find(|p| p.to_lowercase().ends_with(".map.gbx")).cloned();
-    let level0 = refs
+    let dimensions = refs
         .iter()
         .find(|p| p.to_lowercase().ends_with(".decorationsize.gbx"))
-        .and_then(|p| set.read_path(p).ok())
-        .and_then(|b| level0(&b));
-    let mut d = Decoration { name, map: map.clone(), level0, ..Default::default() };
+        .map(|p| set.read_path(p))
+        .transpose()?;
+    let level0 = dimensions.as_deref().and_then(level0);
+    let map_size = dimensions.as_deref().map(decoration_map_size).transpose()?;
+    let mut d = Decoration { name, map: map.clone(), level0, map_size, ..Default::default() };
     if let Some(m) = map {
         let parsed = gearbox_gbx::Map::parse(&set.read_path(&m)?)?;
         d.collection = parsed.collection.clone();
@@ -877,6 +880,13 @@ fn decoration(set: &PackSet, path: &str) -> Result<Decoration> {
         d.blocks = parsed.blocks.iter().map(|b| (b.name.clone(), b.dir, b.coord, b.flags)).collect();
     }
     Ok(d)
+}
+
+fn decoration_map_size(b: &[u8]) -> Result<[i32; 3]> {
+    let p = b.windows(4).position(|w| w == 0x0303b002u32.to_le_bytes()).context("decoration size chunk")?;
+    let mut r = gearbox_gbx::reader::Reader::new(&b[p + 4..]);
+    r.u32()?;
+    Ok([r.i32()?, r.i32()?, r.i32()?])
 }
 
 fn level0(b: &[u8]) -> Option<u32> {

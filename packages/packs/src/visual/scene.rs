@@ -207,6 +207,7 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
     {
         match cache.read(path).and_then(|b| gearbox_gbx::Map::parse(&b)) {
             Ok(deco) => {
+                let map_size = d.map_size.context("decoration without map dimensions")?;
                 for b in &deco.blocks {
                     let result = (|| -> Result<_> {
                         let (_, v, m, offset) = selection(assets, b, env)?;
@@ -217,9 +218,9 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
                         let location = (
                             [1., 0., 0., 0., 1., 0., 0., 0., 1.],
                             [
-                                (map.size[0] as f32 * 32. - d.size[0] as f32 * 256.) * 0.5,
+                                (map_size[0] as f32 * 32. - d.size[0] as f32 * 256.) * 0.5,
                                 -184.,
-                                (map.size[2] as f32 * 32. - d.size[2] as f32 * 256.) * 0.5,
+                                (map_size[2] as f32 * 32. - d.size[2] as f32 * 256.) * 0.5,
                             ],
                         );
                         let iso = placement::grid_iso_in(
