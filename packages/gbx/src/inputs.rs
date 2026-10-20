@@ -96,6 +96,9 @@ impl PlayerInputs {
         let mut extra_words = Vec::new();
 
         for tick in 0..self.ticks {
+            let mut next = TickInput::default();
+            let mut state_read = false;
+            let mut extra_read = false;
             let step = (|| -> Result<Result<(), String>, OutOfBits> {
                 if !r.bit()? {
                     if r.bit()? {
@@ -115,7 +118,7 @@ impl PlayerInputs {
                         state_words.push((tick, state));
                         mode = match states & 0xF {
                             0 => Mode::NotStarted,
-                            2..=4 => Mode::Vehicle,
+                            2 | 4 => Mode::Vehicle,
                             k @ (0xC | 0xD) => {
                                 return Ok(Err(format!(
                                     "input kind 0x{k:X} (float steering) at tick {tick} is not decoded yet"
@@ -138,17 +141,23 @@ impl PlayerInputs {
                         }
                     }
                 }
+                state_read = true;
                 if !r.bit()? {
                     let w = r.num(32)? as u32;
                     extra_words.push((tick, w));
                 }
+                extra_read = true;
                 match mode {
                     Mode::Vehicle => {
-                        if !r.bit()? {
-                            cur.steer = r.num(8)? as u8 as i8;
-                            cur.gas = r.bit()?;
-                            cur.brake = r.bit()?;
-                        }
+                        next = if r.bit()? {
+                            cur
+                        } else {
+                            TickInput {
+                                steer: r.num(8)? as u8 as i8,
+                                gas: r.bit()?,
+                                brake: r.bit()?,
+                            }
+                        };
                     }
                     Mode::Character => {
                         if !r.bit()? {
@@ -160,11 +169,16 @@ impl PlayerInputs {
                 Ok(Ok(()))
             })();
             match step {
-                Ok(Ok(())) => out.push(cur),
+                Ok(Ok(())) => {
+                    cur = next;
+                    out.push(cur);
+                }
                 Ok(Err(msg)) => bail!(msg),
                 Err(OutOfBits) => {
+                    state_words.push((tick + usize::from(state_read), 0));
+                    extra_words.push((tick + usize::from(extra_read), 0));
                     truncated_at = Some(tick);
-                    out.resize(self.ticks, cur);
+                    out.resize(self.ticks, TickInput::default());
                     break;
                 }
             }

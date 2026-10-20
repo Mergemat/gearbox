@@ -31,17 +31,6 @@ pub struct Respawn {
     pub standing: bool,
 }
 
-#[derive(Debug)]
-pub struct Unsupported(pub String);
-
-impl std::fmt::Display for Unsupported {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Unsupported {}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Driven {
     pub finish_ms: Option<i32>,
@@ -81,10 +70,7 @@ impl Record {
                 EventKind::Horn(_) => None,
             })
             .collect();
-        if let Some(tick) = inputs.truncated_at {
-            return Err(Unsupported(format!("inputs end early, at tick {tick}")).into());
-        }
-        ensure!(inputs.ticks.windows(2).any(|w| w[0] != w[1]), "ghost inputs never change");
+        ensure!(!inputs.ticks.is_empty(), "the ghost has no input ticks");
 
         let t0 = if inputs.start_offset_ms >= 0 { COUNTDOWN_MS } else { inputs.start_offset_ms };
         let countdown = usize::try_from((inputs.start_offset_ms - t0) / 10)?;
@@ -138,7 +124,8 @@ impl Record {
             session.track_respawns();
         }
         let finish = |s: &Session| s.race().and_then(|r| r.finish).map(|t| t as i32);
-        for tick in 0..self.run.controls.len() + OVERRUN_TICKS {
+        let ticks = ((self.time_ms - self.run.t0).max(0) as usize).div_ceil(10);
+        for tick in 0..ticks.max(self.run.controls.len()) + OVERRUN_TICKS {
             if !self.step(&mut session, tick) || finish(&session).is_some() {
                 break;
             }
