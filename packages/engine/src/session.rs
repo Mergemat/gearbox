@@ -115,6 +115,8 @@ impl Session {
     pub fn step_with_input(&mut self, mut controls: Controls, input: InputState) {
         if self.config.model(self.vehicle.model_choice).assets.tuning.car_model_kind().uses_legacy_gearbox() {
             controls.steer *= self.steer_limit;
+        } else {
+            controls.steer = controls.steer.clamp(-self.steer_limit, self.steer_limit);
         }
         self.tick(self.clock.now, controls, self.seed, input);
         self.clock.now += 10;
