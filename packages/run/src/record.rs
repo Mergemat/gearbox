@@ -76,7 +76,7 @@ impl Record {
         let countdown = usize::try_from((inputs.start_offset_ms - t0) / 10)?;
         let respawns = respawns.into_iter().map(|r| Respawn { tick: r.tick + countdown, ..r }).collect();
         let keyboard = inputs.ticks.iter().all(|tick| tick.steer == 0 || tick.steer.unsigned_abs() == 127);
-        let limits = steer_limits(&inputs.state_words, inputs.ticks.len());
+        let limits = steer_limits(&inputs.state_words, inputs.ticks.len(), inputs.start_offset_ms);
         let steer_limits = if keyboard {
             Vec::new()
         } else {
@@ -179,15 +179,16 @@ fn input_states(inputs: &DecodedInputs, countdown: usize) -> Vec<InputState> {
     states
 }
 
-fn steer_limits(words: &[(usize, u64)], ticks: usize) -> Vec<f32> {
+fn steer_limits(words: &[(usize, u64)], ticks: usize, start_ms: i32) -> Vec<f32> {
     let mut limit = 1.0;
     let mut held = 0;
     let mut words = words.iter().peekable();
     (0..ticks)
         .map(|tick| {
+            let started = start_ms + tick as i32 * 10 >= 0;
             while let Some(&(_, w)) = words.next_if(|(t, _)| *t <= tick) {
                 for (bit, cap) in STEER_LIMIT_KEYS {
-                    if (w & !held) >> bit & 1 != 0 {
+                    if started && (w & !held) >> bit & 1 != 0 {
                         limit = if limit == cap { 1.0 } else { cap };
                     }
                 }
@@ -229,15 +230,21 @@ mod tests {
             (10, key(21)),
             (12, 2),
         ];
-        let limits = steer_limits(&words, 14);
+        let limits = steer_limits(&words, 14, 0);
         assert_eq!(limits, [1.0, 1.0, 0.6, 0.6, 0.6, 0.2, 0.2, 0.2, 1.0, 1.0, 0.8, 0.8, 0.8, 0.8]);
+    }
+
+    #[test]
+    fn action_keys_before_the_start_do_nothing() {
+        let key = 2 | 1u64 << 17;
+        assert_eq!(steer_limits(&[(0, 2), (1, key), (2, 2), (3, key)], 5, -20), [1.0, 1.0, 1.0, 0.4, 0.4]);
     }
 
     #[test]
     fn holding_an_action_key_counts_once() {
         let held = 2 | 1u64 << 17;
         assert_eq!(
-            steer_limits(&[(0, 2), (1, held), (2, held | 1 << 6), (3, held)], 5),
+            steer_limits(&[(0, 2), (1, held), (2, held | 1 << 6), (3, held)], 5, 0),
             [1.0, 0.4, 0.4, 0.4, 0.4]
         );
     }
