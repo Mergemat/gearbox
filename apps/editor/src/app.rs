@@ -4,6 +4,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crate::engine::display::World;
@@ -126,6 +127,28 @@ actions!(
 pub const PM_KEYS: &str = "Projects && !TextField";
 
 pub const KEYS: &str = "Editor && !TextField && !Fly && !Drive";
+
+pub fn off_thread<T: Send + 'static>(
+    f: impl FnOnce() -> T + Send + 'static,
+) -> futures::channel::oneshot::Receiver<T> {
+    let (tx, rx) = futures::channel::oneshot::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    rx
+}
+
+static QUITTING: AtomicBool = AtomicBool::new(false);
+
+pub fn quit(cx: &App) {
+    QUITTING.store(true, Ordering::Relaxed);
+    cx.quit();
+}
+
+#[cfg(feature = "headless")]
+pub fn quitting() -> bool {
+    QUITTING.load(Ordering::Relaxed)
+}
 
 pub fn bind_keys(cx: &mut App) {
     use gpui::KeyBinding as K;
@@ -539,6 +562,7 @@ pub struct Options {
     pub sync: bool,
     pub eye: Option<[f32; 3]>,
     pub look: Option<[f32; 3]>,
+    pub headless: bool,
 }
 
 pub struct Editor {
@@ -656,7 +680,7 @@ pub struct Editor {
     pub field_errors: HashMap<String, String>,
     pub catalog: Vec<PathBuf>,
     pub window_id: Option<isize>,
-    pub ui_frame_start: Option<Instant>,
+    pub ui_frame_start: Option<f32>,
     pub script: Option<crate::script::Script>,
     pub script_ran: Instant,
     pub script_in_frame: bool,
@@ -974,10 +998,10 @@ impl Editor {
         self.scene.borrow_mut().visual = None;
         let bc = self.scene.borrow().renderer.gpu.bc;
         let (vpacks, vmap) = (self.game.packs.clone(), map.to_path_buf());
-        let task = cx.background_executor().spawn(async move { crate::visual::load(&vpacks, &vmap, bc) });
+        let task = off_thread(move || crate::visual::load(&vpacks, &vmap, bc));
         let scene = self.scene.clone();
         cx.spawn(async move |this, cx| {
-            let r = task.await;
+            let Ok(r) = task.await else { return };
             let _ = this.update(cx, |app, cx| {
                 match r {
                     Ok(v) => {
@@ -1451,12 +1475,12 @@ impl Editor {
         self.loading.get_or_insert_with(|| "Meshing the collision world \u{2026}".into());
         let hidden = self.show.hidden_families.clone();
         let scene = self.scene.clone();
-        let task = cx.background_executor().spawn(async move {
+        let task = off_thread(move || {
             let mesh = crate::scene::build_world(&world, &hidden);
             (mesh, Vec3::from(world.min), Vec3::from(world.max))
         });
         cx.spawn(async move |this, cx| {
-            let (mesh, min, max) = task.await;
+            let Ok((mesh, min, max)) = task.await else { return };
             let _ = this.update(cx, |app, cx| {
                 scene.borrow_mut().set_world(&mesh, min, max);
                 app.world_ready = true;

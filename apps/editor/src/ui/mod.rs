@@ -13,7 +13,7 @@ pub mod solve;
 pub mod viewport;
 pub mod widgets;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -28,10 +28,10 @@ use widgets::{muted, tip};
 
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.ui_frame_start = Some(Instant::now());
         self.playback();
         self.script_in_frame = true;
         self.automate(window, cx);
+        self.ui_frame_start = Some(crate::stats::thread_cpu_ms());
         widgets::HITS.with(|h| h.borrow_mut().clear());
         self.setters.clear();
         self.field_order.clear();
@@ -89,9 +89,13 @@ impl Render for Editor {
                 .child(self.bottom_panel(cx))
                 .child(self.status_bar(cx))
         };
+        let this = cx.entity();
         root.children(self.popup_menu(cx))
             .children(self.palette_overlay(cx))
             .children(self.cheatsheet.then(|| self.cheatsheet_overlay(cx)))
+            .child(
+                canvas(|_, _, _| (), move |_, _, _, cx| this.update(cx, |e, _| e.ui_frame_done())).absolute(),
+            )
     }
 }
 
@@ -268,7 +272,7 @@ impl Editor {
                 e.spec.window = r;
             }
         });
-        d.on_action(|_: &Quit, _: &mut Window, cx: &mut gpui::App| cx.quit())
+        d.on_action(|_: &Quit, _: &mut Window, cx: &mut gpui::App| quit(cx))
     }
 
     pub fn escape(&mut self) {
@@ -1116,7 +1120,7 @@ impl Editor {
 
     pub fn ui_frame_done(&mut self) {
         if let Some(t) = self.ui_frame_start.take() {
-            self.stats.ui_frame.push(t.elapsed().as_secs_f32() * 1e3);
+            self.stats.ui_frame.push(crate::stats::thread_cpu_ms() - t);
         }
     }
 }

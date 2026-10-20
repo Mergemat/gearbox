@@ -14,13 +14,16 @@ description = "The TAS editor on GPUI, with a wgpu 3D view composited through an
 name = "gearbox-editor"
 path = "src/main.rs"
 
+[features]
+headless = ["gpui/test-support", "gpui_platform/test-support"]
+
 [dependencies]
 anyhow = "1"
 bytemuck = { version = "1", features = ["derive"] }
 futures = "0.3"
 glam = "0.34"
 pollster = "1"
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 smallvec = "1"
 raw-window-handle = "0.6"
 gpui = { version = "=0.3.9", package = "gpui-pre" }
@@ -37,6 +40,7 @@ image_dds = { version = "0.7", default-features = false, features = ["ddsfile", 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "7"
+libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

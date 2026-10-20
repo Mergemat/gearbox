@@ -31,6 +31,12 @@ pub struct Ctl {
     pub shots: Vec<PathBuf>,
     pub perf: Vec<String>,
     pub quit_ok: bool,
+    shots_due: Vec<Shot>,
+}
+
+struct Shot {
+    path: PathBuf,
+    spread: Option<([u32; 4], &'static str)>,
 }
 
 fn road_ahead(e: &Editor) -> Option<Vec2> {
@@ -181,36 +187,21 @@ impl Ctl {
             None => false,
         }
     }
-    pub fn shot(&mut self, e: &Editor, name: &str) {
-        let p = self.dir.join(format!("{name}.png"));
-        if e.screenshot(&p) {
-            self.shots.push(std::fs::canonicalize(&p).unwrap_or(p));
-        } else {
-            self.fails.push(format!("screenshot {name} failed"));
-        }
+    pub fn shot(&mut self, name: &str) {
+        let path = self.dir.join(format!("{name}.png"));
+        self.shots_due.push(Shot { path, spread: None });
     }
-    pub fn rendered(&mut self, e: &Editor, name: &str) -> f32 {
-        let p = self.dir.join(format!("{name}.jpg"));
-        if !e.screenshot(&p) {
-            self.fails.push(format!("screenshot {name} failed"));
-            return 0.0;
-        }
-        self.shots.push(std::fs::canonicalize(&p).unwrap_or(p.clone()));
-        let Ok(img) = image::open(&p).map(|i| i.to_luma8()) else { return 0.0 };
+    pub fn rendered(&mut self, e: &Editor, name: &str, what: &'static str) {
+        let path = self.dir.join(format!("{name}.jpg"));
         let (o, size) = (crate::app::v2(e.viewport.origin), e.vsize());
         let k = e.scale;
-        let (x0, y0) = (((o.x + size.x * 0.25) * k) as u32, ((o.y + size.y * 0.25) * k) as u32);
-        let (x1, y1) = (
-            (((o.x + size.x * 0.75) * k) as u32).min(img.width()),
-            (((o.y + size.y * 0.75) * k) as u32).min(img.height()),
-        );
-        let px: Vec<f32> = (y0..y1)
-            .flat_map(|y| (x0..x1).map(move |x| (x, y)))
-            .map(|(x, y)| img.get_pixel(x, y).0[0] as f32)
-            .collect();
-        let n = px.len().max(1) as f32;
-        let mean = px.iter().sum::<f32>() / n;
-        (px.iter().map(|v| (v - mean) * (v - mean)).sum::<f32>() / n).sqrt()
+        let rect = [
+            ((o.x + size.x * 0.25) * k) as u32,
+            ((o.y + size.y * 0.25) * k) as u32,
+            ((o.x + size.x * 0.75) * k) as u32,
+            ((o.y + size.y * 0.75) * k) as u32,
+        ];
+        self.shots_due.push(Shot { path, spread: Some((rect, what)) });
     }
     pub fn check(&mut self, ok: bool, what: impl Into<String>) {
         let w = what.into();
@@ -221,6 +212,36 @@ impl Ctl {
             self.fails.push(w);
         }
     }
+}
+
+fn luma_spread(path: &Path, [x0, y0, x1, y1]: [u32; 4]) -> f32 {
+    let Ok(img) = image::open(path).map(|i| i.to_luma8()) else { return 0.0 };
+    let (x1, y1) = (x1.min(img.width()), y1.min(img.height()));
+    let px: Vec<f32> = (y0..y1)
+        .flat_map(|y| (x0..x1).map(move |x| (x, y)))
+        .map(|(x, y)| img.get_pixel(x, y).0[0] as f32)
+        .collect();
+    let n = px.len().max(1) as f32;
+    let mean = px.iter().sum::<f32>() / n;
+    (px.iter().map(|v| (v - mean) * (v - mean)).sum::<f32>() / n).sqrt()
+}
+
+#[cfg(feature = "headless")]
+fn save_frame(window: &Window, path: &Path) -> bool {
+    let Ok(frame) = window.render_to_image() else { return false };
+    let (w, h) = frame.dimensions();
+    let Some(img) = image::RgbaImage::from_raw(w, h, frame.into_raw()) else { return false };
+    let img = image::DynamicImage::ImageRgba8(img);
+    if path.extension().is_some_and(|x| x == "jpg") {
+        img.to_rgb8().save(path).is_ok()
+    } else {
+        img.save(path).is_ok()
+    }
+}
+
+#[cfg(not(feature = "headless"))]
+fn save_frame(_: &Window, _: &Path) -> bool {
+    false
 }
 
 pub fn hit(id: &str) -> Option<Vec2> {
@@ -248,6 +269,7 @@ pub struct Script {
     record: Option<(PathBuf, Option<std::process::Child>)>,
     timer_frames: u32,
     done: bool,
+    inflight: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
 impl Script {
@@ -263,6 +285,7 @@ impl Script {
             v: HashMap::new(),
             shots: Vec::new(),
             perf: Vec::new(),
+            shots_due: Vec::new(),
             quit_ok: false,
         };
         Self {
@@ -276,6 +299,7 @@ impl Script {
             ctl,
             record: None,
             timer_frames: 0,
+            inflight: Default::default(),
             done: false,
         }
     }
@@ -293,20 +317,39 @@ impl Editor {
             && self.loading.is_none()
     }
 
-    pub fn screenshot(&self, path: &Path) -> bool {
-        let Some(id) = self.window_id else { return false };
+    pub fn screenshot(&self, window: &Window, path: &Path) -> bool {
         let _ = std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")));
+        let ok = if self.opts.headless { save_frame(window, path) } else { self.capture_window(path) };
+        eprintln!("screenshot {} {}", path.display(), if ok { "saved" } else { "FAILED" });
+        ok
+    }
+
+    fn capture_window(&self, path: &Path) -> bool {
+        let Some(id) = self.window_id else { return false };
         let kind = if path.extension().is_some_and(|x| x == "jpg") { "-tjpg" } else { "-tpng" };
-        let ok = std::process::Command::new("screencapture")
+        std::process::Command::new("screencapture")
             .arg("-x")
             .arg("-o")
             .arg(kind)
             .arg(format!("-l{id}"))
             .arg(path)
             .status()
-            .is_ok_and(|s| s.success());
-        eprintln!("screenshot {} {}", path.display(), if ok { "saved" } else { "FAILED" });
-        ok
+            .is_ok_and(|s| s.success())
+    }
+
+    fn take_shots(&self, window: &Window, c: &mut Ctl) {
+        for shot in std::mem::take(&mut c.shots_due) {
+            let name = shot.path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+            if !self.screenshot(window, &shot.path) {
+                c.fails.push(format!("screenshot {name} failed"));
+                continue;
+            }
+            if let Some((rect, what)) = shot.spread {
+                let sd = luma_spread(&shot.path, rect);
+                c.check(sd > 8.0, format!("{what} (luma spread {sd:.1})"));
+            }
+            c.shots.push(std::fs::canonicalize(&shot.path).unwrap_or(shot.path));
+        }
     }
 
     pub fn wpt(&self, p: Vec3) -> Option<Vec2> {
@@ -349,14 +392,15 @@ impl Editor {
             }
             let s = self.script.get_or_insert_with(|| Script::new(PathBuf::from("target/shots")));
             s.frames += 1;
+            let frames = s.frames;
             if self.script_in_frame {
                 window.request_animation_frame();
             }
-            if s.frames == 40 {
-                self.screenshot(&path);
+            if frames == 40 {
+                self.screenshot(window, &path);
                 self.opts.shot = None;
                 if self.opts.exit {
-                    cx.quit();
+                    crate::app::quit(cx);
                 }
             }
             return;
@@ -376,6 +420,10 @@ impl Editor {
         if self.script_in_frame {
             window.request_animation_frame();
         }
+        if s.inflight.get() {
+            self.script = Some(s);
+            return;
+        }
         if s.wait > 0 {
             s.wait -= 1;
             self.script = Some(s);
@@ -384,15 +432,16 @@ impl Editor {
         if s.i >= s.steps.len() {
             self.finish_script(&mut s);
             self.script = Some(s);
-            cx.quit();
+            crate::app::quit(cx);
             return;
         }
         let (name, mut f) = std::mem::replace(&mut s.steps[s.i], ("", Box::new(|_, _| Flow::Next)));
         s.ctl.n += 1;
         s.timer_frames += !self.script_in_frame as u32;
         let flow = f(self, &mut s.ctl);
+        self.take_shots(window, &mut s.ctl);
         s.steps[s.i] = (name, f);
-        cx.notify();
+        let refresh = s.ctl.n == 1 || !matches!(flow, Flow::Wait);
         let elapsed = s.since.elapsed();
         let advance = match flow {
             Flow::Next => {
@@ -434,7 +483,7 @@ impl Editor {
                 s.ctl.fails.push(format!("{name}: {m}"));
                 s.ctl.say(format!("step {} \u{00b7} {name} \u{00b7} FAILED: {m}", s.i + 1));
                 let shot = s.ctl.dir.join(format!("failed-{:02}.png", s.i + 1));
-                if self.screenshot(&shot) {
+                if self.screenshot(window, &shot) {
                     s.ctl.shots.push(shot);
                 }
                 true
@@ -454,14 +503,20 @@ impl Editor {
         {
             let _ = c.wait();
         }
+        let inflight = s.inflight.clone();
         self.script = Some(s);
-        if !events.is_empty() {
-            cx.spawn_in(window, async move |_, cx| {
+        if !events.is_empty() || refresh {
+            inflight.set(true);
+            cx.spawn_in(window, async move |this, cx| {
                 let _ = cx.update(|window, cx| {
                     for e in events {
                         window.dispatch_event(e, cx);
                     }
                 });
+                inflight.set(false);
+                if refresh {
+                    let _ = this.update(cx, |_, cx| cx.notify());
+                }
             })
             .detach();
         }
@@ -562,7 +617,7 @@ fn build_e2e(s: &mut Script) {
             format!("simulated every tick ({} frames for {} ticks)", e.sim.frames.len(), e.doc.len),
         );
         c.say(format!("  race time at tick 0: {} ms; {} gates", e.race_ms0, e.gates.len()));
-        c.shot(e, "01-open-blank");
+        c.shot("01-open-blank");
         Flow::Next
     });
     s.add("frame the track (Home)", |e, c| {
@@ -573,7 +628,7 @@ fn build_e2e(s: &mut Script) {
         if !e.settled() || c.n < 5 {
             return Flow::Wait;
         }
-        c.shot(e, "02-camera-frame");
+        c.shot("02-camera-frame");
         Flow::Next
     });
     s.add("orbit (Alt+LMB drag)", |e, c| {
@@ -595,7 +650,7 @@ fn build_e2e(s: &mut Script) {
             format!("orbit: yaw {dy:+.4} rad for 240 pt right (expected \u{2212}1.32)"),
         );
         c.check((dp + 60.0 * 0.0055).abs() < 1e-3, format!("orbit: pitch {dp:+.4} rad for 60 pt up"));
-        c.shot(e, "03-camera-orbit");
+        c.shot("03-camera-orbit");
         Flow::Next
     });
     s.add("orbit (MMB drag)", |e, c| {
@@ -638,7 +693,7 @@ fn build_e2e(s: &mut Script) {
         let d2 = e.camera.goal.pivot.distance(c.v["pivot2"]);
         c.check(d1 > 1.0, format!("two-finger pan moved the pivot {d1:.1} m (no rotation)"));
         c.check(d2 > 1.0, format!("Shift+MMB pan moved the pivot {d2:.1} m"));
-        c.shot(e, "04-camera-pan");
+        c.shot("04-camera-pan");
         Flow::Next
     });
     s.add("dolly to the cursor (wheel, pinch)", |e, c| {
@@ -684,7 +739,7 @@ fn build_e2e(s: &mut Script) {
             stay.is_some_and(|d| d < 3.0),
             format!("the point under the cursor stays under it ({:.2} pt off)", stay.unwrap_or(f32::NAN)),
         );
-        c.shot(e, "05-camera-dolly");
+        c.shot("05-camera-dolly");
         Flow::Next
     });
     s.add("fly (hold RMB + W, E; wheel speed)", |e, c| {
@@ -721,7 +776,7 @@ fn build_e2e(s: &mut Script) {
                     format!("fly moved the eye {moved:.1} m at {:.0} m/s", e.camera.fly_speed),
                 );
                 perf_end(e, c, "fly (RMB held, WASD, mouse look)");
-                c.shot(e, "06-camera-fly");
+                c.shot("06-camera-fly");
                 Flow::Next
             }
         }
@@ -734,7 +789,7 @@ fn build_e2e(s: &mut Script) {
         2..=300 if !e.settled() || c.n < 10 => Flow::Wait,
         2..=300 => {
             c.check(e.camera.goal.pitch > 1.5, format!("top view: pitch {:.3} rad", e.camera.goal.pitch));
-            c.shot(e, "07-camera-top");
+            c.shot("07-camera-top");
             c.key("ctrl-shift-1");
             c.f.insert("bm", e.camera.goal.yaw as f64);
             c.n = 301;
@@ -823,7 +878,7 @@ fn build_e2e(s: &mut Script) {
         _ if secs() - c.f["t0"] < 1.5 => {
             if secs() - c.f["t0"] > 1.0 && !c.f.contains_key("shot") {
                 c.f.insert("shot", 1.0);
-                c.shot(e, "08-follow-playback-ghost");
+                c.shot("08-follow-playback-ghost");
             }
             Flow::Wait
         }
@@ -889,7 +944,7 @@ fn build_e2e(s: &mut Script) {
                     ms.is_some(),
                     format!("the run reaches it at {}", ms.map_or("-".into(), crate::fmt::fmt_ms)),
                 );
-                c.shot(e, "09-goal-gate");
+                c.shot("09-goal-gate");
                 Flow::Wait
             }
             _ if !e.search.running() && c.n < c.f["placed"] as u32 + 60 => Flow::Wait,
@@ -991,7 +1046,7 @@ fn build_e2e(s: &mut Script) {
                     y > c.f["y0"] + 0.5,
                     format!("lifted {:.2} m into the air with the handle", y - c.f["y0"]),
                 );
-                c.shot(e, "10-goal-point-lifted");
+                c.shot("10-goal-point-lifted");
                 Flow::Next
             }
         }
@@ -1072,7 +1127,7 @@ fn build_e2e(s: &mut Script) {
                     (p.angle_tol - 15.0).abs() < 1e-4,
                     format!("typed rotation tolerance: {}\u{00b0}", p.angle_tol),
                 );
-                c.shot(e, "11-goal-pose");
+                c.shot("11-goal-pose");
                 c.key("q");
                 Flow::Next
             }
@@ -1166,7 +1221,7 @@ fn build_e2e(s: &mut Script) {
                     e.spec.by_time && e.spec.seconds == 3.0,
                     format!("3 s typed into the budget ({} s)", e.spec.seconds),
                 );
-                c.shot(e, "12-search-objective");
+                c.shot("12-search-objective");
                 Flow::Next
             }
         }
@@ -1179,16 +1234,23 @@ fn build_e2e(s: &mut Script) {
         }
         if e.search.running() || c.n < 10 {
             let m = e.vcenter();
-            if c.n % 2 == 0 && c.n < 400 {
-                c.move_to(m, None, ALT);
-                c.down(m, MouseButton::Left, ALT, 1);
-                c.move_to(m + Vec2::new(3.0, 0.0), Some(MouseButton::Left), ALT);
-                c.up(m + Vec2::new(3.0, 0.0), MouseButton::Left, ALT, 1);
+            let at = |n: u32| m + Vec2::new((n % 120) as f32 * 1.5, 0.0);
+            if c.n == 2 {
+                c.move_to(at(2), None, ALT);
+                c.down(at(2), MouseButton::Left, ALT, 1);
+            } else if c.n > 2 && c.n < 400 {
+                c.move_to(at(c.n), Some(MouseButton::Left), ALT);
+            } else if c.n == 400 {
+                c.up(at(c.n), MouseButton::Left, ALT, 1);
             }
             if c.n == 120 {
-                c.shot(e, "13-search-running");
+                c.shot("13-search-running");
             }
             return Flow::Wait;
+        }
+        if (3..400).contains(&c.n) {
+            let m = e.vcenter() + Vec2::new((c.n % 120) as f32 * 1.5, 0.0);
+            c.up(m, MouseButton::Left, ALT, 1);
         }
         perf_end(e, c, "orbiting while the search runs (4 search threads)");
         let l = e.search.live.lock().unwrap();
@@ -1200,7 +1262,7 @@ fn build_e2e(s: &mut Script) {
             best.map_or("-".into(), |b| crate::optimize::metric(&b).text)
         ));
         c.check(n > 0, "at least one improving candidate (each verified by tas's fresh-runner replay)");
-        c.shot(e, "14-search-done");
+        c.shot("14-search-done");
         Flow::Next
     });
     s.add("preview a candidate, accept it", |e, c| {
@@ -1218,7 +1280,7 @@ fn build_e2e(s: &mut Script) {
                 c.f.insert("previewed", 1.0);
                 c.check(e.preview == Some(id), "selected candidate previews (ghost path, timeline diff)");
                 c.say(format!("  check: {}", e.checks.get(&id).cloned().unwrap_or_default()));
-                c.shot(e, "15-candidate-preview");
+                c.shot("15-candidate-preview");
                 c.f.insert("before", gate_goal(e).and_then(|(i, _)| e.reach.get(i)?.ms).unwrap_or(0) as f64);
                 if !c.click_id(&format!("acc-{id}")) {
                     return Flow::Fail("no Accept button".into());
@@ -1240,7 +1302,7 @@ fn build_e2e(s: &mut Script) {
                     matches!(e.doc.run_origin, crate::doc::Origin::Search(_)),
                     "the candidate is the run (undoable)",
                 );
-                c.shot(e, "16-candidate-accepted");
+                c.shot("16-candidate-accepted");
                 Flow::Next
             }
         }
@@ -1252,7 +1314,7 @@ fn build_e2e(s: &mut Script) {
         }
         2..=40 => Flow::Wait,
         41 => {
-            c.shot(e, "17-compare-previous");
+            c.shot("17-compare-previous");
             c.click_id("ghost-0");
             Flow::Wait
         }
@@ -1266,7 +1328,7 @@ fn build_e2e(s: &mut Script) {
         47..=70 => Flow::Wait,
         _ => {
             c.check(matches!(e.compare.1, crate::app::RunRef::Ghost(0)), "B is the replay ghost");
-            c.shot(e, "18-compare-ghost");
+            c.shot("18-compare-ghost");
             c.click_id("btab-0");
             Flow::Next
         }
@@ -1277,6 +1339,7 @@ fn build_e2e(s: &mut Script) {
         match c.n {
             1 => {
                 c.click(Vec2::new(e.tick_x(k), e.ruler_y()));
+                c.key("alt-1");
                 c.key("f");
                 Flow::Wait
             }
@@ -1297,7 +1360,7 @@ fn build_e2e(s: &mut Script) {
             }
             42..=120 if e.car_preview.is_none() => Flow::Wait,
             42..=120 => {
-                c.shot(e, "19-place-car-preview");
+                c.shot("19-place-car-preview");
                 c.click(c.v["at"].truncate());
                 c.n = 121;
                 Flow::Wait
@@ -1341,7 +1404,7 @@ fn build_e2e(s: &mut Script) {
                     .get(s.tick + 50)
                     .map_or(0.0, |f| Vec3::from(f.position()).distance(Vec3::from(s.pos)));
                 c.check(after > 5.0, format!("simulated from there: {after:.1} m in 0.5 s"));
-                c.shot(e, "20-simulate-from-start");
+                c.shot("20-simulate-from-start");
                 c.key("space");
                 Flow::Next
             }
@@ -1393,7 +1456,7 @@ fn build_e2e(s: &mut Script) {
                     .is_some_and(|f| Vec3::from(f.position()) == c.v["start"]),
                 "and simulated from it again",
             );
-            c.shot(e, "24-project-reloaded");
+            c.shot("24-project-reloaded");
             if let Some(dir) = e
                 .project_path
                 .as_ref()
@@ -1413,7 +1476,7 @@ fn build_e2e(s: &mut Script) {
         2..=8 => Flow::Wait,
         9 => {
             c.check(e.cheatsheet, "cheat sheet open");
-            c.shot(e, "25-cheatsheet");
+            c.shot("25-cheatsheet");
             c.key("escape");
             Flow::Wait
         }
@@ -1425,19 +1488,25 @@ fn build_e2e(s: &mut Script) {
             perf_start(e);
             Flow::Wait
         }
-        2..=240 => {
+        2 => {
             let m = e.vcenter();
             c.move_to(m, None, ALT);
             c.down(m, MouseButton::Left, ALT, 1);
-            c.move_to(m + Vec2::new(2.0, 0.0), Some(MouseButton::Left), ALT);
-            c.up(m + Vec2::new(2.0, 0.0), MouseButton::Left, ALT, 1);
+            Flow::Wait
+        }
+        3..=240 => {
+            let m = e.vcenter() + Vec2::new(((c.n - 2) % 120) as f32 * 2.0, 0.0);
+            c.move_to(m, Some(MouseButton::Left), ALT);
+            if c.n == 240 {
+                c.up(m, MouseButton::Left, ALT, 1);
+            }
             Flow::Wait
         }
         _ => {
             perf_end(e, c, "continuous orbit, whole track in view, idle simulation");
             e.sel = Sel::None;
             e.tool = Tool::Select;
-            c.shot(e, "26-overview");
+            c.shot("26-overview");
             Flow::Next
         }
     });
@@ -1480,8 +1549,7 @@ fn build_smoke(s: &mut Script) {
             e.sim.frames.len() == e.doc.len + 1,
             format!("simulated every tick ({} frames for {} ticks)", e.sim.frames.len(), e.doc.len),
         );
-        let sd = c.rendered(e, "smoke-1-open");
-        c.check(sd > 8.0, format!("the viewport shows the track (luma spread {sd:.1})"));
+        c.rendered(e, "smoke-1-open", "the viewport shows the track");
         Flow::Next
     });
     s.add("import a replay's inputs (\u{2318}I)", |e, c| match stage(c) {
@@ -1667,8 +1735,7 @@ fn build_smoke(s: &mut Script) {
                         after.map_or("-".into(), crate::fmt::fmt_ms)
                     ),
                 );
-                let sd = c.rendered(e, "smoke-2-accepted");
-                c.check(sd > 8.0, format!("the viewport still renders (luma spread {sd:.1})"));
+                c.rendered(e, "smoke-2-accepted", "the viewport still renders");
                 Flow::Next
             }
             None => Flow::Wait,

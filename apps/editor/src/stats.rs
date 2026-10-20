@@ -28,6 +28,12 @@ impl Series {
     }
 }
 
+pub fn thread_cpu_ms() -> f32 {
+    let mut t = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut t) };
+    t.tv_sec as f32 * 1e3 + t.tv_nsec as f32 / 1e6
+}
+
 #[derive(Default)]
 pub struct Stats {
     last_paint: Option<Instant>,

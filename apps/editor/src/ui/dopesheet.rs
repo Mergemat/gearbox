@@ -467,7 +467,6 @@ impl Editor {
                 this.update(cx, |e, _| {
                     e.tl.bounds = b;
                     e.lanes = b;
-                    e.ui_frame_done();
                 });
                 let t = this.clone();
                 let h = hb.clone();

@@ -14,6 +14,8 @@ mod headless;
 mod lab;
 mod mapcards;
 mod materials;
+#[cfg(feature = "headless")]
+mod offscreen;
 mod optimize;
 mod picker;
 mod project;
@@ -81,12 +83,19 @@ fn parse() -> Result<Options> {
             "--smoke" => o.smoke = true,
             "--game" => o.game = Some(PathBuf::from(val()?)),
             "--record" => o.record = Some(PathBuf::from(val()?)),
+            "--headless" => o.headless = true,
             s if s.starts_with("--") => bail!("unknown option {s}"),
             _ => o.map = Some(PathBuf::from(a)),
         }
     }
     if o.script.is_some() && o.map.is_none() && o.project.is_none() {
         bail!("--script needs a map or --project");
+    }
+    if o.headless && (o.script.is_none() && o.shot.is_none() || o.record.is_some()) {
+        bail!("--headless runs --script or --shot, without --record");
+    }
+    if o.headless && cfg!(not(feature = "headless")) {
+        bail!("--headless needs the editor built with --features headless");
     }
     Ok(o)
 }
@@ -132,7 +141,7 @@ fn main() -> Result<()> {
     let opts = parse()?;
     let game = match gearbox_packs::install::Game::locate(opts.game.as_deref()) {
         Ok(game) => Some(game),
-        Err(e) if opts.game.is_some() || opts.script.is_some() => return Err(e),
+        Err(e) if opts.game.is_some() || opts.script.is_some() || opts.headless => return Err(e),
         Err(_) => None,
     };
     let home = match &opts.script {
@@ -149,6 +158,10 @@ fn main() -> Result<()> {
     let mut renderer = Renderer::new(gpu, composite, theme::rgb8(theme::BG));
     renderer.pipelined = !opts.sync;
     let scene = scene::Scene::new(renderer);
+    #[cfg(feature = "headless")]
+    if opts.headless {
+        return offscreen::run(opts, game.context("no game")?, home, scene);
+    }
     let (opened_tx, opened_rx) = futures::channel::mpsc::unbounded();
     let application = gpui_platform::application().with_assets(theme_icons::Icons);
     application.on_open_urls(move |urls| {
