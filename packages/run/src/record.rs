@@ -20,7 +20,7 @@ pub struct Record {
     pub checkpoints_ms: Vec<i32>,
     pub player: Option<String>,
     pub build: Option<String>,
-    analog_steer_limits: Vec<f32>,
+    steer_limits: Vec<f32>,
 }
 
 #[derive(Debug)]
@@ -83,7 +83,7 @@ impl Record {
         let countdown = usize::try_from((inputs.start_offset_ms - t0) / 10)?;
         let keyboard = inputs.ticks.iter().all(|tick| tick.steer == 0 || tick.steer.unsigned_abs() == 127);
         let limits = steer_limits(&inputs.state_words, inputs.ticks.len());
-        let analog_steer_limits = if keyboard {
+        let steer_limits = if keyboard {
             Vec::new()
         } else {
             std::iter::repeat_n(1.0, countdown).chain(limits.iter().copied()).collect()
@@ -103,7 +103,7 @@ impl Record {
             checkpoints_ms: ghost.checkpoints_ms.iter().flatten().copied().collect(),
             player: ghost.nickname.clone().or_else(|| ghost.login.clone()),
             build: ghost.exe_version.clone(),
-            analog_steer_limits,
+            steer_limits,
         })
     }
 
@@ -114,10 +114,7 @@ impl Record {
     }
 
     pub fn open(&self, map: &Map, packs: &PackSet) -> Result<Session> {
-        let mut session =
-            gearbox_world::open(map, packs, OpenOptions { t0: self.run.t0, seed: self.run.seed, car: None })?;
-        std::sync::Arc::make_mut(&mut session.config).analog_steer_limits = self.analog_steer_limits.clone();
-        Ok(session)
+        gearbox_world::open(map, packs, OpenOptions { t0: self.run.t0, seed: self.run.seed, car: None })
     }
 
     pub fn drive(&self, map: &Map, packs: &PackSet) -> Result<Driven> {
@@ -128,7 +125,11 @@ impl Record {
         session.seed = self.run.seed;
         let last = self.run.controls.last().copied().unwrap_or_default();
         let finish = |s: &Session| s.race().and_then(|r| r.finish).map(|t| t as i32);
-        for &c in self.run.controls.iter().chain(std::iter::repeat_n(&last, OVERRUN_TICKS)) {
+        let controls = self.run.controls.iter().chain(std::iter::repeat_n(&last, OVERRUN_TICKS));
+        for (tick, &c) in controls.enumerate() {
+            if let Some(&limit) = self.steer_limits.get(tick) {
+                session.steer_limit = limit;
+            }
             session.step(c);
             if finish(&session).is_some() {
                 break;
@@ -172,7 +173,7 @@ mod tests {
             checkpoints_ms: vec![],
             player: None,
             build: Some(build.into()),
-            analog_steer_limits: Vec::new(),
+            steer_limits: Vec::new(),
         }
     }
 

@@ -1,5 +1,5 @@
 use super::{Vehicle, spawn, vis};
-use crate::{Iso, Mat3, Quat, dyna::BodyHandle, session::Session};
+use crate::{Iso, Mat3, Quat, Vec3, dyna::BodyHandle, session::Session};
 
 impl Session {
     pub(crate) fn transform_car(&mut self, now: u32) {
@@ -14,11 +14,10 @@ impl Session {
             let height = (tuning.transform_suspension_length - tuning.transform_height_offset)
                 - (old_tuning.transform_suspension_length - old_tuning.transform_height_offset);
             let rotation = Mat3::from_quat(self.vehicle.quat);
-            let rows = rotation.rows;
-            let mut pose = Iso::new(rotation, self.vehicle.pos);
-            pose.pos.x += (height * rows[0].y + rows[0].x * 0.0) + rows[0].z * 0.0;
-            pose.pos.y += (height * rows[1].y + rows[1].x * 0.0) + rows[1].z * 0.0;
-            pose.pos.z += (height * rows[2].y + rows[2].x * 0.0) + rows[2].z * 0.0;
+            let pose = Iso::new(
+                rotation,
+                self.vehicle.pos + rotation.transform_y_first(Vec3::new(0.0, height, 0.0)),
+            );
             let previous = std::mem::take(&mut self.vehicle);
             let shape = previous.shape.expect("vehicle collision shape");
             let compound = shape.compound().expect("vehicle collision compound");

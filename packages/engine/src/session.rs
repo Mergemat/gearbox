@@ -63,7 +63,6 @@ pub struct VehicleModel {
 #[derive(Clone, Debug)]
 pub struct SessionConfig {
     pub models: [Option<VehicleModel>; 4],
-    pub analog_steer_limits: Vec<f32>,
     pub manager: usize,
     pub scene: usize,
     pub recent_event_duration: u32,
@@ -91,6 +90,7 @@ pub struct Session {
     pub rng: u32,
     pub clock: Clock,
     pub seed: Option<u32>,
+    pub steer_limit: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -98,17 +98,8 @@ pub struct Savestate(Session);
 
 impl Session {
     pub fn step(&mut self, mut controls: Controls) {
-        let index = (self.clock.now.wrapping_sub(race::EPOCH_MS) / 10) as usize;
-        if let Some(&limit) = self.config.analog_steer_limits.get(index)
-            && self
-                .config
-                .model(self.vehicle.model_choice)
-                .assets
-                .tuning
-                .car_model_kind()
-                .uses_legacy_gearbox()
-        {
-            controls.steer *= limit;
+        if self.config.model(self.vehicle.model_choice).assets.tuning.car_model_kind().uses_legacy_gearbox() {
+            controls.steer *= self.steer_limit;
         }
         self.tick(self.clock.now, controls, self.seed);
         self.clock.now += 10;

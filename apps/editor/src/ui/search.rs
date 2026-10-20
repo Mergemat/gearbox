@@ -155,12 +155,7 @@ impl Editor {
         let parts = self.search_ctx();
         let (reach, wps) = (&parts.0, &parts.1);
         let w = |k: usize| wps.get(k.min(wps.len().saturating_sub(1))).copied().unwrap_or(0) as usize;
-        let ctx = optimize::Ctx {
-            goals: &self.doc.goals,
-            race_ms0: self.race_ms0,
-            reach,
-            waypoints_at: &w,
-        };
+        let ctx = optimize::Ctx { goals: &self.doc.goals, race_ms0: self.race_ms0, reach, waypoints_at: &w };
         let sentence = self.spec.sentence(&ctx);
         let constraint = self.spec.constraint_sentence(&ctx);
         let semantics = self.spec.semantics();

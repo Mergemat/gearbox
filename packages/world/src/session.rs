@@ -54,6 +54,7 @@ pub fn open(map: &gearbox_gbx::Map, packs: &PackSet, options: OpenOptions) -> Re
         effects,
         clock,
         seed: options.seed,
+        steer_limit: 1.0,
     })
 }
 
@@ -173,7 +174,6 @@ fn load_models(
 fn session_config(models: [Option<VehicleModel>; 4], rules: &RaceRules, initial_pose: Iso) -> SessionConfig {
     SessionConfig {
         models,
-        analog_steer_limits: Vec::new(),
         manager: 0,
         scene: 0,
         recent_event_duration: RECENT_EVENT_DURATION_MS,
