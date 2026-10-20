@@ -14,6 +14,14 @@ pub struct BlockSpawn {
     pub yaw_pitch_roll: [f32; 3],
 }
 
+impl BlockSpawn {
+    fn pose(self) -> [u32; 12] {
+        let [yaw, pitch, roll] = self.yaw_pitch_roll;
+        let rotation = crate::reader_math::quat_matrix(crate::reader_math::angles_quat(yaw, pitch, roll));
+        std::array::from_fn(|i| if i < 9 { rotation[i] } else { self.position[i - 9] }.to_bits())
+    }
+}
+
 pub fn block_spawn(file: &[u8], path: &str, ground: bool, index: usize) -> Result<BlockSpawn> {
     let buf = crate::embedded::plain_gbx(file)?;
     let layout = nodes::layout(&buf)?;
@@ -149,6 +157,9 @@ pub fn block_item_waypoint(file: &[u8], ground: bool, variant: usize) -> Result<
     });
     let mobil = selected.next().context("custom block waypoint mobil missing")?;
     ensure!(selected.next().is_none(), "multiple custom block mobils for a waypoint");
-    let pose = mobil.crystal.map(|source| crystal::spawn(&ctx, source)).transpose()?.flatten();
+    let pose = match mobil.spawn {
+        Some(spawn) => Some(spawn.pose()),
+        None => mobil.crystal.map(|source| crystal::spawn(&ctx, source)).transpose()?.flatten(),
+    };
     Ok((block.archetype, pose))
 }

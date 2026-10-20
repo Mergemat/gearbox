@@ -6,6 +6,7 @@ pub struct Mobil {
     pub crystal: Option<usize>,
     pub object: Option<NodeLink<StaticObject>>,
     pub trigger: Option<NodeLink<crate::surface::Surface>>,
+    pub spawn: Option<crate::spawn::BlockSpawn>,
 }
 pub struct BlockItem {
     pub archetype: String,
@@ -44,7 +45,7 @@ pub fn read(ctx: &Ctx<'_>, start: usize) -> Result<BlockItem> {
             }
             NodeLink::External(_) => anyhow::bail!("external block crystal"),
         };
-        mobils.push(Mobil { id, crystal, object: None, trigger: None });
+        mobils.push(Mobil { id, crystal, object: None, trigger: None, spawn: None });
     }
     let compiled = version >= 1 && r.bool8()?;
     if compiled {
@@ -63,7 +64,8 @@ pub fn read(ctx: &Ctx<'_>, start: usize) -> Result<BlockItem> {
                 })?);
             }
             if flags & 4 != 0 {
-                r.skip(24)?;
+                mobil.spawn =
+                    Some(crate::spawn::BlockSpawn { position: r.vec3()?, yaw_pitch_roll: r.vec3()? });
             }
             if flags & 8 != 0 {
                 r.skip(12)?;
