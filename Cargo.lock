@@ -1785,6 +1785,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gearbox-net"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gearbox-engine",
+ "gearbox-search",
+]
+
+[[package]]
 name = "gearbox-packs"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,19 @@
+[package]
+name = "gearbox-net"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
+description = "Driving networks: what a car sees, and running a trained network on it"
+
+[dependencies]
+anyhow = "1"
+gearbox-engine = { path = "../engine" }
+gearbox-search = { path = "../search" }
+
+[lints]
+workspace = true
