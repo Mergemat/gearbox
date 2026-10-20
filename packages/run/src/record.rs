@@ -20,6 +20,7 @@ pub struct Record {
     pub checkpoints_ms: Vec<i32>,
     pub player: Option<String>,
     pub build: Option<String>,
+    analog_steer_limits: Vec<f32>,
 }
 
 #[derive(Debug)]
@@ -80,15 +81,17 @@ impl Record {
 
         let t0 = if inputs.start_offset_ms >= 0 { COUNTDOWN_MS } else { inputs.start_offset_ms };
         let countdown = usize::try_from((inputs.start_offset_ms - t0) / 10)?;
-        let keyboard = inputs.ticks.iter().all(|t| t.steer == 0 || t.steer.unsigned_abs() == 127);
-        let limits = match keyboard {
-            true => steer_limits(&inputs.state_words, inputs.ticks.len()),
-            false => vec![1.0; inputs.ticks.len()],
+        let keyboard = inputs.ticks.iter().all(|tick| tick.steer == 0 || tick.steer.unsigned_abs() == 127);
+        let limits = steer_limits(&inputs.state_words, inputs.ticks.len());
+        let analog_steer_limits = if keyboard {
+            Vec::new()
+        } else {
+            std::iter::repeat_n(1.0, countdown).chain(limits.iter().copied()).collect()
         };
         let driven = inputs.ticks.iter().zip(limits).map(|(t, limit)| Controls {
             gas: f32::from(u8::from(t.gas)),
             brake: f32::from(u8::from(t.brake)),
-            steer: f32::from(t.steer) / 127.0 * limit,
+            steer: f32::from(t.steer) / 127.0 * if keyboard { limit } else { 1.0 },
         });
         Ok(Self {
             run: Run {
@@ -100,6 +103,7 @@ impl Record {
             checkpoints_ms: ghost.checkpoints_ms.iter().flatten().copied().collect(),
             player: ghost.nickname.clone().or_else(|| ghost.login.clone()),
             build: ghost.exe_version.clone(),
+            analog_steer_limits,
         })
     }
 
@@ -110,7 +114,10 @@ impl Record {
     }
 
     pub fn open(&self, map: &Map, packs: &PackSet) -> Result<Session> {
-        gearbox_world::open(map, packs, OpenOptions { t0: self.run.t0, seed: self.run.seed, car: None })
+        let mut session =
+            gearbox_world::open(map, packs, OpenOptions { t0: self.run.t0, seed: self.run.seed, car: None })?;
+        std::sync::Arc::make_mut(&mut session.config).analog_steer_limits = self.analog_steer_limits.clone();
+        Ok(session)
     }
 
     pub fn drive(&self, map: &Map, packs: &PackSet) -> Result<Driven> {
@@ -165,6 +172,7 @@ mod tests {
             checkpoints_ms: vec![],
             player: None,
             build: Some(build.into()),
+            analog_steer_limits: Vec::new(),
         }
     }
 

@@ -1248,9 +1248,12 @@ impl Archive<'_> {
                 self.skip_curve()?;
             }
             0x090ed0b0 => {
-                self.version(1)?;
-                self.skip()?;
-                self.skip()?;
+                let version = self.word()?;
+                ensure!(version <= 1, "car transform tuning version {version}");
+                self.tunings[t].transform_suspension_length = self.float()?;
+                if version >= 1 {
+                    self.tunings[t].transform_height_offset = self.float()?;
+                }
             }
             _ => return Ok(false),
         }
@@ -1260,6 +1263,8 @@ impl Archive<'_> {
 
 fn constructed() -> (Tuning, FluidTuning) {
     let tuning = Tuning {
+        transform_suspension_length: 0.0,
+        transform_height_offset: 0.0,
         effect_thrust: 1.5,
         effect_speed: 1.5,
         effect_gravity: 1.5,

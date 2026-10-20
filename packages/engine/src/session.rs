@@ -53,16 +53,30 @@ impl VehicleAssets {
 }
 
 #[derive(Clone, Debug)]
-pub struct SessionConfig {
+pub struct VehicleModel {
     pub assets: VehicleAssets,
+    pub spawn: spawn::Assets,
+    pub body: crate::dyna::DynaModel,
+    pub collision: crate::collision::CompoundInstance,
+}
+
+#[derive(Clone, Debug)]
+pub struct SessionConfig {
+    pub models: [Option<VehicleModel>; 4],
+    pub analog_steer_limits: Vec<f32>,
     pub manager: usize,
     pub scene: usize,
     pub recent_event_duration: u32,
     pub rules_start: u32,
     pub options: arena::ArenaOptions,
     pub grid: ByteGrid,
-    pub spawn_assets: spawn::Assets,
     pub initial_pose: Iso,
+}
+
+impl SessionConfig {
+    pub fn model(&self, choice: u8) -> &VehicleModel {
+        self.models[choice as usize].as_ref().expect("session car model")
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -83,7 +97,19 @@ pub struct Session {
 pub struct Savestate(Session);
 
 impl Session {
-    pub fn step(&mut self, controls: Controls) {
+    pub fn step(&mut self, mut controls: Controls) {
+        let index = (self.clock.now.wrapping_sub(race::EPOCH_MS) / 10) as usize;
+        if let Some(&limit) = self.config.analog_steer_limits.get(index)
+            && self
+                .config
+                .model(self.vehicle.model_choice)
+                .assets
+                .tuning
+                .car_model_kind()
+                .uses_legacy_gearbox()
+        {
+            controls.steer *= limit;
+        }
         self.tick(self.clock.now, controls, self.seed);
         self.clock.now += 10;
         self.clock.race_ms += 10;

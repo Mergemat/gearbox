@@ -66,6 +66,8 @@ impl Tuning {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Tuning {
+    pub transform_suspension_length: f32,
+    pub transform_height_offset: f32,
     pub contact_volume_inner_scale: f32,
     pub reactor_turbo_thrust: f32,
     pub hover_forces_enabled: u32,

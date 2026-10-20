@@ -9,7 +9,7 @@ use gearbox_engine::{
     Iso, State, World, arena,
     dyna::Dyna,
     race::RaceRules,
-    session::{Clock, Session, SessionConfig, VehicleAssets},
+    session::{Clock, Session, SessionConfig, VehicleAssets, VehicleModel},
     vehicle::{Vehicle, spawn, vis},
 };
 use gearbox_packs::packs::PackSet;
@@ -37,10 +37,12 @@ pub fn open(map: &gearbox_gbx::Map, packs: &PackSet, options: OpenOptions) -> Re
     let gameplay = gameplay::build(map, &map_assets, clock.start, clock.now)?;
     let (mut world, mut state, mut dyna) = build_world(map, &map_assets, clock.start)?;
     let car = load_car(map, packs, options.car, &mut world, &mut state)?;
-    let (vehicle, effects, assets) =
+    let (mut vehicle, effects, assets) =
         spawn_car(&car, &gameplay, clock.now, &mut world, &mut state, &mut dyna)?;
+    vehicle.model_choice = car.car as u8;
+    let models = load_models(packs, car, assets, &mut world, &mut state)?;
     state.scene.push(gameplay.scene);
-    let config = session_config(assets, car, &gameplay.settings, gameplay.initial_pose);
+    let config = session_config(models, &gameplay.settings, gameplay.initial_pose);
     Ok(Session {
         world: Arc::new(world),
         state,
@@ -89,13 +91,7 @@ fn spawn_car(
     state: &mut State,
     dyna: &mut Dyna,
 ) -> Result<(Vehicle, spawn::EffectRing, VehicleAssets)> {
-    let assets = VehicleAssets {
-        tuning: car.tuning().clone(),
-        geometry: car.geometry.clone(),
-        fluid: car.fluid.clone(),
-        impacts: car.impacts(),
-        post: car.post_model(),
-    };
+    let assets = vehicle_assets(car);
     let mut visuals = vis::Refresh {
         config: vis::Config {
             tuning: &assets.tuning,
@@ -114,21 +110,76 @@ fn spawn_car(
     Ok((vehicle, effects, assets))
 }
 
-fn session_config(
+fn vehicle_assets(car: &CarAssets) -> VehicleAssets {
+    VehicleAssets {
+        tuning: car.tuning().clone(),
+        geometry: car.geometry.clone(),
+        fluid: car.fluid.clone(),
+        impacts: car.impacts(),
+        post: car.post_model(),
+    }
+}
+
+fn load_models(
+    packs: &PackSet,
+    initial: CarAssets,
     assets: VehicleAssets,
-    car: CarAssets,
-    rules: &RaceRules,
-    initial_pose: Iso,
-) -> SessionConfig {
-    SessionConfig {
+    world: &mut World,
+    state: &mut State,
+) -> Result<[Option<VehicleModel>; 4]> {
+    let mut needed = [false; 4];
+    for gate in &world.gate_record {
+        if (20..=23).contains(&gate.effect) {
+            needed[(gate.effect - 20) as usize] = true;
+        }
+    }
+    for shape in &world.statics.shapes {
+        match &shape.geometry {
+            gearbox_engine::static_world::Geometry::Mesh(mesh) => {
+                for triangle in &mesh.triangles {
+                    if (20..=23).contains(&triangle.gameplay) {
+                        needed[(triangle.gameplay - 20) as usize] = true;
+                    }
+                }
+            }
+            gearbox_engine::static_world::Geometry::Convex(convex) => {
+                let effect = convex.material >> 8;
+                if (20..=23).contains(&effect) {
+                    needed[(effect - 20) as usize] = true;
+                }
+            }
+            gearbox_engine::static_world::Geometry::Compound(_) => {}
+        }
+    }
+    let model = |car: CarAssets, assets, state: &State| VehicleModel {
         assets,
+        spawn: car.spawn,
+        body: car.body,
+        collision: state.compound_instance[car.template.compound().unwrap().index()].clone(),
+    };
+    let mut models = std::array::from_fn(|_| None);
+    let choice = initial.car as usize;
+    models[choice] = Some(model(initial, assets, state));
+    for car in Car::ALL {
+        if needed[car as usize] && models[car as usize].is_none() {
+            let loaded = CarAssets::load(packs, car, world, state)?;
+            let assets = vehicle_assets(&loaded);
+            models[car as usize] = Some(model(loaded, assets, state));
+        }
+    }
+    Ok(models)
+}
+
+fn session_config(models: [Option<VehicleModel>; 4], rules: &RaceRules, initial_pose: Iso) -> SessionConfig {
+    SessionConfig {
+        models,
+        analog_steer_limits: Vec::new(),
         manager: 0,
         scene: 0,
         recent_event_duration: RECENT_EVENT_DURATION_MS,
         rules_start: rules.start,
         options: arena::ArenaOptions(rules.flags),
         grid: Default::default(),
-        spawn_assets: car.spawn,
         initial_pose,
     }
 }

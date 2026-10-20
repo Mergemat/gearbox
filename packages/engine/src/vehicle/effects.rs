@@ -192,7 +192,7 @@ pub fn surface_effects(
         if vehicle.find_surface_contact(effect, &[], &mut SurfaceContact::default())
             && ControlFlags(vehicle.control_flags).phase() == ControlPhase::Racing
         {
-            todo!("gameplay trigger");
+            vehicle.pending_car_changes.push(effect - 20);
         }
     }
     if vehicle.level_power_scale == 1.0 {

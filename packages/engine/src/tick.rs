@@ -22,6 +22,7 @@ impl Session {
         self.after_dyna();
         self.post(now);
         self.race_contacts(now, &frames);
+        self.transform_car(now);
         self.state.scene.insert(self.config.scene, scene);
     }
 
@@ -74,13 +75,14 @@ impl Session {
     }
 
     fn step_context(&mut self, now: u32) -> step::StepCtx<'_> {
+        let model = self.config.model(self.vehicle.model_choice);
         step::StepCtx {
             world: Arc::make_mut(&mut self.world),
             state: &mut self.state,
             manager: self.config.manager,
             dyna: &mut self.dyna,
             vehicle: &mut self.vehicle,
-            assets: self.config.assets.view(),
+            assets: model.assets.view(),
             tick: now,
             dt: DT,
             ghost_contacts: 0,
@@ -108,10 +110,11 @@ impl Session {
     }
 
     fn post(&mut self, now: u32) {
+        let model = self.config.model(self.vehicle.model_choice);
         let mut context = post::Context {
-            tuning: &self.config.assets.tuning,
-            geometry: &self.config.assets.geometry,
-            model: Some(&self.config.assets.post),
+            tuning: &model.assets.tuning,
+            geometry: &model.assets.geometry,
+            model: Some(&model.assets.post),
             dyna: &self.dyna,
             water: crate::water::WaterManager::new(&self.world.water),
             tick: now,
@@ -124,10 +127,11 @@ impl Session {
     }
 
     fn countdown(&mut self, now: u32) {
+        let model = self.config.model(self.vehicle.model_choice);
         let mut visuals = vis::Refresh {
             config: vis::Config {
-                tuning: &self.config.assets.tuning,
-                geometry: &self.config.assets.geometry,
+                tuning: &model.assets.tuning,
+                geometry: &model.assets.geometry,
                 tick: now,
                 recent_event_duration: self.config.recent_event_duration,
             },
@@ -136,7 +140,7 @@ impl Session {
             world: &self.world,
             state: &mut self.state,
             dyna: &mut self.dyna,
-            assets: &self.config.spawn_assets,
+            assets: &model.spawn,
             visuals: &mut visuals,
             effects: &mut self.effects,
             initial_pose: self.config.initial_pose,

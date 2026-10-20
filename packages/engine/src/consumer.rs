@@ -100,12 +100,13 @@ impl Session {
     }
 
     pub fn place_car(&mut self, pose: Iso, velocity: Vec3, angular: Vec3, reset_contacts: bool) {
+        let model = self.config.model(self.vehicle.model_choice);
         let handle = BodyHandle(self.vehicle.body);
         assert_ne!(handle.0, u32::MAX, "vehicle has no active body");
         let mut visuals = vis::Refresh {
             config: vis::Config {
-                tuning: &self.config.assets.tuning,
-                geometry: &self.config.assets.geometry,
+                tuning: &model.assets.tuning,
+                geometry: &model.assets.geometry,
                 tick: self.state.scene[self.config.scene].time,
                 recent_event_duration: self.config.recent_event_duration,
             },
@@ -113,7 +114,7 @@ impl Session {
         if reset_contacts {
             spawn::respawn(
                 &mut self.vehicle,
-                &self.config.spawn_assets,
+                &model.spawn,
                 &mut self.dyna,
                 pose,
                 spawn::Reset::FULL,
@@ -136,7 +137,7 @@ impl Session {
             }
             self.dyna.clear_acc(handle);
             self.vehicle.world_inverse_inertia = spawn::post_product(
-                spawn::transpose_product(pose.rot, self.config.spawn_assets.inverse_inertia),
+                spawn::transpose_product(pose.rot, model.spawn.inverse_inertia),
                 pose.rot,
             );
         }

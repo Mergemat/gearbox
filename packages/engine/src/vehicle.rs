@@ -11,6 +11,7 @@ pub mod maintenance;
 pub mod model;
 pub mod post;
 pub mod step;
+mod transform;
 pub mod tuning;
 pub mod vis;
 pub use effects::surface_effects;
@@ -216,6 +217,7 @@ pub struct Vehicle {
     pub model_key: u32,
     pub control_flags: u32,
     pub model_choice: u8,
+    pub pending_car_changes: Vec<u8>,
     pub control_entity: u32,
     pub race_start: u32,
     pub frozen_until: u32,
