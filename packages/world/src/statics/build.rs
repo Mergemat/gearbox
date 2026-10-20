@@ -25,7 +25,9 @@ pub fn static_items(map: &gearbox_gbx::Map, src: &mut PackSource<'_>) -> Result<
     let blocks: Vec<&gearbox_gbx::map::Block> = map.blocks.iter().chain(&map.baked_blocks).collect();
     let mut next_waypoint = 0u32;
     for (i, (block, placed)) in blocks.iter().zip(crate::statics::mapworld::blocks(map, src)?).enumerate() {
-        let waypoint = (i < map.blocks.len() && block.waypoint.is_some()).then(|| {
+        let has_waypoint =
+            i < map.blocks.len() && crate::gameplay::block_waypoint(block, src.assets, &src.env).is_some();
+        let waypoint = has_waypoint.then(|| {
             let id = next_waypoint;
             next_waypoint += 1;
             id

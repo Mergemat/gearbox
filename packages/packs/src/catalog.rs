@@ -17,6 +17,8 @@ pub struct Block {
     pub name: Option<String>,
     pub path: String,
     pub class_id: u32,
+    #[serde(default)]
+    pub waypoint: Option<String>,
     pub variants: Vec<Variant>,
     pub material_modifier: Option<String>,
     pub material_modifier2: Option<String>,
@@ -200,6 +202,7 @@ impl Crawler<'_> {
             .min_by_key(|(p, _)| (p.contains("\\Deprecated\\"), *p))
             .ok_or_else(|| anyhow::anyhow!("custom block archetype {} not extracted", item.archetype))?;
         let mut block = archetype.clone();
+        block.waypoint = crate::spawn::waypoint_tag(crate::spawn::item_waypoint_type(&buf, &l)?);
         let (archetype_buf, archetype_layout) = self.read(&archetype.path)?;
         let original = crate::blockinfo::read_block_info(&archetype_buf, &archetype_layout, &archetype.path)?;
         let customized: std::collections::HashSet<_> =
@@ -949,6 +952,7 @@ pub fn crawl(set: &PackSet, paks: &[&str]) -> Result<Catalog> {
                 name: b.name,
                 path: path.clone(),
                 class_id: b.class_id,
+                waypoint: b.waypoint,
                 variants: b
                     .variants
                     .into_iter()

@@ -22,11 +22,12 @@ pub struct Gameplay {
 
 pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, start: u32, now: u32) -> Result<Gameplay> {
     let catalog = assets.geometry(map)?;
+    let environment = crate::statics::packs::environment(map).map_err(anyhow::Error::msg)?;
     let mut landmarks = Vec::new();
     for block in &map.blocks {
-        let Some(waypoint) = &block.waypoint else { continue };
+        let Some(waypoint) = block_waypoint(block, &assets.assets, environment) else { continue };
         let pose = crate::statics::block_pose(map, block, &assets.assets, assets.packs, &catalog)?;
-        landmarks.push(landmark(waypoint, pose)?);
+        landmarks.push(landmark(&waypoint, pose)?);
     }
     for item in &map.items {
         let Some(waypoint) = &item.waypoint else { continue };
@@ -61,6 +62,17 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, start: u32, now: u3
         ghost: Default::default(),
         spawn,
         initial_pose,
+    })
+}
+
+pub(crate) fn block_waypoint(
+    block: &gearbox_gbx::map::Block,
+    assets: &gearbox_packs::assets::Assets,
+    environment: &str,
+) -> Option<gearbox_gbx::map::Waypoint> {
+    block.waypoint.clone().or_else(|| {
+        let tag = assets.block_in(&block.name, environment)?.waypoint.clone()?;
+        Some(gearbox_gbx::map::Waypoint { tag: Some(tag), order: 0 })
     })
 }
 

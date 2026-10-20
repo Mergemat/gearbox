@@ -70,28 +70,45 @@ pub fn item_landmark(file: &[u8]) -> Result<[u32; 12]> {
 
 const IDENTITY: [u32; 12] = [1.0f32.to_bits(), 0, 0, 0, 1.0f32.to_bits(), 0, 0, 0, 1.0f32.to_bits(), 0, 0, 0];
 
+pub(crate) fn waypoint_tag(kind: u32) -> Option<String> {
+    let tag = match kind {
+        0 => "Spawn",
+        1 => "Goal",
+        2 => "Checkpoint",
+        4 => "StartFinish",
+        5 => "Dispenser",
+        _ => return None,
+    };
+    Some(tag.into())
+}
+
+pub(crate) fn item_waypoint_type(buf: &[u8], layout: &nodes::Layout) -> Result<u32> {
+    let chunk = 0x2e00_201fu32.to_le_bytes();
+    let chunks: Vec<_> = buf[layout.head.body_start..]
+        .windows(4)
+        .enumerate()
+        .filter(|(_, w)| *w == chunk)
+        .map(|(i, _)| layout.head.body_start + i)
+        .collect();
+    ensure!(chunks.len() == 1, "expected one item waypoint chunk");
+    let mut r = Reader::new(buf);
+    r.skip(chunks[0] + 4)?;
+    if r.peek_u32() == Some(0x534b_4950) {
+        r.skip(8)?;
+    }
+    let version = r.u32()?;
+    ensure!(matches!(version, 10..=13), "unsupported item waypoint chunk version {version}");
+    let kind = r.u32()?;
+    ensure!(kind <= 5, "item waypoint type {kind}");
+    Ok(kind)
+}
+
 fn item_waypoint(file: &[u8]) -> Result<[u32; 12]> {
     let buf = crate::embedded::plain_gbx(file)?;
     let layout = nodes::layout(&buf)?;
     let models: Vec<_> = layout.nodes.iter().filter(|n| n.class_id == 0x0917_a000).collect();
     if models.is_empty() && layout.head.class_id == 0x2e00_2000 {
-        let chunk = 0x2e00_201fu32.to_le_bytes();
-        let chunks: Vec<_> = buf[layout.head.body_start..]
-            .windows(4)
-            .enumerate()
-            .filter(|(_, w)| *w == chunk)
-            .map(|(i, _)| layout.head.body_start + i)
-            .collect();
-        ensure!(chunks.len() == 1, "expected one item waypoint chunk");
-        let mut r = Reader::new(&buf);
-        r.skip(chunks[0] + 4)?;
-        if r.peek_u32() == Some(0x534b_4950) {
-            r.skip(8)?;
-        }
-        let version = r.u32()?;
-        ensure!(matches!(version, 10..=13), "unsupported item waypoint chunk version {version}");
-        let kind = r.u32()?;
-        ensure!(kind <= 5, "item waypoint type {kind}");
+        item_waypoint_type(&buf, &layout)?;
         let common: Vec<_> = layout.nodes.iter().filter(|n| n.class_id == 0x2e02_7000).collect();
         if common.is_empty() {
             if layout.nodes.iter().any(|node| node.class_id == 0x0914_5000) {
@@ -108,7 +125,7 @@ fn item_waypoint(file: &[u8]) -> Result<[u32; 12]> {
             return Ok(crystal::spawn(&ctx, source.start)?.unwrap_or(IDENTITY));
         }
         ensure!(common.len() == 1, "expected one common item entity model");
-        r = Reader::new(&buf);
+        let mut r = Reader::new(&buf);
         r.skip(common[0].start)?;
         ensure!(r.u32()? == 0x2e02_7000, "common item entity chunk");
         let version = r.u32()?;

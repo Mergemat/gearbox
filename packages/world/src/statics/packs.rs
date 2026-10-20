@@ -64,7 +64,7 @@ fn custom_block_gates(catalog: &mut gearbox_packs::catalog::Catalog, map: &gearb
         let Some(map_block) = map.blocks.iter().find(|block| block.name.eq_ignore_ascii_case(name)) else {
             continue;
         };
-        if map_block.waypoint.is_some() {
+        if map_block.waypoint.is_some() || block.waypoint.is_some() {
             continue;
         }
         for variant in &mut block.variants {
@@ -109,8 +109,7 @@ fn add_block_triggers(
         if !seen.insert(info.path.clone()) {
             continue;
         }
-        let waypoint = block
-            .waypoint
+        let waypoint = crate::gameplay::block_waypoint(block, assets, env)
             .as_ref()
             .and_then(|w| w.tag.as_deref())
             .map(|tag| match tag {

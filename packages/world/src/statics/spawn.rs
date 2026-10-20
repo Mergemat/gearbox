@@ -76,7 +76,12 @@ pub fn map_pose(
     let start = |w: &Option<gearbox_gbx::map::Waypoint>| {
         w.as_ref().and_then(|w| w.tag.as_deref()).is_some_and(|tag| matches!(tag, "Spawn" | "StartFinish"))
     };
-    let blocks: Vec<_> = map.blocks.iter().filter(|b| start(&b.waypoint)).collect();
+    let environment = super::packs::environment(map).map_err(anyhow::Error::msg)?;
+    let blocks: Vec<_> = map
+        .blocks
+        .iter()
+        .filter(|b| start(&crate::gameplay::block_waypoint(b, assets, environment)))
+        .collect();
     let items: Vec<_> = map.items.iter().filter(|i| start(&i.waypoint)).collect();
     ensure!(blocks.len() + items.len() == 1, "expected one Spawn or StartFinish waypoint");
     if let Some(b) = blocks.first() {

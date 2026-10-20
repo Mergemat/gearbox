@@ -49,6 +49,7 @@ pub struct Variant {
 pub struct BlockInfo {
     pub name: Option<String>,
     pub class_id: u32,
+    pub waypoint: Option<String>,
     pub variants: Vec<Variant>,
     pub material_modifier: Option<String>,
     pub material_modifier2: Option<String>,
@@ -395,6 +396,11 @@ pub fn read_block_info(buf: &[u8], layout: &Layout, path: &str) -> Result<BlockI
     } else {
         None
     };
+    let waypoint = find_all(buf, body, 0x0304e026)
+        .into_iter()
+        .find(|&p| own(p))
+        .and_then(|p| u32_at(buf, p + 4))
+        .and_then(crate::spawn::waypoint_tag);
     let container = gearbox_gbx::Container::parse(buf)?;
     let name = if let Some(chunk) = container.header_chunk(0x2e001003) {
         let mut r = Reader::new(chunk);
@@ -405,6 +411,7 @@ pub fn read_block_info(buf: &[u8], layout: &Layout, path: &str) -> Result<BlockI
     Ok(BlockInfo {
         name,
         class_id: layout.head.class_id,
+        waypoint,
         variants,
         material_modifier: mm,
         material_modifier2: mm2,
