@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::app::{Editor, Sel};
 use crate::doc::{self, GoalKind, Id, Setup};
 use crate::optimize::ObjKind;
@@ -289,12 +287,7 @@ impl Editor {
     }
 
     pub fn route_stops(&self) -> Vec<RouteStop> {
-        let mut first: HashMap<u32, usize> = HashMap::new();
-        for (k, f) in self.sim.frames.iter().enumerate() {
-            if let Some((w, _)) = f.last_crossing {
-                first.entry(w).or_insert(k);
-            }
-        }
+        let first = self.sim.first_crossings();
         let mut cps: Vec<(bool, usize, u32, u32)> = self
             .gates
             .iter()

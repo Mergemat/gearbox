@@ -6,6 +6,7 @@ pub mod dopesheet;
 pub mod inspector;
 pub mod menus;
 pub mod outliner;
+pub mod panes;
 pub mod projects;
 pub mod route;
 pub mod search;
@@ -19,7 +20,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, DispatchPhase, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
     KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Window, anchored, canvas, deferred, div, px,
+    StatefulInteractiveElement, StyleRefinement, Styled, Window, anchored, canvas, deferred, div, px,
 };
 
 use crate::app::*;
@@ -28,15 +29,15 @@ use widgets::{muted, tip};
 
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.playback();
+        if self.panes.is_none() {
+            self.panes = Some(panes::Panes::new(cx));
+        }
         self.script_in_frame = true;
         self.automate(window, cx);
         self.ui_frame_start = Some(crate::stats::thread_cpu_ms());
-        widgets::HITS.with(|h| h.borrow_mut().clear());
-        self.setters.clear();
-        self.field_order.clear();
+        self.begin_pane(panes::PaneKind::Root);
         if self.playing || self.drag.is_some() || self.camera_moving() {
-            window.request_animation_frame();
+            self.animate(window, cx);
         }
         if self.status.as_ref().is_some_and(|s| s.2.elapsed() > Duration::from_secs(6)) {
             self.status = None;
@@ -80,14 +81,59 @@ impl Render for Editor {
                 }),
             );
         let root = self.register_actions(root, cx);
-        let root = root.child(self.global_listeners(cx)).child(self.title_bar(cx));
+        let p = self.panes.as_ref().unwrap();
+        let (title, outliner, view, right, bottom) =
+            (p.title.clone(), p.outliner.clone(), p.viewport.clone(), p.right.clone(), p.bottom.clone());
+        let (view_header, view_rail) = (p.view_header.clone(), p.view_rail.clone());
+        let root = root
+            .child(self.global_listeners(cx))
+            .child(panes::cached(&title, StyleRefinement::default().h(px(40.0)).w_full().flex_none()));
         let root = if self.projects_open {
             root.child(self.projects_screen(window, cx))
         } else {
-            root.child(self.main_row(cx))
-                .child(self.splitter_h(cx))
-                .child(self.bottom_panel(cx))
-                .child(self.status_bar(cx))
+            let (left, rw, bh) = (self.layout.left, self.layout.right, self.layout.bottom);
+            root.child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .child(panes::cached(
+                        &outliner,
+                        StyleRefinement::default().w(px(left)).h_full().flex_none(),
+                    ))
+                    .child(self.splitter(Split::Left, true, cx))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .flex()
+                            .flex_col()
+                            .child(panes::cached(
+                                &view_header,
+                                StyleRefinement::default().h(px(theme::H_BAR)).w_full().flex_none(),
+                            ))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_h_0()
+                                    .relative()
+                                    .child(panes::cached(
+                                        &view,
+                                        StyleRefinement::default().absolute().size_full(),
+                                    ))
+                                    .child(panes::cached(
+                                        &view_rail,
+                                        StyleRefinement::default().absolute().size_full(),
+                                    )),
+                            ),
+                    )
+                    .child(self.splitter(Split::Right, true, cx))
+                    .child(panes::cached(&right, StyleRefinement::default().w(px(rw)).h_full().flex_none())),
+            )
+            .child(self.splitter_h(cx))
+            .child(panes::cached(&bottom, StyleRefinement::default().h(px(bh)).w_full().flex_none()))
+            .child(self.status_bar(cx))
         };
         let this = cx.entity();
         root.children(self.popup_menu(cx))
@@ -349,7 +395,7 @@ impl Editor {
             if let Some(k) = k {
                 self.fly_keys[k] = true;
                 cx.stop_propagation();
-                cx.notify();
+                self.redraw_view(cx);
             }
             return;
         }
@@ -392,7 +438,11 @@ impl Editor {
                 _ => self.drive.right = false,
             }
         }
-        cx.notify();
+        if matches!(self.drag, Some(Drag::Fly { .. })) {
+            self.redraw_view(cx);
+        } else {
+            cx.notify();
+        }
     }
 
     fn global_listeners(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -471,7 +521,7 @@ impl Editor {
                 self.save_layout();
             }
             Some(Drag::Timeline(_)) => self.timeline_up(e, cx),
-            Some(_) => self.viewport_up(e, window, cx),
+            Some(_) => return self.viewport_up(e, window, cx),
             None => {}
         }
         cx.notify();
@@ -525,31 +575,18 @@ impl Editor {
         self.splitter(Split::Bottom, false, cx)
     }
 
-    fn main_row(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let left = self.layout.left;
-        let right = self.layout.right;
+    pub fn right_column(&mut self, cx: &mut Context<Self>) -> AnyElement {
         div()
-            .flex_1()
-            .min_h_0()
+            .size_full()
             .flex()
-            .child(div().w(px(left)).flex_none().h_full().bg(c(theme::PANEL)).child(self.outliner(cx)))
-            .child(self.splitter(Split::Left, true, cx))
-            .child(div().flex_1().min_w_0().h_full().child(self.viewport(cx)))
-            .child(self.splitter(Split::Right, true, cx))
-            .child(
-                div()
-                    .w(px(right))
-                    .flex_none()
-                    .h_full()
-                    .flex()
-                    .flex_col()
-                    .bg(c(theme::PANEL))
-                    .child(self.right_tabs(cx))
-                    .child(div().flex_1().min_h_0().child(match self.layout.right_tab {
-                        1 => self.search_panel(cx).into_any_element(),
-                        _ => self.inspector(cx).into_any_element(),
-                    })),
-            )
+            .flex_col()
+            .bg(c(theme::PANEL))
+            .child(self.right_tabs(cx))
+            .child(div().flex_1().min_h_0().child(match self.layout.right_tab {
+                1 => self.search_panel(cx).into_any_element(),
+                _ => self.inspector(cx).into_any_element(),
+            }))
+            .into_any_element()
     }
 
     pub fn right_tabs(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -569,7 +606,7 @@ impl Editor {
                 div()
                     .id(("rtab", i as usize))
                     .relative()
-                    .child(widgets::track(format!("rtab-{i}")))
+                    .children(widgets::track(format!("rtab-{i}")))
                     .h(px(theme::H_BAR))
                     .px(px(theme::PAD))
                     .flex()
@@ -592,7 +629,7 @@ impl Editor {
             .into_any_element()
     }
 
-    fn bottom_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn bottom_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let tab = self.layout.bottom_tab;
         let errors = self.log.iter().filter(|l| l.level == LogLevel::Error).count();
         let tabs = [("Timeline", 0u8), ("Compare", 1), ("Console", 2)];
@@ -610,7 +647,7 @@ impl Editor {
                 div()
                     .id(("btab", i as usize))
                     .relative()
-                    .child(widgets::track(format!("btab-{i}")))
+                    .children(widgets::track(format!("btab-{i}")))
                     .h(px(theme::H_BAR))
                     .px(px(theme::PAD))
                     .flex()
@@ -653,7 +690,7 @@ impl Editor {
             .child(div().flex_1().min_h_0().child(body))
     }
 
-    fn title_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn title_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let name = match (&self.sim.info, &self.map) {
             (Some(i), _) => i.stem.clone(),
             (None, Some(m)) if self.open_error.is_some() => crate::catalog::map_stem(m).unwrap_or_default(),
@@ -671,7 +708,7 @@ impl Editor {
             div()
                 .id(gpui::ElementId::Name(id.clone().into()))
                 .relative()
-                .child(widgets::track(id))
+                .children(widgets::track(id))
                 .size(px(28.0))
                 .flex()
                 .items_center()
@@ -689,7 +726,7 @@ impl Editor {
         let palette = div()
             .id("palette-open")
             .relative()
-            .child(widgets::track("palette-open"))
+            .children(widgets::track("palette-open"))
             .w(px(380.0))
             .h(px(26.0))
             .px(px(theme::SP3))
@@ -735,7 +772,7 @@ impl Editor {
                 div()
                     .id("project-menu")
                     .relative()
-                    .child(widgets::track("project-menu"))
+                    .children(widgets::track("project-menu"))
                     .h(px(28.0))
                     .px(px(theme::SP2))
                     .flex()
@@ -932,7 +969,7 @@ impl Editor {
                 div()
                     .id(("menu-item", i))
                     .relative()
-                    .child(widgets::track(format!("menu-{i}")))
+                    .children(widgets::track(format!("menu-{i}")))
                     .h(px(26.0))
                     .px(px(theme::SP3))
                     .flex()

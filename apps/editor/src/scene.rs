@@ -7,7 +7,7 @@ use glam::{Mat4, Quat, Vec3};
 
 use crate::background::GateInfo;
 use crate::doc::{Goal, GoalKind, StartState};
-use crate::gfx::mesh::{DrawList, Instance, Mesh, MeshId, Pass, TextureId, Vertex};
+use crate::gfx::mesh::{DrawList, Instance, LineSetId, LineVertex, Mesh, MeshId, Pass, TextureId, Vertex};
 use crate::gfx::renderer::Renderer;
 use crate::gizmo::{Gizmo, Handle};
 use crate::theme;
@@ -106,8 +106,47 @@ pub fn lerp_frame(a: &Frame, b: &Frame, t: f32) -> Frame {
     f
 }
 
+pub struct Shared<T>(pub std::sync::Arc<T>);
+
+impl<T> PartialEq for Shared<T> {
+    fn eq(&self, o: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &o.0)
+    }
+}
+
+struct LineCache<K> {
+    key: Option<K>,
+    set: Option<LineSetId>,
+}
+
+impl<K> Default for LineCache<K> {
+    fn default() -> Self {
+        Self { key: None, set: None }
+    }
+}
+
+impl<K: PartialEq> LineCache<K> {
+    fn fresh(&self, key: &K) -> bool {
+        self.key.as_ref() == Some(key)
+    }
+
+    fn store(&mut self, r: &mut Renderer, key: K, v: &[LineVertex]) {
+        if let Some(s) = self.set.take() {
+            r.remove_lines(s);
+        }
+        self.set = r.add_lines(v);
+        self.key = Some(key);
+    }
+}
+
+type Tries = Vec<(Vec<[f32; 3]>, crate::optimize::Mark)>;
+
 pub struct Scene {
     pub renderer: Renderer,
+    early_trail: LineCache<(u64, usize)>,
+    ghost_set: LineCache<Vec<(usize, usize)>>,
+    ref_set: LineCache<Vec<(Shared<Vec<Frame>>, u8)>>,
+    tries_set: LineCache<Shared<Tries>>,
     world: Option<MeshId>,
     pub bounds: Option<(Vec3, Vec3)>,
     unit_box: MeshId,
@@ -129,6 +168,18 @@ struct VisualPart {
     center: Vec3,
     radius: f32,
     surroundings: bool,
+}
+
+impl VisualPart {
+    fn instance(&self) -> Instance {
+        Instance {
+            mesh: self.mesh,
+            texture: self.texture,
+            transform: self.transform,
+            tint: self.tint,
+            pass: self.pass,
+        }
+    }
 }
 
 pub struct VisualGpu {
@@ -247,6 +298,9 @@ impl VisualGpu {
                 surroundings: p.surroundings,
             });
         }
+        let key = |p: &VisualPart| (p.instance().pass(), p.mesh, p.texture);
+        parts.sort_by_key(key);
+        r.set_statics(&parts.iter().map(VisualPart::instance).collect::<Vec<_>>());
         let (car_body, wheels) = match &v.car {
             Some(c) => (
                 c.body.iter().filter_map(|p| look(p).map(|(m, t, tint)| (m, t, tint, p.transform))).collect(),
@@ -279,7 +333,7 @@ fn frustum(vp: &Mat4) -> [glam::Vec4; 5] {
 }
 
 pub struct RefRun<'a> {
-    pub frames: &'a [Frame],
+    pub frames: &'a std::sync::Arc<Vec<Frame>>,
     pub alpha: u8,
     pub car: bool,
 }
@@ -302,7 +356,7 @@ pub struct SceneInput<'a> {
     pub gizmo: Option<(&'a Gizmo, Option<Handle>)>,
     pub ghosts: Vec<&'a GhostTrack>,
     pub refs: Vec<RefRun<'a>>,
-    pub tries: &'a [(Vec<[f32; 3]>, crate::optimize::Mark)],
+    pub tries: Option<&'a std::sync::Arc<Tries>>,
     pub branches: Option<&'a [crate::engine::session::Branch]>,
     pub pivot: Option<Vec3>,
     pub hover: Option<Vec3>,
@@ -419,6 +473,10 @@ impl Scene {
             blob,
             trail: None,
             trail_key: (u64::MAX, 0, 0),
+            early_trail: LineCache::default(),
+            ghost_set: LineCache::default(),
+            ref_set: LineCache::default(),
+            tries_set: LineCache::default(),
             ghost_lines: Vec::new(),
             visual: None,
         }
@@ -592,19 +650,13 @@ impl Scene {
         if realistic {
             let planes = frustum(&s.view_proj);
             let v = self.visual.as_ref().unwrap();
-            for p in &v.parts {
+            for (i, p) in v.parts.iter().enumerate() {
                 if (p.surroundings && !s.surroundings)
                     || planes.iter().any(|pl| pl.truncate().dot(p.center) + pl.w < -p.radius)
                 {
                     continue;
                 }
-                d.instances.push(Instance {
-                    mesh: p.mesh,
-                    texture: p.texture,
-                    transform: p.transform,
-                    tint: p.tint,
-                    pass: p.pass,
-                });
+                d.statics.push(i as u32);
             }
         } else if let Some(w) = self.world {
             d.instances.push(Instance {
@@ -651,18 +703,32 @@ impl Scene {
                     pass: Pass::Auto,
                 });
             }
-            for w in s.frames[..from.min(s.frames.len())].windows(2).step_by(2) {
-                d.line(
-                    Vec3::from(w[0].position()) + Vec3::Y * 0.1,
-                    Vec3::from(w[1].position()) + Vec3::Y * 0.1,
-                    rgba(theme::MUTED, 90),
-                );
+            let key = (s.frames_gen, from);
+            if !self.early_trail.fresh(&key) {
+                let mut v = DrawList::default();
+                for w in s.frames[..from.min(s.frames.len())].windows(2).step_by(2) {
+                    v.line(
+                        Vec3::from(w[0].position()) + Vec3::Y * 0.1,
+                        Vec3::from(w[1].position()) + Vec3::Y * 0.1,
+                        rgba(theme::MUTED, 90),
+                    );
+                }
+                self.early_trail.store(&mut self.renderer, key, &v.lines);
             }
+            d.line_sets.extend(self.early_trail.set);
         }
         let race_ms = s.car.as_ref().map(|f| f.race_ms);
+        let key: Vec<(usize, usize)> =
+            s.ghosts.iter().map(|g| (*g as *const GhostTrack as usize, g.samples.len())).collect();
+        if !self.ghost_set.fresh(&key) {
+            let mut v = Vec::new();
+            for g in &s.ghosts {
+                v.extend_from_slice(self.ghost_path(g));
+            }
+            self.ghost_set.store(&mut self.renderer, key, &v);
+        }
+        d.line_sets.extend(self.ghost_set.set);
         for g in &s.ghosts {
-            let lines = self.ghost_path(g).to_vec();
-            d.lines.extend(lines);
             if let Some(t) = race_ms
                 && let Some((p, q, _)) = g.at(t)
             {
@@ -670,15 +736,24 @@ impl Scene {
                 self.car(&mut d, body, None, Some(tint(theme::rgb8(theme::GHOST), 0.42)), realistic, 0.0);
             }
         }
-        for r in &s.refs {
-            let c = rgba(theme::GHOST, r.alpha);
-            for w in r.frames.windows(2) {
-                d.line(
-                    Vec3::from(w[0].position()) + Vec3::Y * 0.3,
-                    Vec3::from(w[1].position()) + Vec3::Y * 0.3,
-                    c,
-                );
+        let key: Vec<(Shared<Vec<Frame>>, u8)> =
+            s.refs.iter().map(|r| (Shared(r.frames.clone()), r.alpha)).collect();
+        if !self.ref_set.fresh(&key) {
+            let mut v = DrawList::default();
+            for r in &s.refs {
+                let c = rgba(theme::GHOST, r.alpha);
+                for w in r.frames.windows(2) {
+                    v.line(
+                        Vec3::from(w[0].position()) + Vec3::Y * 0.3,
+                        Vec3::from(w[1].position()) + Vec3::Y * 0.3,
+                        c,
+                    );
+                }
             }
+            self.ref_set.store(&mut self.renderer, key, &v.lines);
+        }
+        d.line_sets.extend(self.ref_set.set);
+        for r in &s.refs {
             if r.car
                 && let Some(t) = race_ms
                 && let Some(f) = r.frames.iter().find(|f| f.race_ms >= t)
@@ -722,16 +797,24 @@ impl Scene {
                 });
             }
         }
-        let n = s.tries.len().max(1) as f32;
-        for (i, (path, mark)) in s.tries.iter().enumerate() {
-            let age = (i as f32 + 1.0) / n;
-            let c = match mark {
-                crate::optimize::Mark::Reached => rgba(theme::OK, (70.0 + 150.0 * age) as u8),
-                crate::optimize::Mark::Missed => rgba(theme::TEXT, (22.0 + 70.0 * age) as u8),
-            };
-            for w in path.windows(2) {
-                d.line(Vec3::from(w[0]) + Vec3::Y * 0.25, Vec3::from(w[1]) + Vec3::Y * 0.25, c);
+        if let Some(tries) = s.tries {
+            let key = Shared(tries.clone());
+            if !self.tries_set.fresh(&key) {
+                let mut v = DrawList::default();
+                let n = tries.len().max(1) as f32;
+                for (i, (path, mark)) in tries.iter().enumerate() {
+                    let age = (i as f32 + 1.0) / n;
+                    let c = match mark {
+                        crate::optimize::Mark::Reached => rgba(theme::OK, (70.0 + 150.0 * age) as u8),
+                        crate::optimize::Mark::Missed => rgba(theme::TEXT, (22.0 + 70.0 * age) as u8),
+                    };
+                    for w in path.windows(2) {
+                        v.line(Vec3::from(w[0]) + Vec3::Y * 0.25, Vec3::from(w[1]) + Vec3::Y * 0.25, c);
+                    }
+                }
+                self.tries_set.store(&mut self.renderer, key, &v.lines);
             }
+            d.line_sets.extend(self.tries_set.set);
         }
         if let Some(bs) = s.branches {
             for b in bs {

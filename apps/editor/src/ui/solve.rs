@@ -104,7 +104,7 @@ impl Editor {
                 div()
                     .id(("take", id as usize))
                     .relative()
-                    .child(track(format!("take-{id}")))
+                    .children(track(format!("take-{id}")))
                     .mx(px(theme::SP2))
                     .px(px(theme::SP2))
                     .h(px(30.0))

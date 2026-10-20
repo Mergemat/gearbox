@@ -7,7 +7,14 @@ struct Globals {
     origin: vec4<f32>,
 };
 
+struct Inst {
+    m: mat4x4<f32>,
+    tint: vec4<f32>,
+};
+
 @group(0) @binding(0) var<uniform> g: Globals;
+@group(0) @binding(1) var<storage, read> store: array<Inst>;
+@group(0) @binding(2) var<storage, read> ids: array<u32>;
 @group(1) @binding(0) var tex: texture_2d<f32>;
 @group(1) @binding(1) var samp: sampler;
 
@@ -16,11 +23,6 @@ struct VIn {
     @location(1) normal: vec4<f32>,
     @location(2) color: vec4<f32>,
     @location(3) uv: vec2<f32>,
-    @location(4) m0: vec4<f32>,
-    @location(5) m1: vec4<f32>,
-    @location(6) m2: vec4<f32>,
-    @location(7) m3: vec4<f32>,
-    @location(8) tint: vec4<f32>,
 };
 
 struct VOut {
@@ -36,12 +38,14 @@ fn to_linear(c: vec3<f32>) -> vec3<f32> {
 }
 
 @vertex
-fn vs_mesh(v: VIn) -> VOut {
-    let m = mat4x4<f32>(v.m0, v.m1, v.m2, v.m3);
-    let w = m * vec4<f32>(v.pos, 1.0);
+fn vs_mesh(v: VIn, @builtin(instance_index) ii: u32) -> VOut {
+    let inst = store[ids[ii]];
+    let m = inst.m;
+    let a = m * vec4<f32>(v.pos, 1.0);
+    let w = vec4<f32>(a.xyz - g.origin.xyz, 1.0);
     var o: VOut;
     o.clip = g.view_proj * w;
-    o.color = vec4<f32>(to_linear(v.color.rgb * v.tint.rgb), v.color.a * v.tint.a);
+    o.color = vec4<f32>(to_linear(v.color.rgb * inst.tint.rgb), v.color.a * inst.tint.a);
     o.normal = vec4<f32>((m * vec4<f32>(v.normal.xyz, 0.0)).xyz, v.normal.w);
     o.world = w.xyz;
     o.uv = v.uv;

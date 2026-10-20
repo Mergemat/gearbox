@@ -112,9 +112,14 @@ impl Instance {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LineSetId(pub u32);
+
 #[derive(Default)]
 pub struct DrawList {
     pub instances: Vec<Instance>,
+    pub statics: Vec<u32>,
+    pub line_sets: Vec<LineSetId>,
     pub tris: Vec<Vertex>,
     pub glass: Vec<Vertex>,
     pub overlay: Vec<Vertex>,

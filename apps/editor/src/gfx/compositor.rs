@@ -119,6 +119,7 @@ fn slot(device: &wgpu::Device, [w, h]: [u32; 2]) -> Result<Slot> {
     Ok(Slot { buffer, y, cbcr })
 }
 
+#[derive(Clone)]
 pub struct Nv12Pass {
     layout: wgpu::BindGroupLayout,
     y: wgpu::RenderPipeline,
@@ -188,7 +189,7 @@ impl Nv12Pass {
         d: &wgpu::Device,
         enc: &mut wgpu::CommandEncoder,
         src: &wgpu::TextureView,
-        slot: &Slot,
+        (y, cbcr): (&wgpu::TextureView, &wgpu::TextureView),
         timestamps: Option<(&wgpu::QuerySet, u32)>,
     ) {
         let bind = d.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -199,7 +200,7 @@ impl Nv12Pass {
                 resource: wgpu::BindingResource::TextureView(src),
             }],
         });
-        for (k, (pipe, view)) in [(&self.y, &slot.y), (&self.cbcr, &slot.cbcr)].into_iter().enumerate() {
+        for (k, (pipe, view)) in [(&self.y, y), (&self.cbcr, cbcr)].into_iter().enumerate() {
             let ts = timestamps.map(|(q, base)| wgpu::RenderPassTimestampWrites {
                 query_set: q,
                 beginning_of_pass_write_index: (k == 0).then_some(base),

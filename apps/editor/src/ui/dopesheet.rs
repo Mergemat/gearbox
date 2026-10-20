@@ -129,10 +129,9 @@ struct Mark {
     delta: Option<i32>,
 }
 
-struct Paint {
+pub struct Paint {
     len: usize,
     simulated: usize,
-    cursor: usize,
     race_ms0: i32,
     overview: (f64, f64),
     start: f64,
@@ -152,7 +151,6 @@ struct Paint {
     ghost_ticks: Vec<usize>,
     paint_tool: bool,
     channel: usize,
-    hover: Option<(usize, Lane)>,
     route: Option<(usize, usize, String)>,
     clips: Vec<(usize, usize, String, bool)>,
     tricks: Vec<crate::lab::TrickSpan>,
@@ -189,7 +187,7 @@ fn text(
 ) -> f32 {
     let line = shape(window, s, sz, color, alpha, mono);
     let w = f32::from(line.width);
-    let _ = line.paint(point(px(x), px(y)), px(sz * 1.3), TextAlign::Left, None, window, cx);
+    paint_text(window, cx, line, point(px(x), px(y)), px(sz * 1.3));
     w
 }
 
@@ -206,7 +204,75 @@ fn text_r(
 ) {
     let line = shape(window, s, sz, color, alpha, mono);
     let w = f32::from(line.width);
-    let _ = line.paint(point(px(x - w), px(y)), px(sz * 1.3), TextAlign::Left, None, window, cx);
+    paint_text(window, cx, line, point(px(x - w), px(y)), px(sz * 1.3));
+}
+
+#[derive(Clone)]
+enum Prim {
+    Quad(gpui::PaintQuad),
+    Path(gpui::Path<Pixels>, gpui::Hsla),
+    Text(gpui::ShapedLine, Point<Pixels>, Pixels),
+}
+
+thread_local! {
+    static RECORDING: std::cell::RefCell<Option<Vec<Prim>>> = const { std::cell::RefCell::new(None) };
+}
+
+fn record(p: impl FnOnce() -> Prim) {
+    RECORDING.with(|r| {
+        if let Some(v) = r.borrow_mut().as_mut() {
+            v.push(p());
+        }
+    });
+}
+
+fn quad(window: &mut Window, q: gpui::PaintQuad) {
+    record(|| Prim::Quad(q.clone()));
+    window.paint_quad(q);
+}
+
+fn draw_path(window: &mut Window, p: gpui::Path<Pixels>, color: gpui::Hsla) {
+    record(|| Prim::Path(p.clone(), color));
+    window.paint_path(p, color);
+}
+
+fn paint_text(window: &mut Window, cx: &mut App, line: gpui::ShapedLine, at: Point<Pixels>, lh: Pixels) {
+    let _ = line.paint(at, lh, TextAlign::Left, None, window, cx);
+    record(|| Prim::Text(line, at, lh));
+}
+
+#[derive(Default)]
+pub struct LaneCache(std::cell::RefCell<Option<(std::rc::Rc<Paint>, Bounds<Pixels>, Vec<Prim>)>>);
+
+fn paint_static(
+    window: &mut Window,
+    cx: &mut App,
+    b: Bounds<Pixels>,
+    p: &std::rc::Rc<Paint>,
+    cache: &LaneCache,
+) {
+    let mut c = cache.0.borrow_mut();
+    if let Some((cp, cb, prims)) = c.as_ref()
+        && std::rc::Rc::ptr_eq(cp, p)
+        && *cb == b
+    {
+        window.paint_layer(b, |window| {
+            for prim in prims {
+                match prim {
+                    Prim::Quad(q) => window.paint_quad(q.clone()),
+                    Prim::Path(path, color) => window.paint_path(path.clone(), *color),
+                    Prim::Text(line, at, lh) => {
+                        let _ = line.paint(*at, *lh, TextAlign::Left, None, window, cx);
+                    }
+                }
+            }
+        });
+        return;
+    }
+    RECORDING.with(|r| *r.borrow_mut() = Some(Vec::new()));
+    paint_lanes(window, cx, b, p, None);
+    let prims = RECORDING.with(|r| r.borrow_mut().take()).unwrap_or_default();
+    *c = Some((p.clone(), b, prims));
 }
 
 fn ruler_step(ppt: f64, min_px: f64) -> usize {
@@ -315,7 +381,38 @@ impl Editor {
         self.tl_zoom_at(x, f);
     }
 
+    pub fn follow_playhead(&mut self) -> bool {
+        let dragging_view =
+            matches!(self.drag, Some(Drag::Timeline(TlDrag::Pan { .. } | TlDrag::Overview { .. })));
+        if !self.playing || dragging_view || self.tl.ppt <= 0.0 {
+            return false;
+        }
+        let vis = self.tl.width() as f64 / self.tl.ppt;
+        let k = self.cursor as f64;
+        if k < self.tl.start || k > self.tl.start + vis * 0.95 {
+            self.tl.start = (k - vis * 0.05).max(self.race_start_tick() as f64);
+            return true;
+        }
+        false
+    }
+
     pub fn dopesheet(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.tl.ppt <= 0.0 || self.tl.fit {
+            let k0 = self.race_start_tick();
+            let span = self.tl_fit_end().saturating_sub(k0).max(100);
+            self.tl.ppt = self.tl.width() as f64 / span as f64;
+            self.tl.start = k0 as f64;
+            self.tl.fit = false;
+            self.rev += 1;
+        }
+        if self.tl_paint.as_ref().is_none_or(|(rev, _)| *rev != self.rev) {
+            let p = self.lanes_paint();
+            self.tl_paint = Some((self.rev, std::rc::Rc::new(p)));
+        }
+        self.dopesheet_body(cx)
+    }
+
+    fn lanes_paint(&mut self) -> Paint {
         let len = self.doc.len.max(1);
         let simulated = self.sim.frames.len();
         let speed: Arc<Vec<f32>> = Arc::new(self.sim.frames.iter().map(|f| f.speed_kmh()).collect());
@@ -405,26 +502,9 @@ impl Editor {
             .filter(|g| g.visible)
             .flat_map(|g| g.track.checkpoints_ms.iter().map(|t| ((t - self.race_ms0) / 10).max(0) as usize))
             .collect();
-        if self.tl.ppt <= 0.0 || self.tl.fit {
-            let k0 = self.race_start_tick();
-            let span = self.tl_fit_end().saturating_sub(k0).max(100);
-            self.tl.ppt = self.tl.width() as f64 / span as f64;
-            self.tl.start = k0 as f64;
-            self.tl.fit = false;
-        }
-        let dragging_view =
-            matches!(self.drag, Some(Drag::Timeline(TlDrag::Pan { .. } | TlDrag::Overview { .. })));
-        if self.playing && !dragging_view && self.tl.ppt > 0.0 {
-            let vis = self.tl.width() as f64 / self.tl.ppt;
-            let k = self.cursor as f64;
-            if k < self.tl.start || k > self.tl.start + vis * 0.95 {
-                self.tl.start = (k - vis * 0.05).max(self.race_start_tick() as f64);
-            }
-        }
-        let p = Paint {
+        Paint {
             len,
             simulated,
-            cursor: self.cursor,
             race_ms0: self.race_ms0,
             overview: self.tl_overview_span(),
             start: self.tl.start,
@@ -444,7 +524,6 @@ impl Editor {
             ghost_ticks,
             paint_tool: self.paint_tool,
             channel: self.tl.channel,
-            hover: self.tl.hover,
             route: (self.sel == Sel::Route || self.job.starts_with("Route"))
                 .then(|| self.route_ticks())
                 .flatten()
@@ -456,12 +535,19 @@ impl Editor {
                 .collect(),
             tricks: self.trick_spans.clone(),
             extra: self.tl_extra(),
-        };
+        }
+    }
+
+    fn dopesheet_body(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = self.tl_paint.as_ref().unwrap().1.clone();
+        let live = (self.cursor, self.tl.hover);
+        let cache = self.tl_cache.clone();
         let this = cx.entity();
         let lanes_el = canvas(
             |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
             move |b: Bounds<Pixels>, hb: Hitbox, window: &mut Window, cx: &mut App| {
-                paint_lanes(window, cx, b, &p);
+                paint_static(window, cx, b, &p, &cache);
+                paint_lanes(window, cx, b, &p, Some(live));
                 let style = cursor_at(&p, b, window.mouse_position(), window.modifiers().alt);
                 window.set_cursor_style(style, &hb);
                 this.update(cx, |e, _| {
@@ -503,11 +589,9 @@ impl Editor {
                                     .then(|| (e.tl_tick_at(f32::from(ev.position.x)).min(e.doc.len), lane))
                             })
                             .flatten();
-                        if h != e.tl.hover {
+                        if h != e.tl.hover || inside {
                             e.tl.hover = h;
-                            cx.notify();
-                        } else if inside {
-                            cx.notify();
+                            e.notify_pane(crate::ui::panes::PaneKind::Bottom, cx);
                         }
                     });
                 });
@@ -1154,7 +1238,15 @@ fn cursor_at(p: &Paint, b: Bounds<Pixels>, m: Point<Pixels>, alt: bool) -> Curso
     }
 }
 
-fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) {
+fn paint_lanes(
+    window: &mut Window,
+    cx: &mut App,
+    b: Bounds<Pixels>,
+    p: &Paint,
+    live: Option<(usize, Option<(usize, Lane)>)>,
+) {
+    let dynamic = live.is_some();
+    let (cursor, hover) = live.unwrap_or((0, None));
     let (bx, by) = (f32::from(b.origin.x), f32::from(b.origin.y));
     let (bw, bh) = (f32::from(b.size.width), f32::from(b.size.height));
     let x0 = bx + GUTTER;
@@ -1185,696 +1277,782 @@ fn paint_lanes(window: &mut Window, cx: &mut App, b: Bounds<Pixels>, p: &Paint) 
         let e = ((p.start + (col + 1) as f64 / p.ppt).ceil() as usize).max(a + 1);
         (a, e)
     };
-    let hovering = p.hover.is_some_and(|(_, l)| l != Lane::Overview);
-    let at = p.hover.filter(|_| hovering).map_or(p.cursor, |h| h.0);
+    let hovering = hover.is_some_and(|(_, l)| l != Lane::Overview);
+    let at = hover.filter(|_| hovering).map_or(cursor, |h| h.0);
     let value_col = if hovering { theme::GHOST } else { theme::TEXT };
     window.paint_layer(b, |window| {
-        window.paint_quad(fill(rect(x0, ry, w, rh + th), theme::alpha(theme::PANEL, 1.0)));
-        window.paint_quad(fill(rect(x0, sy0, w, sh), theme::alpha(theme::WELL, 0.6)));
-        for &(l, y, h) in &ls {
-            if !matches!(l, Lane::Ruler | Lane::Track | Lane::Overview) && h > 0.0 {
-                window.paint_quad(fill(rect(x0, by + y, w, h), theme::alpha(theme::WELL, 1.0)));
+        if !dynamic {
+            quad(window, fill(rect(x0, ry, w, rh + th), theme::alpha(theme::PANEL, 1.0)));
+            quad(window, fill(rect(x0, sy0, w, sh), theme::alpha(theme::WELL, 0.6)));
+            for &(l, y, h) in &ls {
+                if !matches!(l, Lane::Ruler | Lane::Track | Lane::Overview) && h > 0.0 {
+                    quad(window, fill(rect(x0, by + y, w, h), theme::alpha(theme::WELL, 1.0)));
+                }
             }
-        }
-        window.paint_quad(fill(rect(x0 - 1.0, ty, 1.0, bottom - ty), theme::alpha(theme::HAIRLINE, 1.0)));
-        let step = ruler_step(p.ppt, 64.0) as i32 * 10;
-        let minor = (step / 5).max(10);
-        let end_ms = p.race_ms0 + 10 * last as i32;
-        let mut ms = (p.race_ms0 + 10 * first as i32).div_euclid(minor) * minor;
-        while ms <= end_ms {
-            let x = x_of(((ms - p.race_ms0) as f32) / 10.0);
-            if x >= x0 && ms >= p.race_ms0 {
-                if ms.rem_euclid(step) == 0 {
-                    window.paint_quad(fill(rect(x, ry + 11.0, 1.0, 6.0), theme::alpha(theme::MUTED, 0.8)));
-                    window.paint_quad(fill(
-                        rect(x, top, 1.0, bottom - top),
-                        theme::alpha(theme::HAIRLINE, 0.55),
-                    ));
-                    let label = if step % 1000 == 0 {
-                        format!("{}s", ms / 1000)
-                    } else if step % 100 == 0 {
-                        format!("{:.1}s", ms as f64 / 1000.0)
+            quad(window, fill(rect(x0 - 1.0, ty, 1.0, bottom - ty), theme::alpha(theme::HAIRLINE, 1.0)));
+            let step = ruler_step(p.ppt, 64.0) as i32 * 10;
+            let minor = (step / 5).max(10);
+            let end_ms = p.race_ms0 + 10 * last as i32;
+            let mut ms = (p.race_ms0 + 10 * first as i32).div_euclid(minor) * minor;
+            while ms <= end_ms {
+                let x = x_of(((ms - p.race_ms0) as f32) / 10.0);
+                if x >= x0 && ms >= p.race_ms0 {
+                    if ms.rem_euclid(step) == 0 {
+                        quad(window, fill(rect(x, ry + 11.0, 1.0, 6.0), theme::alpha(theme::MUTED, 0.8)));
+                        quad(
+                            window,
+                            fill(rect(x, top, 1.0, bottom - top), theme::alpha(theme::HAIRLINE, 0.55)),
+                        );
+                        let label = if step % 1000 == 0 {
+                            format!("{}s", ms / 1000)
+                        } else if step % 100 == 0 {
+                            format!("{:.1}s", ms as f64 / 1000.0)
+                        } else {
+                            format!("{:.2}", ms as f64 / 1000.0)
+                        };
+                        text(
+                            window,
+                            cx,
+                            &label,
+                            x + 4.0,
+                            ry + 2.0,
+                            9.5,
+                            if ms == 0 { theme::TEXT } else { theme::MUTED },
+                            1.0,
+                            true,
+                        );
                     } else {
-                        format!("{:.2}", ms as f64 / 1000.0)
-                    };
-                    text(
+                        quad(window, fill(rect(x, ry + 14.0, 1.0, 3.0), theme::alpha(theme::FAINT, 0.7)));
+                    }
+                }
+                ms += minor;
+            }
+            let zero = ((-p.race_ms0).max(0) / 10) as usize;
+            let (ca, cb) = span(0, zero);
+            if cb > ca {
+                quad(window, fill(rect(ca, ty, cb - ca, bottom - ty), theme::alpha(theme::BG, 0.45)));
+                if cb - ca > 70.0 {
+                    text(window, cx, "countdown", ca + 6.0, ty + 4.0, 9.5, theme::FAINT, 1.0, false);
+                }
+            }
+            let col_a: Vec<Option<f32>> = (0..cols)
+                .map(|col| {
+                    let (a, e) = col_ticks(col);
+                    (a < p.speed.len())
+                        .then(|| p.speed[a..e.min(p.speed.len())].iter().copied().fold(0.0f32, f32::max))
+                })
+                .collect();
+            let col_b: Vec<Option<f32>> = match &p.b_speed {
+                Some(bs) => (0..cols)
+                    .map(|col| {
+                        sample_at(
+                            bs,
+                            p.race_ms0 as f32 + 10.0 * (p.start + (col as f64 + 0.5) / p.ppt) as f32,
+                        )
+                    })
+                    .collect(),
+                None => vec![None; cols],
+            };
+            let (mut lo, mut hi) = col_a
+                .iter()
+                .chain(&col_b)
+                .flatten()
+                .fold((f32::MAX, f32::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
+            if lo > hi {
+                (lo, hi) = (0.0, 100.0);
+            }
+            let pad = ((hi - lo) * 0.12).max((10.0 - (hi - lo)).max(0.0) * 0.5) + 2.0;
+            let (lo, hi) = ((lo - pad).max(0.0), hi + pad);
+            let y_of_v = |v: f32| spy + sph - 4.0 - (v - lo) / (hi - lo) * (sph - 10.0);
+            let gstep = [1.0f32, 2.0, 5.0, 10.0, 20.0, 25.0, 50.0, 100.0, 200.0]
+                .into_iter()
+                .find(|s| s / (hi - lo) * (sph - 10.0) >= 18.0)
+                .unwrap_or(500.0);
+            let mut g = (lo / gstep).ceil() * gstep;
+            while g < hi && sph > 24.0 {
+                let y = y_of_v(g);
+                if y > spy + 9.0 {
+                    quad(window, fill(rect(x0, y, w, 1.0), theme::alpha(theme::HAIRLINE, 0.5)));
+                    text_r(
                         window,
                         cx,
-                        &label,
-                        x + 4.0,
-                        ry + 2.0,
-                        9.5,
-                        if ms == 0 { theme::TEXT } else { theme::MUTED },
+                        &format!("{g:.0}"),
+                        x0 + w - 4.0,
+                        y - 12.0,
+                        9.0,
+                        theme::FAINT,
                         1.0,
                         true,
                     );
-                } else {
-                    window.paint_quad(fill(rect(x, ry + 14.0, 1.0, 3.0), theme::alpha(theme::FAINT, 0.7)));
+                }
+                g += gstep;
+            }
+            for col in 0..cols {
+                if let (Some(a), Some(bv)) = (col_a[col], col_b[col]) {
+                    let (ya, yb) = (y_of_v(a), y_of_v(bv));
+                    quad(
+                        window,
+                        fill(
+                            rect(x0 + col as f32, ya.min(yb), 1.0, (ya - yb).abs()),
+                            theme::alpha(if a >= bv { theme::OK } else { theme::ERROR }, 0.22),
+                        ),
+                    );
                 }
             }
-            ms += minor;
-        }
-        let zero = ((-p.race_ms0).max(0) / 10) as usize;
-        let (ca, cb) = span(0, zero);
-        if cb > ca {
-            window.paint_quad(fill(rect(ca, ty, cb - ca, bottom - ty), theme::alpha(theme::BG, 0.45)));
-            if cb - ca > 70.0 {
-                text(window, cx, "countdown", ca + 6.0, ty + 4.0, 9.5, theme::FAINT, 1.0, false);
+            let curve = |window: &mut Window, vals: &[Option<f32>], width: f32, color: gpui::Hsla| {
+                let mut line = PathBuilder::stroke(px(width));
+                let mut started = false;
+                for (col, v) in vals.iter().enumerate() {
+                    let Some(v) = v else {
+                        started = false;
+                        continue;
+                    };
+                    let pt = point(px(x0 + col as f32 + 0.5), px(y_of_v(*v)));
+                    if started {
+                        line.line_to(pt);
+                    } else {
+                        line.move_to(pt);
+                        started = true;
+                    }
+                }
+                if let Ok(path) = line.build() {
+                    draw_path(window, path, color);
+                }
+            };
+            if p.b_speed.is_some() {
+                curve(window, &col_b, 1.2, theme::alpha(theme::GHOST, 0.9));
             }
-        }
-        let col_a: Vec<Option<f32>> = (0..cols)
-            .map(|col| {
-                let (a, e) = col_ticks(col);
-                (a < p.speed.len())
-                    .then(|| p.speed[a..e.min(p.speed.len())].iter().copied().fold(0.0f32, f32::max))
-            })
-            .collect();
-        let col_b: Vec<Option<f32>> = match &p.b_speed {
-            Some(bs) => (0..cols)
-                .map(|col| {
-                    sample_at(bs, p.race_ms0 as f32 + 10.0 * (p.start + (col as f64 + 0.5) / p.ppt) as f32)
-                })
-                .collect(),
-            None => vec![None; cols],
-        };
-        let (mut lo, mut hi) = col_a
-            .iter()
-            .chain(&col_b)
-            .flatten()
-            .fold((f32::MAX, f32::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
-        if lo > hi {
-            (lo, hi) = (0.0, 100.0);
-        }
-        let pad = ((hi - lo) * 0.12).max((10.0 - (hi - lo)).max(0.0) * 0.5) + 2.0;
-        let (lo, hi) = ((lo - pad).max(0.0), hi + pad);
-        let y_of_v = |v: f32| spy + sph - 4.0 - (v - lo) / (hi - lo) * (sph - 10.0);
-        let gstep = [1.0f32, 2.0, 5.0, 10.0, 20.0, 25.0, 50.0, 100.0, 200.0]
-            .into_iter()
-            .find(|s| s / (hi - lo) * (sph - 10.0) >= 18.0)
-            .unwrap_or(500.0);
-        let mut g = (lo / gstep).ceil() * gstep;
-        while g < hi && sph > 24.0 {
-            let y = y_of_v(g);
-            if y > spy + 9.0 {
-                window.paint_quad(fill(rect(x0, y, w, 1.0), theme::alpha(theme::HAIRLINE, 0.5)));
-                text_r(window, cx, &format!("{g:.0}"), x0 + w - 4.0, y - 12.0, 9.0, theme::FAINT, 1.0, true);
+            curve(window, &col_a, 1.6, theme::alpha(theme::SPEED, 1.0));
+            if p.simulated < p.len + 1 {
+                let a = x_of(p.simulated as f32).max(x0);
+                if a < x0 + w {
+                    quad(window, fill(rect(a, spy, x0 + w - a, sph), theme::alpha(theme::PANEL, 0.7)));
+                }
             }
-            g += gstep;
-        }
-        for col in 0..cols {
-            if let (Some(a), Some(bv)) = (col_a[col], col_b[col]) {
-                let (ya, yb) = (y_of_v(a), y_of_v(bv));
-                window.paint_quad(fill(
-                    rect(x0 + col as f32, ya.min(yb), 1.0, (ya - yb).abs()),
-                    theme::alpha(if a >= bv { theme::OK } else { theme::ERROR }, 0.22),
-                ));
+            let mid = sty + sth * 0.5;
+            let amp = sth * 0.5 - 5.0;
+            quad(window, fill(rect(x0, mid - 0.5, w, 1.0), theme::alpha(theme::HAIRLINE, 1.0)));
+            for g in [-0.5f32, 0.5] {
+                quad(window, fill(rect(x0, mid - g * amp, w, 1.0), theme::alpha(theme::HAIRLINE, 0.35)));
             }
-        }
-        let curve = |window: &mut Window, vals: &[Option<f32>], width: f32, color: gpui::Hsla| {
-            let mut line = PathBuilder::stroke(px(width));
-            let mut started = false;
-            for (col, v) in vals.iter().enumerate() {
-                let Some(v) = v else {
-                    started = false;
-                    continue;
+            let per_tick = ppt >= 2.0;
+            let draw_inputs = |window: &mut Window,
+                               ctrl: &[Controls],
+                               colors: [u32; 3],
+                               only: Option<&[Range<usize>]>| {
+                let inside = |k: usize| only.is_none_or(|rs| rs.iter().any(|r| r.contains(&k)));
+                let [sc, gc, bc] = colors;
+                let mut edge = PathBuilder::stroke(px(1.2));
+                let mut started = false;
+                let mut edge_to = |x: f32, s: f32, on: bool| {
+                    let pt = point(px(x), px(mid - s * amp));
+                    if !on {
+                        started = false;
+                    } else if started {
+                        edge.line_to(pt);
+                    } else {
+                        edge.move_to(pt);
+                        started = true;
+                    }
                 };
-                let pt = point(px(x0 + col as f32 + 0.5), px(y_of_v(*v)));
+                if per_tick {
+                    let gap = if ppt >= 5.0 { 1.0 } else { 0.0 };
+                    for k in first..last.min(ctrl.len()) {
+                        if !inside(k) {
+                            edge_to(0.0, 0.0, false);
+                            continue;
+                        }
+                        let c = ctrl[k];
+                        let x = x_of(k as f32);
+                        let ww = ppt - gap;
+                        let sv = c.steer * amp;
+                        if c.steer != 0.0 {
+                            quad(
+                                window,
+                                fill(
+                                    rect(x, if sv > 0.0 { mid - sv } else { mid }, ww, sv.abs().max(1.0)),
+                                    theme::alpha(sc, 0.38),
+                                ),
+                            );
+                        }
+                        edge_to(x, c.steer, true);
+                        edge_to(x + ppt, c.steer, true);
+                        if c.gas > 0.0 {
+                            quad(
+                                window,
+                                fill(rect(x, gy + 4.0, ww, gh - 8.0), theme::alpha(gc, 0.5 * c.gas)),
+                            );
+                        }
+                        if c.brake > 0.0 {
+                            quad(
+                                window,
+                                fill(rect(x, bry + 3.0, ww, brh - 6.0), theme::alpha(bc, 0.95 * c.brake)),
+                            );
+                        }
+                    }
+                } else {
+                    for col in 0..cols {
+                        let (a, e) = col_ticks(col);
+                        let e = e.min(ctrl.len());
+                        if a >= ctrl.len() {
+                            break;
+                        }
+                        if !(a..e).any(inside) {
+                            edge_to(0.0, 0.0, false);
+                            continue;
+                        }
+                        let x = x0 + col as f32;
+                        let (mut lo, mut hi, mut gas, mut brk) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+                        for c in &ctrl[a..e] {
+                            lo = lo.min(c.steer);
+                            hi = hi.max(c.steer);
+                            gas = gas.max(c.gas);
+                            brk = brk.max(c.brake);
+                        }
+                        let (yt, yb) = (mid - hi * amp, mid - lo * amp);
+                        if yb - yt > 0.5 {
+                            quad(window, fill(rect(x, yt, 1.0, yb - yt), theme::alpha(sc, 0.38)));
+                        }
+                        edge_to(x + 0.5, ctrl[a].steer, true);
+                        if gas > 0.0 {
+                            quad(window, fill(rect(x, gy + 4.0, 1.0, gh - 8.0), theme::alpha(gc, 0.5 * gas)));
+                        }
+                        if brk > 0.0 {
+                            quad(
+                                window,
+                                fill(rect(x, bry + 3.0, 1.0, brh - 6.0), theme::alpha(bc, 0.95 * brk)),
+                            );
+                        }
+                    }
+                }
+                if let Ok(path) = edge.build() {
+                    draw_path(window, path, theme::alpha(sc, 1.0));
+                }
+            };
+            draw_inputs(window, &p.controls, [theme::STEER, theme::OK, theme::ERROR], None);
+            let mut off: Option<usize> = None;
+            for k in first..=last.min(p.controls.len()) {
+                let on = k >= last.min(p.controls.len()) || p.controls[k].gas > 0.0;
+                match (on, off) {
+                    (false, None) => off = Some(k),
+                    (true, Some(a)) => {
+                        let (xa, xb) = span(a, k);
+                        if xb - xa > 30.0 {
+                            text(
+                                window,
+                                cx,
+                                "off",
+                                xa + (xb - xa) * 0.5 - 7.0,
+                                gy + 2.0,
+                                8.5,
+                                theme::FAINT,
+                                1.0,
+                                false,
+                            );
+                        }
+                        off = None;
+                    }
+                    _ => {}
+                }
+            }
+            if let Some((ctrl, diff)) = &p.preview {
+                for r in diff {
+                    let (a, bb) = span(r.start, r.end);
+                    if bb > a {
+                        quad(
+                            window,
+                            fill(rect(a, sty, bb - a, bottom - sty), theme::alpha(theme::GHOST, 0.10)),
+                        );
+                        quad(window, fill(rect(a, sty, bb - a, 1.0), theme::alpha(theme::GHOST, 0.9)));
+                    }
+                }
+                draw_inputs(window, ctrl, [theme::GHOST; 3], Some(diff));
+            }
+            for r in &p.locks {
+                let (a, bb) = span(r.start, r.end);
+                if bb <= a {
+                    continue;
+                }
+                quad(window, fill(rect(a, ty + th - 3.0, bb - a, 3.0), theme::alpha(theme::WARN, 0.8)));
+                let mut x = a;
+                while x < bb {
+                    quad(window, fill(rect(x, sty, 1.0, bottom - sty), theme::alpha(theme::WARN, 0.14)));
+                    x += 6.0;
+                }
+            }
+            let mut shade = |window: &mut Window, upto: usize, label: &str| {
+                let (a, xe) = span(0, upto);
+                if xe > a {
+                    quad(window, fill(rect(a, sty, xe - a, bottom - sty), theme::alpha(theme::BG, 0.55)));
+                    if xe - a > 150.0 {
+                        text(window, cx, label, a + 6.0, sty + 4.0, 9.5, theme::MUTED, 1.0, false);
+                    }
+                }
+            };
+            if p.t0_tick > zero {
+                shade(window, p.t0_tick, "before the first input");
+            }
+            if let Some(st) = p.start_tick {
+                shade(window, st, "before the placed car");
+            }
+            let (wa, wb) = span(p.window.start, p.window.end);
+            quad(window, fill(rect(x0, top, (wa - x0).max(0.0), bottom - top), theme::alpha(theme::BG, 0.4)));
+            quad(
+                window,
+                fill(
+                    rect(wb.max(x0), top, (x0 + w - wb.max(x0)).max(0.0), bottom - top),
+                    theme::alpha(theme::BG, 0.4),
+                ),
+            );
+            if wb > wa {
+                quad(window, fill(rect(wa, sy0, wb - wa, sh), theme::alpha(theme::PIN, 0.3)));
+                if wb - wa > 110.0 {
+                    text(
+                        window,
+                        cx,
+                        &format!("Search  {:.2} s", p.window.len() as f32 / 100.0),
+                        wa + 8.0,
+                        sy0 - 1.0,
+                        9.0,
+                        theme::TEXT,
+                        0.95,
+                        false,
+                    );
+                }
+            }
+            for (k, right) in [(p.window.start, false), (p.window.end, true)] {
+                let x = x_of(k as f32);
+                if x >= x0 - 1.0 && x <= x0 + w + 1.0 {
+                    quad(
+                        window,
+                        fill(
+                            rect(if right { x - 3.0 } else { x }, sy0 - 1.0, 3.0, sh + 2.0),
+                            theme::alpha(theme::PIN, 1.0),
+                        ),
+                    );
+                    quad(window, fill(rect(x - 0.5, top, 1.0, bottom - top), theme::alpha(theme::PIN, 0.4)));
+                }
+            }
+            let (py, ph) = lane(Lane::Plan);
+            if let Some((a, e, name)) = &p.route {
+                let (xa, xb) = span(*a, *e);
+                if xb > xa {
+                    quad(window, fill(rect(xa, py + 2.0, xb - xa, ph - 4.0), theme::alpha(theme::PIN, 0.16)));
+                    quad(window, fill(rect(xa, py + 2.0, 1.5, ph - 4.0), theme::alpha(theme::PIN, 0.9)));
+                    quad(
+                        window,
+                        fill(rect(xb - 1.5, py + 2.0, 1.5, ph - 4.0), theme::alpha(theme::PIN, 0.9)),
+                    );
+                    if xb - xa > 60.0 {
+                        text(window, cx, name, xa + 8.0, py + 4.0, 9.5, theme::PIN, 1.0, false);
+                    }
+                }
+            }
+            for (a, e, name, sel) in &p.clips {
+                let (xa, xb) = span(*a, *e);
+                if xb > xa {
+                    quad(
+                        window,
+                        fill(
+                            rect(xa, py + 2.0, xb - xa, ph - 4.0),
+                            theme::alpha(theme::SETUP, if *sel { 0.55 } else { 0.32 }),
+                        ),
+                    );
+                    if xb - xa > 40.0 {
+                        text(window, cx, name, xa + 6.0, py + 4.0, 9.5, theme::TEXT, 1.0, false);
+                    }
+                }
+            }
+            let (tky, tkh) = lane(Lane::Tricks);
+            for t in &p.tricks {
+                let (xa, xb) = span(t.from, t.to);
+                if xb > xa - 1.0 {
+                    quad(
+                        window,
+                        fill(
+                            rect(xa, tky + 3.0, (xb - xa).max(2.0), tkh - 6.0),
+                            theme::alpha(crate::lab::trick_color(t.kind), 0.95),
+                        ),
+                    );
+                }
+            }
+            if let Some(r) = &p.sel {
+                let (a, bb) = span(r.start, r.end);
+                if bb > a {
+                    quad(window, fill(rect(a, top, bb - a, bottom - top), theme::alpha(theme::TEXT, 0.07)));
+                    for x in [a, bb] {
+                        quad(
+                            window,
+                            fill(rect(x - 0.5, top, 1.0, bottom - top), theme::alpha(theme::TEXT, 0.5)),
+                        );
+                    }
+                }
+            }
+            let cy = ty + th * 0.5;
+            for &k in &p.ghost_ticks {
+                let x = x_of(k as f32);
+                if x >= x0 && x <= x0 + w {
+                    let mut t = PathBuilder::fill();
+                    t.move_to(point(px(x - 3.0), px(ty + th)));
+                    t.line_to(point(px(x + 3.0), px(ty + th)));
+                    t.line_to(point(px(x), px(ty + th - 5.0)));
+                    t.close();
+                    if let Ok(path) = t.build() {
+                        draw_path(window, path, theme::alpha(theme::GHOST, 1.0));
+                    }
+                }
+            }
+            let mut last_label_end = f32::MIN;
+            let mut marks = p.marks.clone();
+            marks.sort_by_key(|m| m.k);
+            for m in &marks {
+                let x = x_of(m.k as f32);
+                if x < x0 || x > x0 + w {
+                    continue;
+                }
+                let r = 4.5;
+                let mut d = PathBuilder::fill();
+                d.move_to(point(px(x), px(cy - r)));
+                d.line_to(point(px(x + r), px(cy)));
+                d.line_to(point(px(x), px(cy + r)));
+                d.line_to(point(px(x - r), px(cy)));
+                d.close();
+                if let Ok(path) = d.build() {
+                    draw_path(window, path, theme::alpha(m.color, if m.solid { 1.0 } else { 0.45 }));
+                }
+                quad(window, fill(rect(x - 0.5, top, 1.0, bottom - top), theme::alpha(m.color, 0.2)));
+                let delta = m.delta.map(|d| {
+                    let sign = if d.abs() < 5 {
+                        "\u{00b1}"
+                    } else if d < 0 {
+                        "\u{2212}"
+                    } else {
+                        "+"
+                    };
+                    (
+                        format!("{sign}{:.2}", d.abs() as f32 / 1000.0),
+                        if d.abs() < 5 {
+                            theme::MUTED
+                        } else if d < 0 {
+                            theme::OK
+                        } else {
+                            theme::ERROR
+                        },
+                    )
+                });
+                let lw =
+                    m.name.len() as f32 * 5.8 + delta.as_ref().map_or(0.0, |d| d.0.len() as f32 * 6.0 + 6.0);
+                if x + 9.0 > last_label_end + 8.0 && x + 9.0 + lw < x0 + w {
+                    let nw = text(
+                        window,
+                        cx,
+                        &m.name,
+                        x + 9.0,
+                        cy - 7.0,
+                        10.5,
+                        m.color,
+                        if m.solid { 0.95 } else { 0.6 },
+                        false,
+                    );
+                    if let Some((s, col)) = &delta {
+                        text(window, cx, s, x + 9.0 + nw + 6.0, cy - 6.0, 9.5, *col, 1.0, true);
+                    }
+                    last_label_end = x + 9.0 + lw;
+                }
+            }
+            if let Some(st) = p.start_tick {
+                let x = x_of(st as f32);
+                if x >= x0 && x <= x0 + w {
+                    let mut d = PathBuilder::fill();
+                    d.move_to(point(px(x), px(ty + 4.0)));
+                    d.line_to(point(px(x + 7.0), px(cy)));
+                    d.line_to(point(px(x), px(ty + th - 4.0)));
+                    d.close();
+                    if let Ok(path) = d.build() {
+                        draw_path(window, path, theme::alpha(theme::PIN, 1.0));
+                    }
+                    quad(window, fill(rect(x - 0.5, top, 1.0, bottom - top), theme::alpha(theme::PIN, 0.6)));
+                }
+            }
+        }
+        if dynamic {
+            let ctl = p.controls.get(at).copied().unwrap_or_default();
+            for &(l, y, h) in &ls {
+                let y = by + y;
+                if h <= 0.0 || l == Lane::Ruler {
+                    continue;
+                }
+                let (name, dot) = lane_name(l);
+                let active = matches!((l, p.channel), (Lane::Gas, 0) | (Lane::Brake, 1) | (Lane::Steer, 2));
+                let ny = if h > 30.0 { y + 6.0 } else { y + (h - 14.0) * 0.5 };
+                let nx = if let Some(col) = dot {
+                    quad(
+                        window,
+                        fill(rect(bx + 13.0, ny + 4.5, 6.0, 6.0), theme::alpha(col, 1.0))
+                            .corner_radii(px(3.0)),
+                    );
+                    bx + 25.0
+                } else {
+                    bx + 13.0
+                };
+                let faint = matches!(l, Lane::Overview);
+                text(
+                    window,
+                    cx,
+                    name,
+                    nx,
+                    ny,
+                    11.0,
+                    if active {
+                        theme::TEXT
+                    } else if faint {
+                        theme::FAINT
+                    } else {
+                        theme::MUTED
+                    },
+                    1.0,
+                    false,
+                );
+                let vx = bx + GUTTER - 12.0;
+                match l {
+                    Lane::Speed => {
+                        if let Some(v) = p.speed.get(at) {
+                            text_r(
+                                window,
+                                cx,
+                                &format!("{v:.0} km/h"),
+                                vx,
+                                ny + 1.0,
+                                9.5,
+                                value_col,
+                                1.0,
+                                true,
+                            );
+                            let bv = p
+                                .b_speed
+                                .as_ref()
+                                .and_then(|bs| sample_at(bs, (p.race_ms0 + 10 * at as i32) as f32));
+                            if let (Some(bv), true) = (bv, h > 48.0) {
+                                text_r(
+                                    window,
+                                    cx,
+                                    &format!("B {bv:.0}"),
+                                    vx,
+                                    ny + 16.0,
+                                    9.0,
+                                    theme::GHOST,
+                                    0.85,
+                                    true,
+                                );
+                                let d = v - bv;
+                                text_r(
+                                    window,
+                                    cx,
+                                    &format!("{d:+.0}"),
+                                    vx,
+                                    ny + 30.0,
+                                    9.0,
+                                    if d >= 0.0 { theme::OK } else { theme::ERROR },
+                                    1.0,
+                                    true,
+                                );
+                            }
+                        }
+                    }
+                    Lane::Steer => {
+                        text_r(
+                            window,
+                            cx,
+                            &format!("{:+.2}", ctl.steer),
+                            vx,
+                            ny + 1.0,
+                            9.5,
+                            if ctl.steer == 0.0 { theme::FAINT } else { value_col },
+                            1.0,
+                            true,
+                        );
+                        if h > 46.0 {
+                            text(window, cx, "\u{2191} right", nx, ny + 16.0, 9.0, theme::FAINT, 1.0, false);
+                            text(
+                                window,
+                                cx,
+                                "\u{2193} left",
+                                nx,
+                                y + h - 16.0,
+                                9.0,
+                                theme::FAINT,
+                                1.0,
+                                false,
+                            );
+                        }
+                    }
+                    Lane::Gas => text_r(
+                        window,
+                        cx,
+                        if ctl.gas > 0.0 { "on" } else { "off" },
+                        vx,
+                        ny + 1.0,
+                        9.5,
+                        if ctl.gas > 0.0 { value_col } else { theme::FAINT },
+                        1.0,
+                        true,
+                    ),
+                    Lane::Brake => text_r(
+                        window,
+                        cx,
+                        if ctl.brake > 0.0 { "on" } else { "off" },
+                        vx,
+                        ny + 1.0,
+                        9.5,
+                        if ctl.brake > 0.0 {
+                            if hovering { theme::GHOST } else { theme::ERROR }
+                        } else {
+                            theme::FAINT
+                        },
+                        1.0,
+                        true,
+                    ),
+                    Lane::Track => {
+                        if let Some(bl) = p.b_label {
+                            text_r(
+                                window,
+                                cx,
+                                &format!("vs {bl}"),
+                                vx,
+                                ny + 1.0,
+                                9.5,
+                                theme::GHOST,
+                                1.0,
+                                false,
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if !dynamic {
+            text(window, cx, "Search", bx + 13.0, sy0 - 2.0, 9.5, theme::FAINT, 1.0, false);
+            if p.paint_tool {
+                text(window, cx, "painting", bx + 13.0, ry + 2.0, 9.5, theme::PIN, 1.0, false);
+            }
+        }
+        let tag_w = |s: &str| s.len() as f32 * 6.0 + 12.0;
+        if dynamic {
+            if let Some((k, l)) = hover
+                && l != Lane::Overview
+            {
+                let hx = x_of(k as f32);
+                if hx >= x0 && hx <= x0 + w {
+                    quad(
+                        window,
+                        fill(rect(hx - 0.5, ry, 1.0, bottom - ry), theme::alpha(theme::GHOST, 0.55)),
+                    );
+                    let s = fmt_ms(p.race_ms0 + 10 * k as i32);
+                    let lw = tag_w(&s);
+                    let lx = (hx - lw * 0.5).clamp(x0, x0 + w - lw);
+                    quad(
+                        window,
+                        fill(rect(lx, ry + 1.5, lw, 15.0), theme::alpha(theme::PANEL, 1.0))
+                            .border_widths(px(1.0))
+                            .border_color(theme::alpha(theme::GHOST, 1.0))
+                            .corner_radii(px(3.0)),
+                    );
+                    text(window, cx, &s, lx + 6.0, ry + 3.0, 9.5, theme::GHOST, 1.0, true);
+                }
+            }
+            let cxp = x_of(cursor as f32);
+            if cxp >= x0 && cxp <= x0 + w {
+                quad(
+                    window,
+                    fill(
+                        rect(cxp - 0.75, ry + 16.0, 1.5, bottom - ry - 16.0),
+                        theme::alpha(theme::TEXT, 0.95),
+                    ),
+                );
+                let label = fmt_ms(p.race_ms0 + 10 * cursor as i32);
+                let lw = tag_w(&label);
+                let lx = (cxp - lw * 0.5).clamp(x0, x0 + w - lw);
+                quad(
+                    window,
+                    fill(rect(lx, ry + 1.5, lw, 15.0), theme::alpha(theme::TEXT, 1.0)).corner_radii(px(3.0)),
+                );
+                let mut n = PathBuilder::fill();
+                n.move_to(point(px(cxp - 4.0), px(ry + 16.0)));
+                n.line_to(point(px(cxp + 4.0), px(ry + 16.0)));
+                n.line_to(point(px(cxp), px(ry + 21.0)));
+                n.close();
+                if let Ok(path) = n.build() {
+                    draw_path(window, path, theme::alpha(theme::TEXT, 1.0));
+                }
+                text(window, cx, &label, lx + 6.0, ry + 3.0, 9.5, theme::BG, 1.0, true);
+            }
+        }
+        let (ok0, ok1) = (p.overview.0 as f32, p.overview.1 as f32);
+        let ox = |k: f32| x0 + (k - ok0) / (ok1 - ok0) * w;
+        if !dynamic {
+            quad(window, fill(rect(bx, oy - 2.0 * GAP - 1.0, bw, 1.0), theme::alpha(theme::HAIRLINE, 1.0)));
+            quad(window, fill(rect(x0, oy, w, oh), theme::alpha(theme::WELL, 1.0)).corner_radii(px(3.0)));
+            let vmax = p.speed.iter().copied().fold(50.0f32, f32::max) * 1.05;
+            let mut line = PathBuilder::stroke(px(1.0));
+            let mut started = false;
+            let mut col = 0.0;
+            while col < w {
+                let k = (ok0 + col / w * (ok1 - ok0)) as usize;
+                let Some(v) = p.speed.get(k) else { break };
+                let pt = point(px(x0 + col), px(oy + oh - 3.0 - v / vmax * (oh - 6.0)));
                 if started {
                     line.line_to(pt);
                 } else {
                     line.move_to(pt);
                     started = true;
                 }
+                col += 2.0;
             }
-            if let Ok(path) = line.build() {
-                window.paint_path(path, color);
+            if started && let Ok(path) = line.build() {
+                draw_path(window, path, theme::alpha(theme::MUTED, 0.6));
             }
-        };
-        if p.b_speed.is_some() {
-            curve(window, &col_b, 1.2, theme::alpha(theme::GHOST, 0.9));
-        }
-        curve(window, &col_a, 1.6, theme::alpha(theme::SPEED, 1.0));
-        if p.simulated < p.len + 1 {
-            let a = x_of(p.simulated as f32).max(x0);
-            if a < x0 + w {
-                window.paint_quad(fill(rect(a, spy, x0 + w - a, sph), theme::alpha(theme::PANEL, 0.7)));
+            for m in p.marks.iter().filter(|m| (m.k as f32) <= ok1) {
+                quad(window, fill(rect(ox(m.k as f32), oy + 2.0, 1.0, oh - 4.0), theme::alpha(m.color, 0.6)));
             }
-        }
-        let mid = sty + sth * 0.5;
-        let amp = sth * 0.5 - 5.0;
-        window.paint_quad(fill(rect(x0, mid - 0.5, w, 1.0), theme::alpha(theme::HAIRLINE, 1.0)));
-        for g in [-0.5f32, 0.5] {
-            window.paint_quad(fill(rect(x0, mid - g * amp, w, 1.0), theme::alpha(theme::HAIRLINE, 0.35)));
-        }
-        let per_tick = ppt >= 2.0;
-        let draw_inputs = |window: &mut Window,
-                           ctrl: &[Controls],
-                           colors: [u32; 3],
-                           only: Option<&[Range<usize>]>| {
-            let inside = |k: usize| only.is_none_or(|rs| rs.iter().any(|r| r.contains(&k)));
-            let [sc, gc, bc] = colors;
-            let mut edge = PathBuilder::stroke(px(1.2));
-            let mut started = false;
-            let mut edge_to = |x: f32, s: f32, on: bool| {
-                let pt = point(px(x), px(mid - s * amp));
-                if !on {
-                    started = false;
-                } else if started {
-                    edge.line_to(pt);
-                } else {
-                    edge.move_to(pt);
-                    started = true;
-                }
-            };
-            if per_tick {
-                let gap = if ppt >= 5.0 { 1.0 } else { 0.0 };
-                for k in first..last.min(ctrl.len()) {
-                    if !inside(k) {
-                        edge_to(0.0, 0.0, false);
-                        continue;
+            let n = p.controls.len().min(ok1 as usize);
+            let mut k = 0;
+            while k < n {
+                if p.controls[k].brake > 0.0 {
+                    let a = k;
+                    while k < n && p.controls[k].brake > 0.0 {
+                        k += 1;
                     }
-                    let c = ctrl[k];
-                    let x = x_of(k as f32);
-                    let ww = ppt - gap;
-                    let sv = c.steer * amp;
-                    if c.steer != 0.0 {
-                        window.paint_quad(fill(
-                            rect(x, if sv > 0.0 { mid - sv } else { mid }, ww, sv.abs().max(1.0)),
-                            theme::alpha(sc, 0.38),
-                        ));
-                    }
-                    edge_to(x, c.steer, true);
-                    edge_to(x + ppt, c.steer, true);
-                    if c.gas > 0.0 {
-                        window
-                            .paint_quad(fill(rect(x, gy + 4.0, ww, gh - 8.0), theme::alpha(gc, 0.5 * c.gas)));
-                    }
-                    if c.brake > 0.0 {
-                        window.paint_quad(fill(
-                            rect(x, bry + 3.0, ww, brh - 6.0),
-                            theme::alpha(bc, 0.95 * c.brake),
-                        ));
-                    }
-                }
-            } else {
-                for col in 0..cols {
-                    let (a, e) = col_ticks(col);
-                    let e = e.min(ctrl.len());
-                    if a >= ctrl.len() {
-                        break;
-                    }
-                    if !(a..e).any(inside) {
-                        edge_to(0.0, 0.0, false);
-                        continue;
-                    }
-                    let x = x0 + col as f32;
-                    let (mut lo, mut hi, mut gas, mut brk) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
-                    for c in &ctrl[a..e] {
-                        lo = lo.min(c.steer);
-                        hi = hi.max(c.steer);
-                        gas = gas.max(c.gas);
-                        brk = brk.max(c.brake);
-                    }
-                    let (yt, yb) = (mid - hi * amp, mid - lo * amp);
-                    if yb - yt > 0.5 {
-                        window.paint_quad(fill(rect(x, yt, 1.0, yb - yt), theme::alpha(sc, 0.38)));
-                    }
-                    edge_to(x + 0.5, ctrl[a].steer, true);
-                    if gas > 0.0 {
-                        window
-                            .paint_quad(fill(rect(x, gy + 4.0, 1.0, gh - 8.0), theme::alpha(gc, 0.5 * gas)));
-                    }
-                    if brk > 0.0 {
-                        window.paint_quad(fill(
-                            rect(x, bry + 3.0, 1.0, brh - 6.0),
-                            theme::alpha(bc, 0.95 * brk),
-                        ));
-                    }
-                }
-            }
-            if let Ok(path) = edge.build() {
-                window.paint_path(path, theme::alpha(sc, 1.0));
-            }
-        };
-        draw_inputs(window, &p.controls, [theme::STEER, theme::OK, theme::ERROR], None);
-        let mut off: Option<usize> = None;
-        for k in first..=last.min(p.controls.len()) {
-            let on = k >= last.min(p.controls.len()) || p.controls[k].gas > 0.0;
-            match (on, off) {
-                (false, None) => off = Some(k),
-                (true, Some(a)) => {
-                    let (xa, xb) = span(a, k);
-                    if xb - xa > 30.0 {
-                        text(
-                            window,
-                            cx,
-                            "off",
-                            xa + (xb - xa) * 0.5 - 7.0,
-                            gy + 2.0,
-                            8.5,
-                            theme::FAINT,
-                            1.0,
-                            false,
-                        );
-                    }
-                    off = None;
-                }
-                _ => {}
-            }
-        }
-        if let Some((ctrl, diff)) = &p.preview {
-            for r in diff {
-                let (a, bb) = span(r.start, r.end);
-                if bb > a {
-                    window.paint_quad(fill(
-                        rect(a, sty, bb - a, bottom - sty),
-                        theme::alpha(theme::GHOST, 0.10),
-                    ));
-                    window.paint_quad(fill(rect(a, sty, bb - a, 1.0), theme::alpha(theme::GHOST, 0.9)));
-                }
-            }
-            draw_inputs(window, ctrl, [theme::GHOST; 3], Some(diff));
-        }
-        for r in &p.locks {
-            let (a, bb) = span(r.start, r.end);
-            if bb <= a {
-                continue;
-            }
-            window.paint_quad(fill(rect(a, ty + th - 3.0, bb - a, 3.0), theme::alpha(theme::WARN, 0.8)));
-            let mut x = a;
-            while x < bb {
-                window.paint_quad(fill(rect(x, sty, 1.0, bottom - sty), theme::alpha(theme::WARN, 0.14)));
-                x += 6.0;
-            }
-        }
-        let mut shade = |window: &mut Window, upto: usize, label: &str| {
-            let (a, xe) = span(0, upto);
-            if xe > a {
-                window.paint_quad(fill(rect(a, sty, xe - a, bottom - sty), theme::alpha(theme::BG, 0.55)));
-                if xe - a > 150.0 {
-                    text(window, cx, label, a + 6.0, sty + 4.0, 9.5, theme::MUTED, 1.0, false);
-                }
-            }
-        };
-        if p.t0_tick > zero {
-            shade(window, p.t0_tick, "before the first input");
-        }
-        if let Some(st) = p.start_tick {
-            shade(window, st, "before the placed car");
-        }
-        let (wa, wb) = span(p.window.start, p.window.end);
-        window
-            .paint_quad(fill(rect(x0, top, (wa - x0).max(0.0), bottom - top), theme::alpha(theme::BG, 0.4)));
-        window.paint_quad(fill(
-            rect(wb.max(x0), top, (x0 + w - wb.max(x0)).max(0.0), bottom - top),
-            theme::alpha(theme::BG, 0.4),
-        ));
-        if wb > wa {
-            window.paint_quad(fill(rect(wa, sy0, wb - wa, sh), theme::alpha(theme::PIN, 0.3)));
-            if wb - wa > 110.0 {
-                text(
-                    window,
-                    cx,
-                    &format!("Search  {:.2} s", p.window.len() as f32 / 100.0),
-                    wa + 8.0,
-                    sy0 - 1.0,
-                    9.0,
-                    theme::TEXT,
-                    0.95,
-                    false,
-                );
-            }
-        }
-        for (k, right) in [(p.window.start, false), (p.window.end, true)] {
-            let x = x_of(k as f32);
-            if x >= x0 - 1.0 && x <= x0 + w + 1.0 {
-                window.paint_quad(fill(
-                    rect(if right { x - 3.0 } else { x }, sy0 - 1.0, 3.0, sh + 2.0),
-                    theme::alpha(theme::PIN, 1.0),
-                ));
-                window.paint_quad(fill(rect(x - 0.5, top, 1.0, bottom - top), theme::alpha(theme::PIN, 0.4)));
-            }
-        }
-        let (py, ph) = lane(Lane::Plan);
-        if let Some((a, e, name)) = &p.route {
-            let (xa, xb) = span(*a, *e);
-            if xb > xa {
-                window
-                    .paint_quad(fill(rect(xa, py + 2.0, xb - xa, ph - 4.0), theme::alpha(theme::PIN, 0.16)));
-                window.paint_quad(fill(rect(xa, py + 2.0, 1.5, ph - 4.0), theme::alpha(theme::PIN, 0.9)));
-                window
-                    .paint_quad(fill(rect(xb - 1.5, py + 2.0, 1.5, ph - 4.0), theme::alpha(theme::PIN, 0.9)));
-                if xb - xa > 60.0 {
-                    text(window, cx, name, xa + 8.0, py + 4.0, 9.5, theme::PIN, 1.0, false);
-                }
-            }
-        }
-        for (a, e, name, sel) in &p.clips {
-            let (xa, xb) = span(*a, *e);
-            if xb > xa {
-                window.paint_quad(fill(
-                    rect(xa, py + 2.0, xb - xa, ph - 4.0),
-                    theme::alpha(theme::SETUP, if *sel { 0.55 } else { 0.32 }),
-                ));
-                if xb - xa > 40.0 {
-                    text(window, cx, name, xa + 6.0, py + 4.0, 9.5, theme::TEXT, 1.0, false);
-                }
-            }
-        }
-        let (tky, tkh) = lane(Lane::Tricks);
-        for t in &p.tricks {
-            let (xa, xb) = span(t.from, t.to);
-            if xb > xa - 1.0 {
-                window.paint_quad(fill(
-                    rect(xa, tky + 3.0, (xb - xa).max(2.0), tkh - 6.0),
-                    theme::alpha(crate::lab::trick_color(t.kind), 0.95),
-                ));
-            }
-        }
-        if let Some(r) = &p.sel {
-            let (a, bb) = span(r.start, r.end);
-            if bb > a {
-                window.paint_quad(fill(rect(a, top, bb - a, bottom - top), theme::alpha(theme::TEXT, 0.07)));
-                for x in [a, bb] {
-                    window.paint_quad(fill(
-                        rect(x - 0.5, top, 1.0, bottom - top),
-                        theme::alpha(theme::TEXT, 0.5),
-                    ));
-                }
-            }
-        }
-        let cy = ty + th * 0.5;
-        for &k in &p.ghost_ticks {
-            let x = x_of(k as f32);
-            if x >= x0 && x <= x0 + w {
-                let mut t = PathBuilder::fill();
-                t.move_to(point(px(x - 3.0), px(ty + th)));
-                t.line_to(point(px(x + 3.0), px(ty + th)));
-                t.line_to(point(px(x), px(ty + th - 5.0)));
-                t.close();
-                if let Ok(path) = t.build() {
-                    window.paint_path(path, theme::alpha(theme::GHOST, 1.0));
-                }
-            }
-        }
-        let mut last_label_end = f32::MIN;
-        let mut marks = p.marks.clone();
-        marks.sort_by_key(|m| m.k);
-        for m in &marks {
-            let x = x_of(m.k as f32);
-            if x < x0 || x > x0 + w {
-                continue;
-            }
-            let r = 4.5;
-            let mut d = PathBuilder::fill();
-            d.move_to(point(px(x), px(cy - r)));
-            d.line_to(point(px(x + r), px(cy)));
-            d.line_to(point(px(x), px(cy + r)));
-            d.line_to(point(px(x - r), px(cy)));
-            d.close();
-            if let Ok(path) = d.build() {
-                window.paint_path(path, theme::alpha(m.color, if m.solid { 1.0 } else { 0.45 }));
-            }
-            window.paint_quad(fill(rect(x - 0.5, top, 1.0, bottom - top), theme::alpha(m.color, 0.2)));
-            let delta = m.delta.map(|d| {
-                let sign = if d.abs() < 5 {
-                    "\u{00b1}"
-                } else if d < 0 {
-                    "\u{2212}"
-                } else {
-                    "+"
-                };
-                (
-                    format!("{sign}{:.2}", d.abs() as f32 / 1000.0),
-                    if d.abs() < 5 {
-                        theme::MUTED
-                    } else if d < 0 {
-                        theme::OK
-                    } else {
-                        theme::ERROR
-                    },
-                )
-            });
-            let lw = m.name.len() as f32 * 5.8 + delta.as_ref().map_or(0.0, |d| d.0.len() as f32 * 6.0 + 6.0);
-            if x + 9.0 > last_label_end + 8.0 && x + 9.0 + lw < x0 + w {
-                let nw = text(
-                    window,
-                    cx,
-                    &m.name,
-                    x + 9.0,
-                    cy - 7.0,
-                    10.5,
-                    m.color,
-                    if m.solid { 0.95 } else { 0.6 },
-                    false,
-                );
-                if let Some((s, col)) = &delta {
-                    text(window, cx, s, x + 9.0 + nw + 6.0, cy - 6.0, 9.5, *col, 1.0, true);
-                }
-                last_label_end = x + 9.0 + lw;
-            }
-        }
-        if let Some(st) = p.start_tick {
-            let x = x_of(st as f32);
-            if x >= x0 && x <= x0 + w {
-                let mut d = PathBuilder::fill();
-                d.move_to(point(px(x), px(ty + 4.0)));
-                d.line_to(point(px(x + 7.0), px(cy)));
-                d.line_to(point(px(x), px(ty + th - 4.0)));
-                d.close();
-                if let Ok(path) = d.build() {
-                    window.paint_path(path, theme::alpha(theme::PIN, 1.0));
-                }
-                window.paint_quad(fill(rect(x - 0.5, top, 1.0, bottom - top), theme::alpha(theme::PIN, 0.6)));
-            }
-        }
-        let ctl = p.controls.get(at).copied().unwrap_or_default();
-        for &(l, y, h) in &ls {
-            let y = by + y;
-            if h <= 0.0 || l == Lane::Ruler {
-                continue;
-            }
-            let (name, dot) = lane_name(l);
-            let active = matches!((l, p.channel), (Lane::Gas, 0) | (Lane::Brake, 1) | (Lane::Steer, 2));
-            let ny = if h > 30.0 { y + 6.0 } else { y + (h - 14.0) * 0.5 };
-            let nx = if let Some(col) = dot {
-                window.paint_quad(
-                    fill(rect(bx + 13.0, ny + 4.5, 6.0, 6.0), theme::alpha(col, 1.0)).corner_radii(px(3.0)),
-                );
-                bx + 25.0
-            } else {
-                bx + 13.0
-            };
-            let faint = matches!(l, Lane::Overview);
-            text(
-                window,
-                cx,
-                name,
-                nx,
-                ny,
-                11.0,
-                if active {
-                    theme::TEXT
-                } else if faint {
-                    theme::FAINT
-                } else {
-                    theme::MUTED
-                },
-                1.0,
-                false,
-            );
-            let vx = bx + GUTTER - 12.0;
-            match l {
-                Lane::Speed => {
-                    if let Some(v) = p.speed.get(at) {
-                        text_r(window, cx, &format!("{v:.0} km/h"), vx, ny + 1.0, 9.5, value_col, 1.0, true);
-                        let bv = p
-                            .b_speed
-                            .as_ref()
-                            .and_then(|bs| sample_at(bs, (p.race_ms0 + 10 * at as i32) as f32));
-                        if let (Some(bv), true) = (bv, h > 48.0) {
-                            text_r(
-                                window,
-                                cx,
-                                &format!("B {bv:.0}"),
-                                vx,
-                                ny + 16.0,
-                                9.0,
-                                theme::GHOST,
-                                0.85,
-                                true,
-                            );
-                            let d = v - bv;
-                            text_r(
-                                window,
-                                cx,
-                                &format!("{d:+.0}"),
-                                vx,
-                                ny + 30.0,
-                                9.0,
-                                if d >= 0.0 { theme::OK } else { theme::ERROR },
-                                1.0,
-                                true,
-                            );
-                        }
-                    }
-                }
-                Lane::Steer => {
-                    text_r(
+                    let (xa, xb) = (ox(a as f32), ox(k as f32));
+                    quad(
                         window,
-                        cx,
-                        &format!("{:+.2}", ctl.steer),
-                        vx,
-                        ny + 1.0,
-                        9.5,
-                        if ctl.steer == 0.0 { theme::FAINT } else { value_col },
-                        1.0,
-                        true,
+                        fill(
+                            rect(xa, oy + oh - 6.0, (xb - xa).max(2.0), 3.0),
+                            theme::alpha(theme::ERROR, 0.95),
+                        ),
                     );
-                    if h > 46.0 {
-                        text(window, cx, "\u{2191} right", nx, ny + 16.0, 9.0, theme::FAINT, 1.0, false);
-                        text(window, cx, "\u{2193} left", nx, y + h - 16.0, 9.0, theme::FAINT, 1.0, false);
-                    }
-                }
-                Lane::Gas => text_r(
-                    window,
-                    cx,
-                    if ctl.gas > 0.0 { "on" } else { "off" },
-                    vx,
-                    ny + 1.0,
-                    9.5,
-                    if ctl.gas > 0.0 { value_col } else { theme::FAINT },
-                    1.0,
-                    true,
-                ),
-                Lane::Brake => text_r(
-                    window,
-                    cx,
-                    if ctl.brake > 0.0 { "on" } else { "off" },
-                    vx,
-                    ny + 1.0,
-                    9.5,
-                    if ctl.brake > 0.0 {
-                        if hovering { theme::GHOST } else { theme::ERROR }
-                    } else {
-                        theme::FAINT
-                    },
-                    1.0,
-                    true,
-                ),
-                Lane::Track => {
-                    if let Some(bl) = p.b_label {
-                        text_r(window, cx, &format!("vs {bl}"), vx, ny + 1.0, 9.5, theme::GHOST, 1.0, false);
-                    }
-                }
-                _ => {}
-            }
-        }
-        text(window, cx, "Search", bx + 13.0, sy0 - 2.0, 9.5, theme::FAINT, 1.0, false);
-        if p.paint_tool {
-            text(window, cx, "painting", bx + 13.0, ry + 2.0, 9.5, theme::PIN, 1.0, false);
-        }
-        let tag_w = |s: &str| s.len() as f32 * 6.0 + 12.0;
-        if let Some((k, l)) = p.hover
-            && l != Lane::Overview
-        {
-            let hx = x_of(k as f32);
-            if hx >= x0 && hx <= x0 + w {
-                window
-                    .paint_quad(fill(rect(hx - 0.5, ry, 1.0, bottom - ry), theme::alpha(theme::GHOST, 0.55)));
-                let s = fmt_ms(p.race_ms0 + 10 * k as i32);
-                let lw = tag_w(&s);
-                let lx = (hx - lw * 0.5).clamp(x0, x0 + w - lw);
-                window.paint_quad(
-                    fill(rect(lx, ry + 1.5, lw, 15.0), theme::alpha(theme::PANEL, 1.0))
-                        .border_widths(px(1.0))
-                        .border_color(theme::alpha(theme::GHOST, 1.0))
-                        .corner_radii(px(3.0)),
-                );
-                text(window, cx, &s, lx + 6.0, ry + 3.0, 9.5, theme::GHOST, 1.0, true);
-            }
-        }
-        let cxp = x_of(p.cursor as f32);
-        if cxp >= x0 && cxp <= x0 + w {
-            window.paint_quad(fill(
-                rect(cxp - 0.75, ry + 16.0, 1.5, bottom - ry - 16.0),
-                theme::alpha(theme::TEXT, 0.95),
-            ));
-            let label = fmt_ms(p.race_ms0 + 10 * p.cursor as i32);
-            let lw = tag_w(&label);
-            let lx = (cxp - lw * 0.5).clamp(x0, x0 + w - lw);
-            window.paint_quad(
-                fill(rect(lx, ry + 1.5, lw, 15.0), theme::alpha(theme::TEXT, 1.0)).corner_radii(px(3.0)),
-            );
-            let mut n = PathBuilder::fill();
-            n.move_to(point(px(cxp - 4.0), px(ry + 16.0)));
-            n.line_to(point(px(cxp + 4.0), px(ry + 16.0)));
-            n.line_to(point(px(cxp), px(ry + 21.0)));
-            n.close();
-            if let Ok(path) = n.build() {
-                window.paint_path(path, theme::alpha(theme::TEXT, 1.0));
-            }
-            text(window, cx, &label, lx + 6.0, ry + 3.0, 9.5, theme::BG, 1.0, true);
-        }
-        window.paint_quad(fill(rect(bx, oy - 2.0 * GAP - 1.0, bw, 1.0), theme::alpha(theme::HAIRLINE, 1.0)));
-        window.paint_quad(fill(rect(x0, oy, w, oh), theme::alpha(theme::WELL, 1.0)).corner_radii(px(3.0)));
-        let (ok0, ok1) = (p.overview.0 as f32, p.overview.1 as f32);
-        let ox = |k: f32| x0 + (k - ok0) / (ok1 - ok0) * w;
-        let vmax = p.speed.iter().copied().fold(50.0f32, f32::max) * 1.05;
-        let mut line = PathBuilder::stroke(px(1.0));
-        let mut started = false;
-        let mut col = 0.0;
-        while col < w {
-            let k = (ok0 + col / w * (ok1 - ok0)) as usize;
-            let Some(v) = p.speed.get(k) else { break };
-            let pt = point(px(x0 + col), px(oy + oh - 3.0 - v / vmax * (oh - 6.0)));
-            if started {
-                line.line_to(pt);
-            } else {
-                line.move_to(pt);
-                started = true;
-            }
-            col += 2.0;
-        }
-        if started && let Ok(path) = line.build() {
-            window.paint_path(path, theme::alpha(theme::MUTED, 0.6));
-        }
-        for m in p.marks.iter().filter(|m| (m.k as f32) <= ok1) {
-            window
-                .paint_quad(fill(rect(ox(m.k as f32), oy + 2.0, 1.0, oh - 4.0), theme::alpha(m.color, 0.6)));
-        }
-        let n = p.controls.len().min(ok1 as usize);
-        let mut k = 0;
-        while k < n {
-            if p.controls[k].brake > 0.0 {
-                let a = k;
-                while k < n && p.controls[k].brake > 0.0 {
+                } else {
                     k += 1;
                 }
-                let (xa, xb) = (ox(a as f32), ox(k as f32));
-                window.paint_quad(fill(
-                    rect(xa, oy + oh - 6.0, (xb - xa).max(2.0), 3.0),
-                    theme::alpha(theme::ERROR, 0.95),
-                ));
-            } else {
-                k += 1;
+            }
+            let (owa, owb) = (ox(p.window.start as f32).max(x0), ox(p.window.end as f32).min(x0 + w));
+            quad(window, fill(rect(owa, oy + oh - 3.0, owb - owa, 3.0), theme::alpha(theme::PIN, 0.8)));
+            let (va, vb) = (ox(p.start as f32).max(x0), ox((p.start + w as f64 / p.ppt) as f32).min(x0 + w));
+            quad(
+                window,
+                fill(rect(va, oy, vb - va, oh), theme::alpha(theme::TEXT, 0.08))
+                    .border_widths(px(1.0))
+                    .border_color(theme::alpha(theme::TEXT, 0.55))
+                    .corner_radii(px(3.0)),
+            );
+            if vb - va > 14.0 {
+                for x in [va + 3.0, vb - 5.0] {
+                    quad(window, fill(rect(x, oy + 4.0, 2.0, oh - 8.0), theme::alpha(theme::TEXT, 0.6)));
+                }
             }
         }
-        let (owa, owb) = (ox(p.window.start as f32).max(x0), ox(p.window.end as f32).min(x0 + w));
-        window.paint_quad(fill(rect(owa, oy + oh - 3.0, owb - owa, 3.0), theme::alpha(theme::PIN, 0.8)));
-        let (va, vb) = (ox(p.start as f32).max(x0), ox((p.start + w as f64 / p.ppt) as f32).min(x0 + w));
-        window.paint_quad(
-            fill(rect(va, oy, vb - va, oh), theme::alpha(theme::TEXT, 0.08))
-                .border_widths(px(1.0))
-                .border_color(theme::alpha(theme::TEXT, 0.55))
-                .corner_radii(px(3.0)),
-        );
-        if vb - va > 14.0 {
-            for x in [va + 3.0, vb - 5.0] {
-                window.paint_quad(fill(rect(x, oy + 4.0, 2.0, oh - 8.0), theme::alpha(theme::TEXT, 0.6)));
-            }
+        if dynamic {
+            quad(window, fill(rect(ox(cursor as f32) - 0.75, oy, 1.5, oh), theme::alpha(theme::TEXT, 0.95)));
         }
-        window
-            .paint_quad(fill(rect(ox(p.cursor as f32) - 0.75, oy, 1.5, oh), theme::alpha(theme::TEXT, 0.95)));
     });
 }

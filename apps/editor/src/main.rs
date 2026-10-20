@@ -14,6 +14,7 @@ mod headless;
 mod lab;
 mod mapcards;
 mod materials;
+mod memo;
 #[cfg(feature = "headless")]
 mod offscreen;
 mod optimize;

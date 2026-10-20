@@ -382,6 +382,7 @@ impl Editor {
 
     fn viewport_down(&mut self, e: &MouseDownEvent, cx: &mut Context<Self>) {
         self.stats.input();
+        let shared = self.editing.is_some() || self.popup.is_some();
         self.commit_field(cx);
         self.popup = None;
         let m = self.local(e.position);
@@ -430,7 +431,11 @@ impl Editor {
             }
             _ => {}
         }
-        cx.notify();
+        if shared {
+            cx.notify();
+        } else {
+            self.redraw_view(cx);
+        }
     }
 
     pub fn viewport_move(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
@@ -565,16 +570,29 @@ impl Editor {
             self.stats.input();
             self.dirty = true;
         }
-        cx.notify();
+        match self.drag {
+            None
+            | Some(
+                Drag::Press { .. }
+                | Drag::Orbit { .. }
+                | Drag::Zoom { .. }
+                | Drag::Pan { .. }
+                | Drag::Fly { .. },
+            ) => self.redraw_view(cx),
+            Some(_) => cx.notify(),
+        }
     }
 
     pub fn viewport_up(&mut self, e: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let drag = self.drag.take();
+        let mut camera_only = matches!(drag, Some(Drag::Orbit { .. } | Drag::Zoom { .. } | Drag::Pan { .. }));
         if let Some(Drag::Fly { at, t0, moved, .. }) = drag {
             let flew = moved || self.fly_keys.iter().any(|k| *k);
             self.fly_keys = [false; 6];
             if !flew && t0.elapsed().as_millis() < 400 {
                 self.open_context_menu(at);
+            } else {
+                camera_only = true;
             }
         }
         if let Some(Drag::Press { at, double, .. }) = drag {
@@ -583,7 +601,11 @@ impl Editor {
         if let Some(Drag::Gizmo { target: GizmoTarget::Goal(id), .. }) = drag {
             self.auto_search(id);
         }
-        cx.notify();
+        if camera_only {
+            self.redraw_view(cx);
+        } else {
+            cx.notify();
+        }
     }
 
     pub fn auto_search(&mut self, id: u32) {
@@ -674,8 +696,7 @@ impl Editor {
             self.camera.dolly(steps, at);
         }
         self.stats.input();
-        self.dirty = true;
-        cx.notify();
+        self.redraw_view(cx);
     }
 
     fn viewport_pinch(&mut self, e: &PinchEvent, cx: &mut Context<Self>) {
@@ -683,8 +704,7 @@ impl Editor {
         let at = self.dolly_target(self.mouse);
         self.camera.dolly(e.delta * 9.0, at);
         self.stats.input();
-        self.dirty = true;
-        cx.notify();
+        self.redraw_view(cx);
     }
 
     fn dolly_target(&self, m: Vec2) -> Option<Vec3> {
@@ -835,7 +855,7 @@ impl Editor {
                     Vec::new()
                 },
                 refs,
-                tries: if self.show.tries { &self.tries } else { &[] },
+                tries: self.show.tries.then_some(&self.tries),
                 branches: probe_branches.as_deref(),
                 pivot,
                 hover: None,
@@ -948,9 +968,6 @@ impl Editor {
         let mut m =
             div().id("viewport").flex_1().min_h_0().w_full().relative().overflow_hidden().child(canvas_el);
         m = m.children(self.labels());
-        if self.map.is_some() && self.open_error.is_none() {
-            m = m.child(self.tool_rail(cx));
-        }
         m = m.child(self.hud());
         if let Some(l) = &self.loading {
             m = m.child(
@@ -975,7 +992,7 @@ impl Editor {
                     .child(open_error_card(e)),
             );
         }
-        div().size_full().flex().flex_col().child(self.view_header(cx)).child(m)
+        m
     }
 
     fn tool_rail(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -1003,7 +1020,7 @@ impl Editor {
                     div()
                         .id(gpui::ElementId::Name(format!("tool-{}", t.key()).into()))
                         .relative()
-                        .child(track(format!("tool-{}", t.key())))
+                        .children(track(format!("tool-{}", t.key())))
                         .size(px(30.0))
                         .flex()
                         .items_center()
@@ -1144,7 +1161,12 @@ impl Editor {
         out
     }
 
-    fn view_header(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn rail_overlay(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let rail = (self.map.is_some() && self.open_error.is_none()).then(|| self.tool_rail(cx));
+        div().size_full().relative().children(rail).into_any_element()
+    }
+
+    pub fn view_header(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let realistic_ok = self.scene.borrow().visual.is_some();
         let follow = self.camera.mode == crate::camera::Mode::Follow;
         let physics = self.show.physics || !realistic_ok;

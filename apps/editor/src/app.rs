@@ -22,12 +22,14 @@ use crate::background::{self, Aux, GateInfo, Key};
 use crate::camera::{Camera, View};
 use crate::doc::{self, Doc, Goal, GoalKind, Id, Origin, Reach, Run, StartState, Undo};
 use crate::gfx::renderer::{Composite, Output};
+use crate::memo::Memo;
 use crate::optimize::{self, Search, Spec};
 use crate::picker::Picker;
 use crate::project::{self, Layout};
 use crate::scene::Scene;
 use crate::sim::{Sim, Waker};
 use crate::stats::Stats;
+use crate::ui::panes::PaneKind;
 use crate::ui::widgets::FieldEdit;
 
 actions!(
@@ -565,8 +567,16 @@ pub struct Options {
     pub headless: bool,
 }
 
+#[derive(Default)]
+pub struct Memos {
+    pub search_ctx: Memo<(u64, Vec<Goal>, Vec<Id>), (Vec<Option<usize>>, Vec<u16>)>,
+    pub compare: Memo<(crate::ui::compare::Side, crate::ui::compare::Side), crate::ui::compare::Compared>,
+    pub compare_paths: Rc<crate::ui::compare::GraphPaths>,
+}
+
 pub struct Editor {
     pub focus: FocusHandle,
+    pub memo: Memos,
     pub opts: Options,
     pub home: PathBuf,
     pub game: gearbox_packs::install::Game,
@@ -636,6 +646,7 @@ pub struct Editor {
     pub search_seen: u64,
     pub tries: Arc<Vec<(Vec<[f32; 3]>, crate::optimize::Mark)>>,
     pub tries_gen: u64,
+    pub search_progress: (usize, String, Option<String>),
     pub multi: Vec<Sel>,
     pub sel_anchor: Option<Sel>,
     pub search_running: bool,
@@ -671,7 +682,12 @@ pub struct Editor {
     pub editing: Option<FieldEdit>,
     pub setters: HashMap<String, Setter>,
     pub field_value: HashMap<String, String>,
-    pub field_order: Vec<String>,
+    pub field_order: Vec<(crate::ui::panes::PaneKind, String)>,
+    pub panes: Option<crate::ui::panes::Panes>,
+    pub rev: u64,
+    pub tl_paint: Option<(u64, std::rc::Rc<crate::ui::dopesheet::Paint>)>,
+    pub tl_cache: Rc<crate::ui::dopesheet::LaneCache>,
+    pub tick_pending: bool,
     pub popup: Option<Popup>,
     pub cheatsheet: bool,
     pub collapsed: std::collections::HashSet<String>,
@@ -766,12 +782,16 @@ impl Editor {
             }
         })
         .detach();
+        if opts.script.is_some() || opts.record.is_some() || opts.shot.is_some() {
+            crate::ui::widgets::TRACKING.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let layout = Layout::load(&home);
         let catalog = crate::catalog::scan_maps(&game);
         let mut app = Self {
             focus,
+            memo: Memos::default(),
             home,
             game,
             waker,
@@ -840,6 +860,7 @@ impl Editor {
             search_seen: 0,
             tries: Arc::default(),
             tries_gen: 0,
+            search_progress: (0, String::new(), None),
             multi: Vec::new(),
             sel_anchor: None,
             search_running: false,
@@ -888,6 +909,11 @@ impl Editor {
             setters: HashMap::new(),
             field_value: HashMap::new(),
             field_order: Vec::new(),
+            panes: None,
+            rev: 0,
+            tl_paint: None,
+            tl_cache: Rc::default(),
+            tick_pending: false,
             popup: None,
             cheatsheet: false,
             collapsed: ["world".to_string()].into_iter().collect(),
@@ -1120,7 +1146,7 @@ impl Editor {
             || self.saved_route.as_ref().is_some_and(|r| *r != self.route)
     }
 
-    fn autosave(&mut self) {
+    fn autosave(&mut self) -> bool {
         if self.map.is_none()
             || self.sim.info.is_none()
             || self.pending_doc.is_some()
@@ -1128,19 +1154,23 @@ impl Editor {
             || self.opts.script.is_some()
             || self.opts.record.is_some()
         {
-            return;
+            return false;
         }
         let new_times = self.project_path.is_some() && self.saved_finishes.as_ref() != Some(&self.finishes());
         if !self.dirty_doc() && !new_times {
             self.autosave_at = None;
-            return;
+            return false;
         }
         let now = Instant::now();
         match self.autosave_at {
             None => self.autosave_at = Some(now + std::time::Duration::from_millis(1000)),
-            Some(t) if now >= t => self.save_project(None),
+            Some(t) if now >= t => {
+                self.save_project(None);
+                return true;
+            }
             _ => {}
         }
+        false
     }
 
     pub fn show_projects(&mut self) {
@@ -1298,6 +1328,8 @@ impl Editor {
 
     pub fn poll(&mut self, cx: &mut Context<Self>) {
         let ch = self.sim.poll();
+        let mut changed =
+            ch.frames || ch.probe || ch.opened.is_some() || ch.failed.is_some() || !ch.errors.is_empty();
         for e in ch.errors {
             self.error("sim", e);
         }
@@ -1322,10 +1354,14 @@ impl Editor {
             cx.notify();
         }
         let picked = self.picker.as_ref().map(Picker::take).unwrap_or_default();
+        let hovered =
+            !picked.is_empty() && picked.iter().all(|p| matches!(p.purpose, crate::picker::Purpose::Hover));
+        changed |= !picked.is_empty() && !hovered;
         for p in picked {
             self.picked(p);
         }
         let done = self.aux.as_ref().map(Aux::take).unwrap_or_default();
+        changed |= !done.is_empty();
         for d in done {
             match d {
                 background::Done::Gates(Ok(g)) => {
@@ -1355,14 +1391,17 @@ impl Editor {
                 }
             }
         }
-        let (tries_gen, newest) = {
+        let (tries_gen, newest, progress) = {
             let l = self.search.live.lock().unwrap();
             if l.tries_gen != self.tries_gen {
                 self.tries = Arc::new(l.tries.iter().cloned().collect());
                 self.dirty = true;
             }
-            (l.tries_gen, l.candidates.last().map(|c| c.id))
+            let best = l.best.as_ref().map(|b| l.metric(b).text);
+            (l.tries_gen, l.candidates.last().map(|c| c.id), (l.attempts, l.message.clone(), best))
         };
+        let progressed = tries_gen != self.tries_gen || self.search_progress != progress;
+        self.search_progress = progress;
         self.tries_gen = tries_gen;
         let (running, best) = {
             let l = self.search.live.lock().unwrap();
@@ -1375,6 +1414,7 @@ impl Editor {
                     .flatten(),
             )
         };
+        changed |= self.search_running != running;
         if self.search_running
             && !running
             && self.spec.go_on
@@ -1384,12 +1424,14 @@ impl Editor {
         }
         self.search_running = running;
         if self.go_on_pending && self.sim.done() {
+            changed = true;
             self.go_on_pending = false;
             self.start_search();
         }
         if let Some(id) = newest
             && id > self.search_seen
         {
+            changed = true;
             self.search_seen = id;
             let _ = self.ref_frames(RunRef::Candidate(id));
             if self.preview.is_none() || self.auto_preview {
@@ -1399,13 +1441,26 @@ impl Editor {
             }
         }
         self.name_gates();
-        self.autosave();
+        changed |= self.autosave();
         if let Some(rx) = &self.pm.cards_rx {
             while let Ok(c) = rx.try_recv() {
                 self.pm.cards.insert(c.path.clone(), c);
             }
         }
-        cx.notify();
+        if changed || self.projects_open {
+            cx.notify();
+            return;
+        }
+        if progressed {
+            for p in [PaneKind::Title, PaneKind::Right, PaneKind::Viewport] {
+                self.notify_pane(p, cx);
+            }
+        }
+        if hovered {
+            for p in [PaneKind::Right, PaneKind::Viewport] {
+                self.notify_pane(p, cx);
+            }
+        }
     }
 
     fn opened(&mut self, o: crate::sim::Opened, cx: &mut Context<Self>) {
@@ -1514,7 +1569,7 @@ impl Editor {
     pub fn run_bounds(&self) -> Option<(Vec3, Vec3)> {
         if self.sim.frames.len() > 10 {
             let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
-            for f in &self.sim.frames {
+            for f in self.sim.frames.iter() {
                 lo = lo.min(Vec3::from(f.position()));
                 hi = hi.max(Vec3::from(f.position()));
             }
@@ -1622,7 +1677,7 @@ impl Editor {
 
     pub fn ref_frames(&mut self, r: RunRef) -> Option<Arc<Vec<Frame>>> {
         let (key, inputs, len, start) = match r {
-            RunRef::Current => return Some(Arc::new(self.sim.frames.clone())),
+            RunRef::Current => return Some(self.sim.frames.clone()),
             RunRef::Ghost(_) => return None,
             RunRef::Previous => {
                 let run = self.doc.history.last()?;
@@ -1826,7 +1881,7 @@ impl Editor {
         }
         self.gate_names_gen = Some(self.frames_gen);
         let mut first: HashMap<u32, u32> = HashMap::new();
-        for f in &self.sim.frames {
+        for f in self.sim.frames.iter() {
             if let Some((w, t)) = f.last_crossing {
                 first.entry(w).or_insert(t);
             }

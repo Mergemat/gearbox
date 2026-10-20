@@ -107,8 +107,9 @@ impl Editor {
         self.start_search();
     }
 
-    fn search_ctx(&self) -> (Vec<Option<usize>>, Vec<u16>) {
-        self.search_ctx_parts()
+    fn search_ctx(&self) -> std::rc::Rc<(Vec<Option<usize>>, Vec<u16>)> {
+        let ids: Vec<crate::doc::Id> = self.doc.goals.iter().map(|g| g.id).collect();
+        self.memo.search_ctx.get((self.sim.rev(), self.aimed_goals(), ids), || self.search_ctx_parts())
     }
 
     fn secs(&self, tick: usize) -> f64 {
@@ -151,12 +152,13 @@ impl Editor {
     }
 
     pub fn search_panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let (reach, wps) = self.search_ctx();
+        let parts = self.search_ctx();
+        let (reach, wps) = (&parts.0, &parts.1);
         let w = |k: usize| wps.get(k.min(wps.len().saturating_sub(1))).copied().unwrap_or(0) as usize;
         let ctx = optimize::Ctx {
             goals: &self.doc.goals,
             race_ms0: self.race_ms0,
-            reach: &reach,
+            reach,
             waypoints_at: &w,
         };
         let sentence = self.spec.sentence(&ctx);
@@ -272,7 +274,7 @@ impl Editor {
             let use_sel = div()
                 .id("range-from-sel")
                 .relative()
-                .child(track("range-from-sel"))
+                .children(track("range-from-sel"))
                 .size(px(24.0))
                 .flex_none()
                 .flex()
@@ -542,7 +544,7 @@ impl Editor {
         div()
             .id(gpui::ElementId::Name(id.to_string().into()))
             .relative()
-            .child(track(id.to_string()))
+            .children(track(id.to_string()))
             .mt(px(theme::SP3))
             .mx(px(theme::PAD))
             .pt(px(theme::SP2))
@@ -996,7 +998,7 @@ impl Editor {
                 div()
                     .id(("cand", id as usize))
                     .relative()
-                    .child(track(format!("cand-{id}")))
+                    .children(track(format!("cand-{id}")))
                     .flex_none()
                     .mx(px(theme::SP2))
                     .px(px(theme::SP2))

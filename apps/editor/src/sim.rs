@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -5,12 +7,15 @@ use crate::engine::display::World;
 use crate::engine::frame::Frame;
 use crate::engine::input::InputFile;
 use crate::engine::session::{Command, Engine, Event, InputSel, Probe, SessionInfo, Source};
+use crate::memo::Memo;
 use gearbox_engine::Savestate;
 
 pub struct Sim {
     engine: Engine,
-    pub frames: Vec<Frame>,
+    pub frames: Arc<Vec<Frame>>,
     generation: u64,
+    rev: u64,
+    crossings: Memo<u64, HashMap<u32, usize>>,
     pub len: usize,
     pub busy: Option<String>,
     pub stop: Option<(usize, String)>,
@@ -43,8 +48,10 @@ impl Sim {
         let engine = Engine::spawn(packs, wake);
         Self {
             engine,
-            frames: Vec::new(),
+            frames: Arc::default(),
             generation: 0,
+            rev: 0,
+            crossings: Memo::default(),
             len: 0,
             busy: None,
             stop: None,
@@ -57,7 +64,8 @@ impl Sim {
     }
 
     pub fn open(&mut self, source: Source, inputs: InputSel, len: Option<usize>) {
-        self.frames.clear();
+        self.frames = Arc::default();
+        self.rev += 1;
         self.info = None;
         self.error = None;
         self.engine.send(Command::Open { source, inputs, len });
@@ -94,7 +102,8 @@ impl Sim {
         let s = self.engine.shared.lock().unwrap();
         if s.generation != self.generation {
             self.generation = s.generation;
-            self.frames.clone_from(&s.frames);
+            self.frames = Arc::new(s.frames.clone());
+            self.rev += 1;
             ch.frames = true;
         }
         self.len = s.len;
@@ -114,6 +123,22 @@ impl Sim {
             ch.probe = true;
         }
         ch
+    }
+
+    pub fn rev(&self) -> u64 {
+        self.rev
+    }
+
+    pub fn first_crossings(&self) -> Rc<HashMap<u32, usize>> {
+        self.crossings.get(self.rev, || {
+            let mut first = HashMap::new();
+            for (k, f) in self.frames.iter().enumerate() {
+                if let Some((w, _)) = f.last_crossing {
+                    first.entry(w).or_insert(k);
+                }
+            }
+            first
+        })
     }
 
     pub fn done(&self) -> bool {

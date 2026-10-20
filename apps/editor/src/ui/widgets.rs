@@ -10,25 +10,35 @@ use gpui::{
 use crate::app::{Drag, Editor, Popup, Setter};
 use crate::theme::{self, c};
 
+type Hits = std::collections::HashMap<String, (crate::ui::panes::PaneKind, gpui::Bounds<gpui::Pixels>)>;
+
 thread_local! {
-    pub static HITS: std::cell::RefCell<std::collections::HashMap<String, gpui::Bounds<gpui::Pixels>>> = Default::default();
+    pub static HITS: std::cell::RefCell<Hits> = Default::default();
 }
 
-pub fn track(id: impl Into<String>) -> impl IntoElement {
+pub static TRACKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn track(id: impl Into<String>) -> Option<impl IntoElement> {
+    if !TRACKING.load(std::sync::atomic::Ordering::Relaxed) {
+        return None;
+    }
     let id = id.into();
-    gpui::canvas(
-        move |b, window, _| {
-            let seen = b.intersect(&window.content_mask().bounds);
-            if seen.size.width > px(0.0) && seen.size.height > px(0.0) {
-                HITS.with(|h| h.borrow_mut().insert(id, seen));
-            }
-        },
-        |_, _, _, _| {},
+    let pane = crate::ui::panes::current();
+    Some(
+        gpui::canvas(
+            move |b, window, _| {
+                let seen = b.intersect(&window.content_mask().bounds);
+                if seen.size.width > px(0.0) && seen.size.height > px(0.0) {
+                    HITS.with(|h| h.borrow_mut().insert(id, (pane, seen)));
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full(),
     )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
 }
 
 pub struct FieldEdit {
@@ -291,7 +301,7 @@ pub fn segment(id: impl Into<SharedString>, on: bool, label: impl Into<SharedStr
     div()
         .id(gpui::ElementId::Name(id.clone()))
         .relative()
-        .child(track(id.to_string()))
+        .children(track(id.to_string()))
         .h(px(22.0))
         .px(px(theme::SP2 + 2.0))
         .flex()
@@ -376,7 +386,7 @@ pub fn btn(id: impl Into<SharedString>, label: impl Into<SharedString>, kind: Bt
         .whitespace_nowrap()
         .cursor_pointer()
         .relative()
-        .child(track(id.to_string()))
+        .children(track(id.to_string()))
         .child(label.into());
     match kind {
         Btn::Normal => d
@@ -406,7 +416,7 @@ pub fn icon_btn(id: impl Into<SharedString>, glyph: &'static str, what: &'static
     div()
         .id(gpui::ElementId::Name(id.clone()))
         .relative()
-        .child(track(id.to_string()))
+        .children(track(id.to_string()))
         .size(px(24.0))
         .flex_none()
         .flex()
@@ -429,7 +439,7 @@ pub fn icon_square(id: impl Into<SharedString>, path: &'static str, on: bool) ->
     div()
         .id(gpui::ElementId::Name(id.clone()))
         .relative()
-        .child(track(id.to_string()))
+        .children(track(id.to_string()))
         .size(px(theme::H_CTL))
         .flex_none()
         .flex()
@@ -460,7 +470,7 @@ pub fn chip(id: impl Into<SharedString>, on: bool, label: impl Into<SharedString
     div()
         .id(gpui::ElementId::Name(id.clone()))
         .relative()
-        .child(track(id.to_string()))
+        .children(track(id.to_string()))
         .h(px(theme::H_CTL))
         .px(px(theme::SP2))
         .flex()
@@ -488,7 +498,7 @@ pub fn checkbox(id: impl Into<SharedString>, on: bool, label: impl Into<SharedSt
     div()
         .id(gpui::ElementId::Name(id.clone()))
         .relative()
-        .child(track(id.to_string()))
+        .children(track(id.to_string()))
         .h(px(20.0))
         .flex()
         .items_center()
@@ -527,7 +537,7 @@ impl Editor {
         let set =
             Rc::new(move |e: &mut Editor, x: f64, cx: &mut Context<Editor>| set(e, x.clamp(min, max), cx));
         self.setters.insert(id.clone(), Setter::Num(set));
-        self.field_order.push(id.clone());
+        self.field_order.push((crate::ui::panes::current(), id.clone()));
         self.field_value.insert(id.clone(), f.fmt(v));
         let editing = self.editing.as_ref().filter(|e| e.id == id);
         let err = self.field_errors.get(&id).cloned();
@@ -542,7 +552,7 @@ impl Editor {
         let mut d = div()
             .id(gpui::ElementId::Name(el_id.clone()))
             .relative()
-            .child(track(el_id.to_string()))
+            .children(track(el_id.to_string()))
             .h(px(24.0))
             .px(px(theme::SP1))
             .flex()
@@ -760,7 +770,7 @@ impl Editor {
     ) -> AnyElement {
         let id: String = id.into();
         self.setters.insert(id.clone(), Setter::Text(Rc::new(set)));
-        self.field_order.push(id.clone());
+        self.field_order.push((crate::ui::panes::current(), id.clone()));
         self.field_value.insert(id.clone(), value.to_string());
         let editing = self.editing.as_ref().filter(|e| e.id == id);
         let shown = editing.map_or(value.to_string(), |e| e.text.clone());
@@ -770,7 +780,7 @@ impl Editor {
         div()
             .id(gpui::ElementId::Name(format!("text:{id}").into()))
             .relative()
-            .child(track(format!("text:{id}")))
+            .children(track(format!("text:{id}")))
             .h(px(24.0))
             .flex_1()
             .min_w_0()
@@ -814,7 +824,7 @@ impl Editor {
         div()
             .id(gpui::ElementId::Name(format!("menu:{id}").into()))
             .relative()
-            .child(track(format!("menu:{id}")))
+            .children(track(format!("menu:{id}")))
             .h(px(theme::H_CTL))
             .px(px(theme::SP2))
             .flex()
@@ -860,7 +870,7 @@ impl Editor {
         div()
             .id(gpui::ElementId::Name(format!("sel:{id}").into()))
             .relative()
-            .child(track(format!("sel:{id}")))
+            .children(track(format!("sel:{id}")))
             .h(px(24.0))
             .flex_1()
             .min_w_0()
@@ -936,9 +946,10 @@ impl Editor {
             "tab" => {
                 let id = e.id.clone();
                 self.commit_field(cx);
+                let order = self.fields_in_order();
                 if self.editing.is_none()
-                    && let Some(i) = self.field_order.iter().position(|f| *f == id)
-                    && let Some(next) = self.field_order.get(i + 1).cloned()
+                    && let Some(i) = order.iter().position(|f| *f == id)
+                    && let Some(next) = order.get(i + 1).cloned()
                 {
                     self.begin_edit(&next);
                 }

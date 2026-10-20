@@ -245,7 +245,7 @@ fn save_frame(_: &Window, _: &Path) -> bool {
 }
 
 pub fn hit(id: &str) -> Option<Vec2> {
-    HITS.with(|h| h.borrow().get(id).copied()).map(|b| {
+    HITS.with(|h| h.borrow().get(id).map(|x| x.1)).map(|b| {
         Vec2::new(f32::from(b.origin.x + b.size.width * 0.5), f32::from(b.origin.y + b.size.height * 0.5))
     })
 }
@@ -386,7 +386,7 @@ impl Editor {
             let cards_loading = self.projects_open && self.pm.cards.len() < self.pm.cards_total;
             if (!self.ready() && self.open_error.is_none() && !self.projects_open) || cards_loading {
                 if self.script_in_frame {
-                    window.request_animation_frame();
+                    self.animate(window, cx);
                 }
                 return;
             }
@@ -394,7 +394,7 @@ impl Editor {
             s.frames += 1;
             let frames = s.frames;
             if self.script_in_frame {
-                window.request_animation_frame();
+                self.animate(window, cx);
             }
             if frames == 40 {
                 self.screenshot(window, &path);
@@ -418,7 +418,7 @@ impl Editor {
             s.began = Instant::now();
         }
         if self.script_in_frame {
-            window.request_animation_frame();
+            self.animate(window, cx);
         }
         if s.inflight.get() {
             self.script = Some(s);
@@ -585,9 +585,11 @@ impl Editor {
 
 fn perf_start(e: &mut Editor) {
     e.stats.clear();
+    crate::ui::widgets::TRACKING.store(false, std::sync::atomic::Ordering::Relaxed);
 }
 
 fn perf_end(e: &Editor, c: &mut Ctl, label: &str) {
+    crate::ui::widgets::TRACKING.store(true, std::sync::atomic::Ordering::Relaxed);
     let s = &e.stats;
     let line = format!(
         "{label}: frame interval p50 {:.2} ms, p95 {:.2} ms, p99 {:.2} ms, max {:.2} ms ({} frames, {:.0} fps median) \u{00b7} UI CPU p50 {:.2} ms p99 {:.2} ms \u{00b7} 3D GPU p50 {:.2} ms \u{00b7} input\u{2192}frame p50 {:.1} ms",
