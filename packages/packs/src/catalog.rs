@@ -291,7 +291,10 @@ impl Crawler<'_> {
                     name: String::new(),
                 };
                 let mut ents = vec![ent(model)];
-                if let Some(shape) = trigger {
+                if v.waypoint_trigger.is_none()
+                    && v.waypoint_trigger_surface.is_none()
+                    && let Some(shape) = trigger
+                {
                     ents.push(ent(EntModel::BlockTrigger { waypoint: None, shape }));
                 }
                 self.cat.index.prefabs.insert(prefab.clone(), Prefab { ents });
@@ -646,21 +649,8 @@ impl Crawler<'_> {
             return Ok(Item { models, material_modifier, ..Default::default() });
         }
         if let Some(n) = l.nodes.iter().find(|n| n.class_id == 0x2f0bc000) {
-            let mut r = gearbox_gbx::reader::Reader::new(&buf);
-            r.skip(n.start)?;
-            let version = r.u32()?;
-            anyhow::ensure!(version <= 1, "item variant list version {version}");
-            let count = r.u32()?;
-            anyhow::ensure!(count < 1 << 16, "item variant count {count}");
             let mut variants = Vec::new();
-            for _ in 0..count {
-                let tags = r.u32()?;
-                anyhow::ensure!(tags < 1 << 12, "item variant tag count {tags}");
-                for _ in 0..tags {
-                    r.string()?;
-                    r.string()?;
-                }
-                let m = ctx.noderef(&mut r, |c, r, class| c.model(r, class))?;
+            for m in ctx.item_variants(n.start)? {
                 let model = match m {
                     NodeLink::Null => EntModel::None,
                     NodeLink::External(x) => self.external_model(&x),
@@ -679,9 +669,6 @@ impl Crawler<'_> {
                     }
                     _ => bail!("unsupported inline item variant"),
                 };
-                if version >= 1 {
-                    r.u32()?;
-                }
                 variants.push(vec![model]);
             }
             return Ok(Item { variants, material_modifier, ..Default::default() });

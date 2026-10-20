@@ -424,6 +424,14 @@ fn apply(g: &mut crate::crystal::Geometry, groups: &[usize], modifier: &Deformat
             }
         }
     }
+    let internal = internal_faces(&positions, &faces, &face_groups, groups);
+    for i in (0..faces.len()).rev() {
+        if internal[i] {
+            faces.remove(i);
+            face_uvs.remove(i);
+            face_groups.remove(i);
+        }
+    }
     check_cleanup(&positions, &faces, &face_groups, groups);
     let mut remap: Vec<_> = (0..positions.len()).collect();
     for &group in groups {
@@ -492,6 +500,48 @@ fn on_edge(p: [f32; 3], a: [f32; 3], b: [f32; 3]) -> bool {
     let v = difference(p, a);
     let projection = ((inv * d[1]) * v[1] + (inv * d[0]) * v[0]) + (inv * d[2]) * v[2];
     projection >= -EPS && projection <= len + EPS && (length(v) - projection).abs() <= EPS
+}
+
+fn internal_faces(
+    positions: &[[f32; 3]],
+    faces: &[(Vec<u32>, i32)],
+    face_groups: &[usize],
+    groups: &[usize],
+) -> Vec<bool> {
+    let mut internal = vec![false; faces.len()];
+    for &group in groups {
+        let part: Vec<_> = (0..faces.len()).filter(|&i| face_groups[i] == group).collect();
+        if part.len() >= 500 {
+            continue;
+        }
+        let normals: Vec<_> = part.iter().map(|&i| face_normal(positions, &faces[i].0)).collect();
+        for (index, &i) in part.iter().enumerate() {
+            let a = &faces[i].0;
+            if internal[i] || a.len() < 3 {
+                continue;
+            }
+            for (other, &j) in part[..index].iter().enumerate() {
+                let b = &faces[j].0;
+                if internal[j]
+                    || a.len() != b.len()
+                    || !(0..3).all(|k| near(normals[index][k], -normals[other][k]))
+                {
+                    continue;
+                }
+                if (0..b.len()).any(|start| {
+                    a.iter().enumerate().all(|(corner, &v)| {
+                        let other = b[(start + b.len() - corner) % b.len()];
+                        (0..3).all(|k| near(positions[v as usize][k], positions[other as usize][k]))
+                    })
+                }) {
+                    internal[i] = true;
+                    internal[j] = true;
+                    break;
+                }
+            }
+        }
+    }
+    internal
 }
 
 fn check_cleanup(positions: &[[f32; 3]], faces: &[(Vec<u32>, i32)], face_groups: &[usize], groups: &[usize]) {

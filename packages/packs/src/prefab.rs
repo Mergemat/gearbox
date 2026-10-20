@@ -205,6 +205,29 @@ impl Ctx<'_> {
         }
     }
 
+    pub fn item_variants(&self, start: usize) -> Result<Vec<NodeLink<Model>>> {
+        let mut r = Reader::new(self.buf);
+        r.skip(start)?;
+        let version = r.u32()?;
+        ensure!(version <= 1, "item variant list version {version}");
+        let count = r.len()?;
+        ensure!(count < 1 << 16, "item variant count {count}");
+        let mut variants = Vec::with_capacity(count);
+        for _ in 0..count {
+            let tags = r.len()?;
+            ensure!(tags < 1 << 12, "item variant tag count {tags}");
+            for _ in 0..tags {
+                r.string()?;
+                r.string()?;
+            }
+            variants.push(self.noderef(&mut r, |c, r, class| c.model(r, class))?);
+            if version >= 1 {
+                r.u32()?;
+            }
+        }
+        Ok(variants)
+    }
+
     pub fn prefab(&self, r: &mut Reader) -> Result<Prefab> {
         let version = r.u32()?;
         ensure!((9..=11).contains(&version), "prefab version {version}");

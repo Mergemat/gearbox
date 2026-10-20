@@ -79,6 +79,12 @@ impl<'a> Archives<'a> {
             let ctx = Ctx { buf: &buf, layout: &layout, path: owner };
             if layout.head.class_id == 0x09145000 {
                 self.store(owner, gearbox_packs::prefab::read_prefab(&buf, &layout, owner)?);
+            } else if let Some(node) = layout.nodes.iter().find(|n| n.class_id == 0x2f0bc000) {
+                for (index, model) in ctx.item_variants(node.start)?.into_iter().enumerate() {
+                    if let NodeLink::Inline(Model::Prefab(prefab)) = model {
+                        self.store(&format!("{owner}#variant{index}"), *prefab);
+                    }
+                }
             } else {
                 let mut end = 0;
                 for node in layout.nodes.iter().filter(|n| n.class_id == 0x09145000 && n.index != 0) {

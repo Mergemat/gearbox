@@ -321,10 +321,10 @@ impl<'a> Decoder<'a> {
                     && variant.index == ((key.flags >> 21) & 0x7f) as usize
             })
             .context("dynamic block variant absent")?;
-        let group = variant.mobils.get(key.variant as usize).context("dynamic block mobil absent")?;
-        Ok(group
-            .get(key.sub_variant as usize)
-            .or_else(|| group.first())
+        Ok(variant
+            .mobils
+            .get(key.variant as usize)
+            .and_then(|group| group.get(key.sub_variant as usize).or_else(|| group.first()))
             .and_then(|mobil| mobil.prefab.clone()))
     }
 

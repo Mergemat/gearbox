@@ -2,7 +2,7 @@ mod player;
 mod scene;
 
 use crate::statics::MapAssets;
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 use gearbox_engine::{
     Iso,
     race::{self, Race, RaceWaypoint, Rules, WaypointFlags},
@@ -103,15 +103,6 @@ const NO_GROUP: u32 = u32::MAX;
 const LINKED_KEY: u32 = 0x8000_0000;
 
 fn select_spawn(landmarks: &[(RaceWaypoint, bool)]) -> Result<u32> {
-    let spawn_only = |mark: &&(RaceWaypoint, bool)| mark.0.flags == WaypointFlags::SPAWN;
-    let starts = landmarks.iter().filter(spawn_only).count();
-    let start_finishes = landmarks
-        .iter()
-        .filter(|(mark, _)| {
-            mark.flags.contains(WaypointFlags::SPAWN) && mark.flags.contains(WaypointFlags::GOAL)
-        })
-        .count();
-    ensure!(starts <= 1 && (starts == 1 || start_finishes == 1), "missing or multiple starts");
     landmarks
         .iter()
         .position(|(mark, _)| mark.flags == WaypointFlags::SPAWN)

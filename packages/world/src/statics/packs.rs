@@ -341,7 +341,6 @@ impl<'a> PackSource<'a> {
             .iter()
             .find(|variant| variant.ground == ground && variant.index == index)
             .ok_or("no such variant")?;
-        let group = variant.mobils.get(key.variant as usize).ok_or("no such mobil group")?;
         let mut mods: Vec<ModifierRef> = mods
             .iter()
             .flatten()
@@ -354,9 +353,10 @@ impl<'a> PackSource<'a> {
         if let Some(p) = assets.index.collection_modifiers.get(&self.env) {
             mods.push(ModifierRef { path: p, folder: None, keep_track_wall: false });
         }
-        let prefab = group
-            .get(key.sub_variant as usize)
-            .or_else(|| group.first())
+        let prefab = variant
+            .mobils
+            .get(key.variant as usize)
+            .and_then(|group| group.get(key.sub_variant as usize).or_else(|| group.first()))
             .and_then(|mobil| mobil.prefab.as_ref());
         let mut out = match prefab {
             Some(prefab) => assets.prefab_surfaces_with(prefab, &mods).map_err(|e| e.to_string())?,

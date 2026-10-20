@@ -315,7 +315,24 @@ pub fn translate(positions: &mut [[f32; 3]], value: [f32; 3]) {
     }
 }
 
-pub(crate) fn apply(c: &mut Crystal, selections: &[Selection], value: [f32; 3], scaling: bool) {
+pub fn rotate(positions: &mut [[f32; 3]], angle: f32, axis: usize) {
+    let center = centroid(positions.iter().copied());
+    let (s, c) = crate::reader_math::sincos_precise(angle);
+    let rows = match axis {
+        0 => [[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]],
+        1 => [[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]],
+        2 => [[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]],
+        _ => unreachable!(),
+    };
+    for p in positions {
+        let [x, y, z] = std::array::from_fn(|i| p[i] - center[i]);
+        p[0] = y * rows[0][1] + x * rows[0][0] + z * rows[0][2] + center[0];
+        p[1] = center[1] + y * rows[1][1] + x * rows[1][0] + z * rows[1][2];
+        p[2] = center[2] + y * rows[2][1] + x * rows[2][0] + z * rows[2][2];
+    }
+}
+
+pub(crate) fn apply(c: &mut Crystal, selections: &[Selection], transform: impl Fn(&mut [[f32; 3]])) {
     let mut points = Vec::new();
     for selection in selections {
         for &p in selection {
@@ -330,11 +347,7 @@ pub(crate) fn apply(c: &mut Crystal, selections: &[Selection], value: [f32; 3], 
             .iter()
             .map(|&(_, g, p)| if trigger { c.triggers[g].positions[p] } else { c.geometry[g].positions[p] })
             .collect();
-        if scaling {
-            scale(&mut positions, value);
-        } else {
-            translate(&mut positions, value);
-        }
+        transform(&mut positions);
         for ((_, g, p), position) in selected.into_iter().zip(positions) {
             if trigger {
                 c.triggers[g].positions[p] = position;

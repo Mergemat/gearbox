@@ -67,30 +67,6 @@ fn nadeo_item_spawn(assets: &Assets, files: &PackSet, name: &str) -> Result<[u32
     Ok(std::array::from_fn(|i| if i < 9 { r[i] } else { p[i - 9] }.to_bits()))
 }
 
-pub fn map_pose(
-    map: &gearbox_gbx::Map,
-    assets: &Assets,
-    files: &PackSet,
-    geometry: &Catalog,
-) -> Result<[u32; 12]> {
-    let start = |w: &Option<gearbox_gbx::map::Waypoint>| {
-        w.as_ref().and_then(|w| w.tag.as_deref()).is_some_and(|tag| matches!(tag, "Spawn" | "StartFinish"))
-    };
-    let environment = super::packs::environment(map).map_err(anyhow::Error::msg)?;
-    let blocks: Vec<_> = map
-        .blocks
-        .iter()
-        .filter(|b| start(&crate::gameplay::block_waypoint(b, assets, environment)))
-        .collect();
-    let items: Vec<_> = map.items.iter().filter(|i| start(&i.waypoint)).collect();
-    ensure!(blocks.len() + items.len() == 1, "expected one Spawn or StartFinish waypoint");
-    if let Some(b) = blocks.first() {
-        block_pose(map, b, assets, files, geometry)
-    } else {
-        item_pose(map, items[0], assets, files)
-    }
-}
-
 pub fn block_pose(
     map: &gearbox_gbx::Map,
     block: &gearbox_gbx::map::Block,

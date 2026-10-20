@@ -364,6 +364,11 @@ pub fn read(
     read_layers(ctx, start, &mut resolve, &mut ids, true)
 }
 
+fn modifier_refs(r: &mut Reader, ids: &mut LayerIds) -> Result<Vec<(u32, Option<String>)>> {
+    ensure!(r.u32()? == 0, "crystal modifier version");
+    (0..r.len()?).map(|_| Ok((r.u32()?, ids.read(r)?))).collect()
+}
+
 fn read_layers(
     ctx: &Ctx<'_>,
     start: usize,
@@ -434,11 +439,7 @@ fn read_layers(
                             }
                         }
                         2 | 4 => {
-                            ensure!(r.u32()? == 0, "crystal modifier version");
-                            let mut refs = Vec::new();
-                            for _ in 0..r.len()? {
-                                refs.push((r.u32()?, ids.read(&mut r)?));
-                            }
+                            let refs = modifier_refs(&mut r, ids)?;
                             ensure!(r.u32()? == 0, "crystal transform version");
                             let value = r.vec3()?;
                             let individually = kind == 4 && r.bool32()?;
@@ -450,15 +451,39 @@ fn read_layers(
                                 if individually {
                                     todo!("individual-group crystal scale");
                                 }
-                                crate::crystal_modifiers::apply(&mut out, &selections, value, kind == 4);
+                                crate::crystal_modifiers::apply(&mut out, &selections, |positions| {
+                                    if kind == 4 {
+                                        crate::crystal_modifiers::scale(positions, value);
+                                    } else {
+                                        crate::crystal_modifiers::translate(positions, value);
+                                    }
+                                });
+                            }
+                        }
+                        3 => {
+                            let refs = modifier_refs(&mut r, ids)?;
+                            ensure!(r.u32()? == 0, "crystal rotation version");
+                            let angle = r.f32()?;
+                            let axis = r.u32()? as usize;
+                            ensure!(axis < 3, "crystal rotation axis {axis}");
+                            let individually = r.bool32()?;
+                            if enabled {
+                                ensure!(
+                                    ids.complete || (out.geometry.is_empty() && out.triggers.is_empty()),
+                                    "crystal rotation with an enclosing/parameter id table"
+                                );
+                                let selections = crate::crystal_modifiers::select(&out, &layers, &refs);
+                                let rotate = |positions: &mut [[f32; 3]]| {
+                                    crate::crystal_modifiers::rotate(positions, angle, axis);
+                                };
+                                let size = if individually { 1 } else { selections.len().max(1) };
+                                for part in selections.chunks(size) {
+                                    crate::crystal_modifiers::apply(&mut out, part, rotate);
+                                }
                             }
                         }
                         12 => {
-                            ensure!(r.u32()? == 0, "crystal modifier version");
-                            let mut refs = Vec::new();
-                            for _ in 0..r.len()? {
-                                refs.push((r.u32()?, ids.read(&mut r)?));
-                            }
+                            let refs = modifier_refs(&mut r, ids)?;
                             let modifier = crate::crystal_deformation::read(&mut r)?;
                             if enabled {
                                 if !ids.complete {
@@ -508,11 +533,7 @@ fn read_layers(
                             }
                         }
                         1 => {
-                            ensure!(r.u32()? == 0, "crystal modifier version");
-                            let mut refs = Vec::new();
-                            for _ in 0..r.len()? {
-                                refs.push((r.u32()?, ids.read(&mut r)?));
-                            }
+                            let refs = modifier_refs(&mut r, ids)?;
                             let version = r.u32()?;
                             ensure!(version == 0, "crystal smooth subdivision version {version}");
                             let levels = r.u32()?;
@@ -521,11 +542,7 @@ fn read_layers(
                             }
                         }
                         8 => {
-                            ensure!(r.u32()? == 0, "crystal modifier version");
-                            let mut refs = Vec::new();
-                            for _ in 0..r.len()? {
-                                refs.push((r.u32()?, ids.read(&mut r)?));
-                            }
+                            let refs = modifier_refs(&mut r, ids)?;
                             let version = r.u32()?;
                             ensure!(version == 0, "crystal subdivision version {version}");
                             r.u32()?;
@@ -534,11 +551,7 @@ fn read_layers(
                             }
                         }
                         9 => {
-                            ensure!(r.u32()? == 0, "crystal modifier version");
-                            let mut refs = Vec::new();
-                            for _ in 0..r.len()? {
-                                refs.push((r.u32()?, ids.read(&mut r)?));
-                            }
+                            let refs = modifier_refs(&mut r, ids)?;
                             let version = r.u32()?;
                             ensure!(version == 1, "crystal chaos version {version}");
                             let from = r.f32()?;
@@ -550,11 +563,7 @@ fn read_layers(
                             }
                         }
                         5 => {
-                            ensure!(r.u32()? == 0, "crystal modifier version");
-                            let mut refs = Vec::new();
-                            for _ in 0..r.len()? {
-                                refs.push((r.u32()?, ids.read(&mut r)?));
-                            }
+                            let refs = modifier_refs(&mut r, ids)?;
                             let version = r.u32()?;
                             ensure!(version == 0, "crystal mirror version {version}");
                             let axis = r.u32()?;
