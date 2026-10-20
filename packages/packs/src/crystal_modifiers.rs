@@ -13,7 +13,7 @@ pub(crate) fn select(
         .map(|(trigger, index, group)| {
             let g = if trigger { &c.triggers[index] } else { &c.geometry[index] };
             let mut points = Vec::new();
-            for ((face, _), &fg) in g.faces.iter().zip(&g.face_groups) {
+            for ((face, _), &fg) in g.faces.iter().zip(&g.face_groups).rev() {
                 if fg != group || !creatable(face) {
                     continue;
                 }
@@ -27,6 +27,142 @@ pub(crate) fn select(
             points
         })
         .collect()
+}
+
+pub(crate) struct Mirror {
+    pub axis: usize,
+    pub distance: f32,
+    pub independently: bool,
+}
+
+fn bounds(positions: impl IntoIterator<Item = [f32; 3]>) -> Option<([f32; 3], [f32; 3])> {
+    let mut low = [f32::MAX; 3];
+    let mut high = [-f32::MAX; 3];
+    let mut any = false;
+    for p in positions {
+        any = true;
+        for i in 0..3 {
+            low[i] = crate::reader_math::minss(p[i], low[i]);
+            high[i] = crate::reader_math::maxss(p[i], high[i]);
+        }
+    }
+    any.then_some((low, high))
+}
+
+pub(crate) fn mirror(
+    c: &mut Crystal,
+    layers: &mut Vec<Layer>,
+    layer_id: &Option<String>,
+    refs: &[(u32, Option<String>)],
+    mirror: &Mirror,
+) -> anyhow::Result<()> {
+    let batches: Vec<Vec<(u32, Option<String>)>> = if mirror.independently {
+        refs.iter().map(|r| vec![r.clone()]).collect()
+    } else {
+        vec![refs.to_vec()]
+    };
+    for trigger in [false, true] {
+        for batch in &batches {
+            let groups: Vec<_> =
+                selected_groups(layers, batch).into_iter().filter(|g| g.0 == trigger).collect();
+            if groups.is_empty() {
+                continue;
+            }
+            let geometry = if trigger { &mut c.triggers } else { &mut c.geometry };
+            let mut faces = Vec::new();
+            let mut points = Vec::new();
+            for &(_, index, group) in &groups {
+                let g = &geometry[index];
+                anyhow::ensure!(g.group_parents[group] == u32::MAX, "mirror of nested crystal groups");
+                for (f, ((face, _), &fg)) in g.faces.iter().zip(&g.face_groups).enumerate().rev() {
+                    if fg != group || !creatable(face) {
+                        continue;
+                    }
+                    faces.push((index, f));
+                    for &v in face {
+                        if !points.contains(&(index, v as usize)) {
+                            points.push((index, v as usize));
+                        }
+                    }
+                }
+            }
+            let at = |p: &(usize, usize)| geometry[p.0].positions[p.1];
+            let (low, high) = bounds(points.iter().map(at)).unwrap_or(([1.0; 3], [-1.0; 3]));
+            let center: [f32; 3] = std::array::from_fn(|i| (low[i] + high[i]) * 0.5);
+            let half: [f32; 3] = std::array::from_fn(|i| (high[i] - low[i]) * 0.5);
+            let a = mirror.axis;
+            let edge = if 0.0 <= mirror.distance { center[a] + half[a] } else { center[a] - half[a] };
+            let offset = -(edge + mirror.distance);
+            let normal: [f32; 3] = std::array::from_fn(|i| if i == a { 1.0 } else { 0.0 });
+
+            let mut clip = points.clone();
+            clip.sort_unstable_by(|a, b| b.cmp(a));
+            let (low, high) = bounds(clip.iter().map(at)).unwrap_or(([0.0; 3], [0.0; 3]));
+            let middle: [f32; 3] = std::array::from_fn(|i| (high[i] - low[i]) * 0.5 + low[i]);
+            let base = middle.map(|m| m + 0.0);
+            let positions: Vec<[f32; 3]> = clip
+                .iter()
+                .map(|p| {
+                    let q = at(p);
+                    let mut p: [f32; 3] = std::array::from_fn(|i| (q[i] - middle[i]) + base[i]);
+                    let d = ((p[0] * normal[0] + p[1] * normal[1]) + p[2] * normal[2]) + offset;
+                    let d = d + d;
+                    for i in 0..3 {
+                        p[i] -= normal[i] * d;
+                    }
+                    p
+                })
+                .collect();
+
+            let mut sources = Vec::new();
+            let mut new_faces = Vec::new();
+            let mut new_uvs = Vec::new();
+            let mut new_groups = Vec::new();
+            for &(index, f) in &faces {
+                let g = &geometry[index];
+                let source = (index, g.face_groups[f]);
+                let group = match sources.iter().position(|s| *s == source) {
+                    Some(i) => i,
+                    None => {
+                        sources.push(source);
+                        sources.len() - 1
+                    }
+                };
+                let (face, material) = &g.faces[f];
+                let mut vertices: Vec<u32> = face
+                    .iter()
+                    .map(|&v| clip.iter().position(|p| *p == (index, v as usize)).unwrap() as u32)
+                    .collect();
+                let mut uvs = g.face_uvs[f].clone();
+                let last = vertices.len() - 1;
+                vertices.swap(1, last);
+                if uvs.len() > last {
+                    uvs.swap(1, last);
+                }
+                new_faces.push((vertices, *material));
+                new_uvs.push(uvs);
+                new_groups.push(group);
+            }
+            let normals = new_faces
+                .iter()
+                .map(|(f, _)| crate::crystal_deformation::face_normal(&positions, f))
+                .collect();
+            let mirrored = crate::crystal::Geometry {
+                positions,
+                faces: new_faces,
+                face_uvs: new_uvs,
+                face_groups: new_groups,
+                normals,
+                group_parents: vec![u32::MAX; sources.len()],
+                archive_version: geometry[groups[0].1].archive_version,
+            };
+            geometry.push(mirrored);
+            let index = geometry.len() - 1;
+            let first: u32 = geometry[..index].iter().map(|g| g.group_parents.len() as u32).sum();
+            layers.push((layer_id.clone(), (first..first + sources.len() as u32).collect(), trigger, index));
+        }
+    }
+    Ok(())
 }
 
 pub(crate) struct Chaos {

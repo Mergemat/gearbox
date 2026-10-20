@@ -456,6 +456,33 @@ pub fn read(
                                 crate::crystal_modifiers::chaos(&mut out, &layers, &refs, &chaos);
                             }
                         }
+                        5 => {
+                            ensure!(r.u32()? == 0, "crystal modifier version");
+                            let mut refs = Vec::new();
+                            for _ in 0..r.len()? {
+                                refs.push((r.u32()?, ids.read(&mut r)?));
+                            }
+                            let version = r.u32()?;
+                            ensure!(version == 0, "crystal mirror version {version}");
+                            let axis = r.u32()?;
+                            ensure!(axis < 3, "crystal mirror axis {axis}");
+                            let distance = r.f32()?;
+                            let independently = r.bool32()?;
+                            if enabled {
+                                let mirror = crate::crystal_modifiers::Mirror {
+                                    axis: axis as usize,
+                                    distance,
+                                    independently,
+                                };
+                                crate::crystal_modifiers::mirror(
+                                    &mut out,
+                                    &mut layers,
+                                    &layer_id,
+                                    &refs,
+                                    &mirror,
+                                )?;
+                            }
+                        }
                         other => bail!("crystal modifier layer {other} needs compilation"),
                     }
                 }
@@ -583,7 +610,7 @@ mod tests {
 
     fn faces_as_bytes(g: &Geometry) -> Vec<u8> {
         let mut out = Vec::new();
-        for ((face, _), &group) in g.faces.iter().zip(&g.face_groups) {
+        for ((face, _), &group) in g.faces.iter().zip(&g.face_groups).rev() {
             if !(3..=4).contains(&face.len()) {
                 continue;
             }
@@ -631,5 +658,82 @@ mod tests {
             checked += 1;
         }
         assert!(checked > 0);
+    }
+}
+
+#[cfg(test)]
+mod mirror_tests {
+    use super::*;
+
+    #[test]
+    fn mirror_matches_the_recorded_layers() {
+        let Some(dir) =
+            std::env::var_os("GBX_TEST_DATA").map(|d| std::path::Path::new(&d).join("crystal/mirror"))
+        else {
+            return;
+        };
+        let Ok(entries) = std::fs::read_dir(&dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let params = std::fs::read_to_string(path.join("params.txt")).unwrap();
+            let lines: Vec<&str> = params.lines().collect();
+            let head: Vec<&str> = lines[0].split_whitespace().collect();
+            let mirror = crate::crystal_modifiers::Mirror {
+                axis: head[0].parse().unwrap(),
+                distance: head[1].parse().unwrap(),
+                independently: false,
+            };
+            let groups: Vec<u32> = lines[1].split_whitespace().map(|s| s.parse().unwrap()).collect();
+            let materials: usize = lines[2].parse().unwrap();
+            let bytes = std::fs::read(path.join("geometry.bin")).unwrap();
+            let g = geometry(&mut Reader::new(&bytes), materials).unwrap();
+            let all = (0..g.group_parents.len() as u32).collect();
+            let mut crystal = Crystal { geometry: vec![g], ..Crystal::default() };
+            let mut layers = vec![(Some("L".to_string()), all, false, 0)];
+            let refs: Vec<_> = groups.iter().map(|&j| (j, Some("L".to_string()))).collect();
+            crate::crystal_modifiers::mirror(
+                &mut crystal,
+                &mut layers,
+                &Some("M".to_string()),
+                &refs,
+                &mirror,
+            )
+            .unwrap();
+            let mut firsts = Vec::new();
+            let mut first = 0u32;
+            for g in &crystal.geometry {
+                firsts.push(first);
+                first += g.group_parents.len() as u32;
+            }
+            let mut got = Vec::new();
+            for (g, first) in crystal.geometry.iter().zip(firsts).rev() {
+                for ((face, _), &group) in g.faces.iter().zip(&g.face_groups).rev() {
+                    if !(3..=4).contains(&face.len()) {
+                        continue;
+                    }
+                    got.extend((first + group as u32).to_le_bytes());
+                    got.extend((face.len() as u32).to_le_bytes());
+                    for &v in face {
+                        for x in g.positions[v as usize] {
+                            got.extend(x.to_le_bytes());
+                        }
+                    }
+                }
+            }
+            let expected = std::fs::read(path.join("expected.bin")).unwrap();
+            if got != expected {
+                let at = got
+                    .iter()
+                    .zip(&expected)
+                    .position(|(a, b)| a != b)
+                    .unwrap_or(got.len().min(expected.len()));
+                panic!(
+                    "{}: {} vs {} bytes, first difference at {at}",
+                    path.display(),
+                    got.len(),
+                    expected.len()
+                );
+            }
+        }
     }
 }
