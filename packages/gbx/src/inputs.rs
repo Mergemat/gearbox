@@ -152,11 +152,7 @@ impl PlayerInputs {
                         next = if r.bit()? {
                             cur
                         } else {
-                            TickInput {
-                                steer: r.num(8)? as u8 as i8,
-                                gas: r.bit()?,
-                                brake: r.bit()?,
-                            }
+                            TickInput { steer: r.num(8)? as u8 as i8, gas: r.bit()?, brake: r.bit()? }
                         };
                     }
                     Mode::Character => {
