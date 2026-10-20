@@ -363,7 +363,12 @@ impl<'a> PackSource<'a> {
             None => Vec::new(),
         };
         if let Some(id) = variant.waypoint_trigger_surface {
-            out.push(assets.place(id, Role::Waypoint(u32::MAX), &[], &mods));
+            let role = if key.has_waypoint || block.waypoint.is_some() {
+                Role::Waypoint(u32::MAX)
+            } else {
+                Role::BlockTrigger(None)
+            };
+            out.push(assets.place(id, role, &[], &mods));
         } else if variant.waypoint_trigger.is_some() {
             return Err("waypoint trigger shape not extracted".into());
         }

@@ -156,6 +156,7 @@ pub(super) fn free_parents(
                         variant: 0,
                         sub_variant: 0,
                         flags: 0,
+                        has_waypoint: false,
                     };
                     let Some(clip_geometry) = src.block_geometry(&key) else {
                         continue;

@@ -9,6 +9,7 @@ pub struct BlockKey {
     pub variant: u8,
     pub sub_variant: u8,
     pub flags: u32,
+    pub has_waypoint: bool,
 }
 
 impl BlockKey {
@@ -18,6 +19,7 @@ impl BlockKey {
             variant: block.variant,
             sub_variant: block.sub_variant,
             flags: block.flags & 0x3fe0_1000,
+            has_waypoint: block.waypoint.is_some(),
         }
     }
 }

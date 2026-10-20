@@ -398,6 +398,7 @@ impl<'a> Decoder<'a> {
                 flags,
                 variant: (flags & 0x3f) as u8,
                 sub_variant: ((flags >> 6) & 0x3f) as u8,
+                has_waypoint: false,
             };
             let Some(prefab) = Self::block_prefab(source, &key)? else { continue };
             let geometry = source.catalog.geometry(&key).context("decoration dynamic geometry absent")?;
