@@ -7,7 +7,7 @@ use crate::reader::{NodeRef, Reader};
 mod embedded;
 pub use embedded::{EmbeddedData, EmbeddedFile, EmbeddedItemModel};
 mod items;
-mod media;
+pub(crate) mod media;
 
 pub const CLASS_MAP: u32 = 0x0304_3000;
 const CLASS_COLLECTOR_LIST: u32 = 0x0301_B000;

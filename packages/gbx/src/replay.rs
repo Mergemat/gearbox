@@ -75,11 +75,7 @@ impl Replay {
                     let extra = r.len()?;
                     r.skip(extra * 8)?;
                 }
-                0x0309_3015 => {
-                    if read_node(r)?.is_some() {
-                        bail!("replays with a MediaTracker clip are not supported yet");
-                    }
-                }
+                0x0309_3015 => crate::map::media::node(r)?,
                 0x0309_3018 => {
                     r.id()?;
                     r.i32()?;

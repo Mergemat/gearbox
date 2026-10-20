@@ -2,7 +2,7 @@ use crate::reader::{NodeRef, Reader};
 use crate::replay::{self, CLASS_GHOST};
 use anyhow::{Context, Result, ensure};
 
-pub(super) fn node(r: &mut Reader) -> Result<()> {
+pub(crate) fn node(r: &mut Reader) -> Result<()> {
     let class = match r.node_ref()? {
         NodeRef::Null | NodeRef::Shared(_) => return Ok(()),
         NodeRef::New(class) => class,
@@ -17,6 +17,24 @@ pub(super) fn node(r: &mut Reader) -> Result<()> {
     }
     r.chunks("MediaTracker", |r, id, _| {
         match (class, id) {
+            (0x0307_9000, 0x0307_9002) => {
+                list(r)?;
+                r.string()?;
+                r.bool32()?;
+            }
+            (0x0307_9000, 0x0307_9003 | 0x0307_9005) => {
+                list(r)?;
+                r.string()?;
+            }
+            (0x0307_9000, 0x0307_9007 | 0x0307_900A..=0x0307_900C) => {
+                r.u32()?;
+            }
+            (0x0307_9000, 0x0307_9008) => {
+                r.f32()?;
+            }
+            (0x0307_9000, 0x0307_9009) => {
+                r.string()?;
+            }
             (0x0307_9000, 0x0307_900D) => {
                 let version = r.u32()?;
                 ensure!(version <= 1, "media clip version {version}");
@@ -33,6 +51,13 @@ pub(super) fn node(r: &mut Reader) -> Result<()> {
                 r.string()?;
                 list(r)?;
                 r.i32()?;
+            }
+            (0x0307_8000, 0x0307_8002 | 0x0307_8003) => {
+                r.bool32()?;
+            }
+            (0x0307_8000, 0x0307_8004) => {
+                r.bool32()?;
+                r.bool32()?;
             }
             (0x0307_8000, 0x0307_8005) => {
                 let version = r.u32()?;
@@ -105,8 +130,8 @@ pub(super) fn node(r: &mut Reader) -> Result<()> {
                     }
                 }
             }
-            (0x030A_1000, 0x030A_1003) => {
-                let version = r.u32()?;
+            (0x030A_1000, 0x030A_1000..=0x030A_1003) => {
+                let version = if id == 0x030A_1003 { r.u32()? } else { id & 0xFFF };
                 ensure!(version <= 5, "path camera key version {version}");
                 for _ in 0..r.len()? {
                     r.f32()?;
@@ -150,6 +175,13 @@ pub(super) fn node(r: &mut Reader) -> Result<()> {
                 }
                 if version >= 3 {
                     r.i32()?;
+                }
+            }
+            (0x030A_0000, 0x030A_0000) => {
+                for _ in 0..r.len()? {
+                    r.f32()?;
+                    r.u8()?;
+                    floats(r, 9)?;
                 }
             }
             (0x030A_0000, 0x030A_0001) => {
@@ -359,6 +391,171 @@ pub(super) fn node(r: &mut Reader) -> Result<()> {
                     }
                 }
             }
+            (0x0308_4000, 0x0308_4000) => floats(r, 3)?,
+            (0x0308_4000, 0x0308_4001) => floats(r, 4)?,
+            (0x0308_4000, 0x0308_4003..=0x0308_4006) => {
+                r.f32()?;
+                r.f32()?;
+                r.id()?;
+                r.i32()?;
+                if id >= 0x0308_4004 {
+                    floats(r, 11)?;
+                }
+                if id >= 0x0308_4005 {
+                    r.bool32()?;
+                }
+                if id >= 0x0308_4006 {
+                    r.bool32()?;
+                }
+            }
+            (0x0309_F000, 0x030A_1000) => simple_camera_keys(r)?,
+            (0x0309_F000, 0x030A_1001) => {
+                r.i32()?;
+            }
+            (0x0309_F000, 0x030A_1002) => {
+                let version = r.u32()?;
+                ensure!(version <= 2, "simple camera version {version}");
+                simple_camera_keys(r)?;
+                r.i32()?;
+                r.i32()?;
+                if version >= 2 {
+                    r.bool32()?;
+                }
+            }
+            (0x0302_4000, 0x0302_4000) => keys(r, 3)?,
+            (0x0308_1000, 0x0308_1001) => keys(r, 4)?,
+            (0x0308_2000, 0x0308_2000)
+            | (0x0313_3000, 0x0313_3000)
+            | (0x0314_5000, 0x0314_5000)
+            | (0x0338_B000, 0x0338_B000) => floats(r, 2)?,
+            (0x0308_3000, 0x0308_3001) => keys(r, 3)?,
+            (0x030A_6000, 0x030A_6000) => keys(r, 2)?,
+            (0x030A_6000, 0x030A_6001) => keys(r, 3)?,
+            (0x030A_7000, 0x030A_7001) => {
+                r.pack_desc()?;
+                keys(r, 3)?;
+            }
+            (0x030A_7000, 0x030A_7002) => {
+                r.i32()?;
+                r.bool32()?;
+            }
+            (0x030A_7000, 0x030A_7003) => {
+                let version = r.u32()?;
+                ensure!(version <= 2, "sound version {version}");
+                r.i32()?;
+                r.bool32()?;
+                r.bool32()?;
+                if version >= 1 {
+                    r.bool32()?;
+                }
+                if version >= 2 {
+                    r.bool32()?;
+                    r.i32()?;
+                }
+            }
+            (0x030A_7000, 0x030A_7004) => {
+                r.pack_desc()?;
+                let version = r.u32()?;
+                ensure!(version <= 1, "sound key version {version}");
+                keys(r, if version >= 1 { 6 } else { 3 })?;
+            }
+            (0x030C_0000, 0x030C_0000) => {
+                let version = r.u32()?;
+                floats(r, 2)?;
+                if version >= 1 {
+                    r.f32()?;
+                }
+            }
+            (0x030E_5000, 0x030E_5001) => {
+                floats(r, 2)?;
+                node(r)?;
+                r.f32()?;
+            }
+            (0x030E_5000, 0x030E_5002) => {
+                let version = r.u32()?;
+                if version >= 3 {
+                    keys(r, 2)?;
+                } else {
+                    floats(r, 2)?;
+                }
+                node(r)?;
+                r.f32()?;
+                r.bool32()?;
+                r.bool32()?;
+                r.bool32()?;
+            }
+            (0x030E_B000, 0x030E_B000) | (0x0316_5000, 0x0316_5000) | (0x0316_D000, 0x0316_D000) => {
+                r.u32()?;
+                keys(r, 2)?;
+            }
+            (0x0312_7000, 0x0312_7000..=0x0312_7004) => keys(r, 5)?,
+            (0x0312_A000, 0x0312_A001) => {
+                r.u32()?;
+                floats(r, 2)?;
+                r.string()?;
+            }
+            (0x0313_3000, 0x0313_3001) | (0x0338_B000, 0x0338_B001) => {
+                r.i32()?;
+            }
+            (0x0313_9000, 0x0313_9000) => floats(r, 2)?,
+            (0x0313_9000, 0x0313_9001) => {
+                floats(r, 12)?;
+                r.u8()?;
+                floats(r, 3)?;
+                r.pack_desc()?;
+            }
+            (0x0316_1000, 0x0316_1000) => {
+                let version = r.u32()?;
+                r.string()?;
+                if version == 0 {
+                    floats(r, 2)?;
+                }
+                keys(r, 4)?;
+            }
+            (0x0316_6000, 0x0316_6000) => {
+                r.u32()?;
+                floats(r, 5)?;
+            }
+            (0x0316_C000, 0x0316_C000) => {
+                let version = r.u32()?;
+                r.i32()?;
+                keys(r, 4)?;
+                if version >= 1 {
+                    r.i32()?;
+                }
+            }
+            (0x0317_2000, 0x0317_2000) => {
+                let version = r.u32()?;
+                ensure!(version <= 2, "coloring version {version}");
+                if version >= 2 {
+                    r.i32()?;
+                }
+                for _ in 0..r.len()? {
+                    floats(r, if version >= 1 { 3 } else { 2 })?;
+                    if version >= 2 {
+                        r.skip(2)?;
+                    }
+                }
+                if version >= 1 {
+                    r.i32()?;
+                }
+            }
+            (0x0318_8000, 0x0318_8000) => {
+                r.u32()?;
+                keys(r, 4)?;
+            }
+            (0x0319_5000, 0x0319_5000) => {
+                r.u32()?;
+                floats(r, 3)?;
+                r.string()?;
+            }
+            (0x031A_A000, 0x031A_A000) => {
+                floats(r, 2)?;
+                for _ in 0..r.len()? {
+                    r.pack_desc()?;
+                }
+                keys(r, 18)?;
+            }
             _ => return Ok(false),
         }
         Ok(true)
@@ -371,6 +568,22 @@ fn list(r: &mut Reader) -> Result<()> {
     ensure!(version == 10, "media node list version {version}");
     for _ in 0..r.len()? {
         node(r)?;
+    }
+    Ok(())
+}
+
+fn simple_camera_keys(r: &mut Reader) -> Result<()> {
+    for _ in 0..r.len()? {
+        r.f32()?;
+        r.u8()?;
+        floats(r, 15)?;
+    }
+    Ok(())
+}
+
+fn keys(r: &mut Reader, words: usize) -> Result<()> {
+    for _ in 0..r.len()? {
+        floats(r, words)?;
     }
     Ok(())
 }
