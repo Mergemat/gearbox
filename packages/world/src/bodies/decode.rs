@@ -388,8 +388,7 @@ impl<'a> Decoder<'a> {
         source: &mut PackSource<'_>,
         specs: &[ItemSpec],
     ) -> Result<()> {
-        let decoration =
-            map.decoration.as_deref().and_then(|name| source.assets.decoration(name, &source.env)).cloned();
+        let decoration = statics::packs::decoration(source.assets, map).cloned();
         let Some(decoration) = decoration.filter(|deco| deco.map.is_some()) else { return Ok(()) };
         let size = decoration.map_size.context("decoration without map dimensions")?;
         let location = statics::decoration::deco_location(size, decoration.size);

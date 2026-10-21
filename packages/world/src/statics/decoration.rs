@@ -28,12 +28,13 @@ fn block(block_entry: &(String, u8, [i32; 3], u32)) -> gearbox_gbx::map::Block {
 
 pub fn items(map: &gearbox_gbx::Map, src: &mut PackSource<'_>) -> Result<Vec<Vec<ItemSpec>>, String> {
     let name = map.decoration.as_deref().ok_or("map without a decoration")?;
-    let env = src.env.clone();
-    let decoration =
-        src.assets.decoration(name, &env).ok_or_else(|| format!("unknown decoration {name}"))?.clone();
+    let decoration = super::packs::decoration(src.assets, map)
+        .ok_or_else(|| format!("unknown decoration {name}"))?
+        .clone();
     if decoration.map.is_none() {
         return Ok(Vec::new());
     }
+    let env = super::packs::decoration_environment(map)?;
     if decoration.collection.as_deref() != Some("25") || env != "Stadium" {
         return Err(format!(
             "decoration {name} (collection {:?}) on {env} not placed yet",

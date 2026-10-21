@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use gearbox_engine::static_world::{Entity, LAYER_GATE};
 use gearbox_packs::assets::{Assets, ModifierRef, PlacedSurface, Role};
+use gearbox_packs::catalog::Decoration;
 use gearbox_packs::surface::Surf;
 
 use crate::statics::model::{BlockKey, BlockModel, Catalog, Geometry, ModelSource, Part, PartLocation};
@@ -10,15 +11,25 @@ use crate::statics::place::Iso;
 pub use gearbox_engine::static_world::{LAYER_STATIC, LAYER_TRIGGER};
 
 pub fn environment(map: &gearbox_gbx::Map) -> Result<&'static str, String> {
-    let c = map.decoration_collection.as_deref().or(map.collection.as_deref());
+    collection_environment(map.collection.as_deref().or(map.decoration_collection.as_deref()))
+}
+
+pub fn decoration_environment(map: &gearbox_gbx::Map) -> Result<&'static str, String> {
+    collection_environment(map.decoration_collection.as_deref().or(map.collection.as_deref()))
+}
+
+pub fn decoration<'a>(assets: &'a Assets, map: &gearbox_gbx::Map) -> Option<&'a Decoration> {
+    assets.decoration(map.decoration.as_deref()?, decoration_environment(map).ok()?)
+}
+
+fn collection_environment(c: Option<&str>) -> Result<&'static str, String> {
     gearbox_packs::packs::environment(c)
         .ok_or_else(|| format!("collection {c:?} not mapped to an environment yet"))
 }
 
 pub fn map_cell(assets: &Assets, map: &gearbox_gbx::Map) -> [f32; 3] {
     let [x, h, y0] = crate::statics::place::CELL;
-    let level0 =
-        environment(map).ok().and_then(|env| assets.decoration(map.decoration.as_deref()?, env)?.level0);
+    let level0 = decoration(assets, map).and_then(|d| d.level0);
     [x, h, level0.map_or(y0, |n| -(n as f32) * h)]
 }
 
