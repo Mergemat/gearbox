@@ -19,6 +19,7 @@ pub struct Layout {
 }
 
 const FACADE: [u8; 4] = 0xfacade01u32.to_le_bytes();
+const SPRITE_PARAMS: [u8; 4] = 0x0901_0008u32.to_le_bytes();
 
 pub fn layout(buf: &[u8]) -> Result<Layout> {
     let head = match parse_head(buf) {
@@ -65,6 +66,15 @@ pub fn layout(buf: &[u8]) -> Result<Layout> {
             nodes.push(NodeSpan { index: u32::MAX, class_id: 0x09057000, start: p + 8, end: None });
             stack.push(nodes.len() - 1);
             p += 8;
+            continue;
+        }
+        if buf[p..p + 4] == SPRITE_PARAMS
+            && let Some(chunk) = buf.get(p + 4..p + 8).map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+            && is_class(chunk & !0xfff)
+        {
+            nodes.push(NodeSpan { index: u32::MAX, class_id: chunk & !0xfff, start: p + 4, end: None });
+            stack.push(nodes.len() - 1);
+            p += 4;
             continue;
         }
         if p + 8 <= buf.len() {
