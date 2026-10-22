@@ -49,7 +49,7 @@ impl<'a> MapAssets<'a> {
         let env = packs::environment(map).map_err(anyhow::Error::msg)?;
         let mut catalog = Catalog::from_assets(&self.assets, env);
         catalog.cell = packs::map_cell(&self.assets, map);
-        catalog.load_clip_faces(&self.assets, map, env, self.packs)?;
+        catalog.load_placement_metadata(&self.assets, map, env, self.packs)?;
         Ok(catalog)
     }
 }

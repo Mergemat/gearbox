@@ -211,7 +211,7 @@ impl<'a> PackSource<'a> {
     ) -> Result<Self, String> {
         let mut source = Self::new(assets, environment(map)?);
         source.catalog.cell = map_cell(assets, map);
-        source.catalog.load_clip_faces(assets, map, &source.env, packs).map_err(|e| e.to_string())?;
+        source.catalog.load_placement_metadata(assets, map, &source.env, packs).map_err(|e| e.to_string())?;
         Ok(source)
     }
 

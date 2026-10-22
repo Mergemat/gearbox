@@ -14,6 +14,7 @@ pub struct Geometry {
     pub units: Vec<[i32; 3]>,
     pub clip_faces: std::rc::Rc<Vec<gearbox_packs::blockinfo::UnitClips>>,
     pub ground_heights: std::rc::Rc<Vec<([i32; 2], Option<i32>)>>,
+    pub ground_offset: i32,
     pub class: u32,
     pub kind: GeometrySource,
     pub clip_type: u32,
@@ -32,6 +33,7 @@ struct Variant {
     units: Vec<[i32; 3]>,
     clip_faces: std::rc::Rc<Vec<gearbox_packs::blockinfo::UnitClips>>,
     ground_heights: std::rc::Rc<Vec<([i32; 2], Option<i32>)>>,
+    ground_offset: i32,
     size: [u32; 3],
     mobils: Vec<Vec<VariantOffset>>,
 }
@@ -80,6 +82,7 @@ impl Catalog {
                 let metadata = Variant {
                     clip_faces: Default::default(),
                     ground_heights: Default::default(),
+                    ground_offset: 0,
                     units: variant.units.clone(),
                     size: size_of(&variant.units),
                     mobils,
@@ -95,29 +98,22 @@ impl Catalog {
         Self { variants, cell: crate::statics::place::CELL }
     }
 
-    pub fn load_clip_faces(
+    pub fn load_placement_metadata(
         &mut self,
         assets: &gearbox_packs::assets::Assets,
         map: &gearbox_gbx::Map,
         env: &str,
         packs: &gearbox_packs::packs::PackSet,
     ) -> anyhow::Result<()> {
-        let blocks: Vec<_> = map.blocks.iter().chain(&map.baked_blocks).collect();
-        if !blocks.iter().any(|block| {
-            (block.free.is_some() || block.flags & 0x1000_0000 != 0)
-                && self
-                    .geometry(&BlockKey::of(block))
-                    .is_some_and(|geometry| geometry.kind == GeometrySource::Clip && geometry.clip_type != 0)
-        }) {
-            return Ok(());
-        }
         let mut seen = std::collections::HashSet::new();
-        for block in blocks {
-            if block.free.is_none() && block.flags & 0x1000_0000 == 0 {
+        for block in map.blocks.iter().chain(&map.baked_blocks) {
+            if block.free.is_none() && !block.is_ghost() {
                 continue;
             }
             let Some(info) = assets.block_in(&block.name, env) else { continue };
-            if gearbox_packs::blockinfo::is_clip(info.class_id) || !seen.insert(info.path.clone()) {
+            if gearbox_packs::blockinfo::is_clip(info.class_id)
+                || !seen.insert(block.name.to_ascii_lowercase())
+            {
                 continue;
             }
             let bytes = packs.read_path(&info.path)?;
@@ -141,6 +137,7 @@ impl Catalog {
                         Some(at) => gearbox_packs::blockinfo::auto_terrain(&bytes, &layout, &info.path, at)?,
                         None => (Vec::new(), 0),
                     };
+                    metadata.ground_offset = offset;
                     metadata.ground_heights = std::rc::Rc::new(
                         columns
                             .iter()
@@ -181,6 +178,7 @@ impl Catalog {
             units: variant.units.clone(),
             clip_faces: variant.clip_faces.clone(),
             ground_heights: variant.ground_heights.clone(),
+            ground_offset: variant.ground_offset,
             class: gearbox_gbx::classid::remap_class_id(*class),
             kind: *kind,
             clip_type: *clip_type,
