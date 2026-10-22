@@ -147,17 +147,40 @@ fn ref_span(ctx: &Ctx, r: &mut Reader) -> Result<Option<(usize, u32)>> {
     )
 }
 
-fn new_id(r: &mut Reader) -> Result<Option<String>> {
-    let id = r.u32()?;
-    if id != u32::MAX && id & 0xc000_0000 != 0 && id & 0x3fff_ffff == 0 {
-        Ok(Some(r.string()?))
-    } else {
-        Ok(None)
+struct DefinedIds(Vec<(usize, String)>);
+
+impl DefinedIds {
+    fn scan(buf: &[u8], from: usize) -> Self {
+        let mut ids = Vec::new();
+        let mut p = from;
+        while p < buf.len() {
+            match crate::unpack::new_id_at(buf, p) {
+                Some((id, end)) => {
+                    ids.push((p, id));
+                    p = end;
+                }
+                None => p += 1,
+            }
+        }
+        Self(ids)
+    }
+
+    fn read(&self, r: &mut Reader) -> Result<Option<String>> {
+        let at = r.pos();
+        let id = r.u32()?;
+        if id == u32::MAX || id & 0xc000_0000 == 0 {
+            return Ok(None);
+        }
+        Ok(match (id & 0x3fff_ffff) as usize {
+            0 => Some(r.string()?),
+            n => self.0.iter().take_while(|(p, _)| *p < at).nth(n - 1).map(|(_, id)| id.clone()),
+        })
     }
 }
 
 pub fn auto_terrain(buf: &[u8], layout: &Layout, path: &str, at: usize) -> Result<(Vec<AutoTerrain>, i32)> {
     let ctx = &Ctx { buf, layout, path };
+    let ids = DefinedIds::scan(buf, layout.head.body_start);
     let mut r = Reader::new(ctx.buf);
     r.skip(at + 4)?;
     ensure!(r.u32()? == 2, "unsupported ground variant archive version");
@@ -182,10 +205,10 @@ pub fn auto_terrain(buf: &[u8], layout: &Layout, path: &str, at: usize) -> Resul
         ensure!(g.u32()? == 0x0311d002, "unsupported zone genealogy archive");
         let count = g.u32()?;
         ensure!(count < 256, "zone genealogy length {count}");
-        let steps = (0..count).map(|_| new_id(&mut g)).collect::<Result<_>>()?;
+        let steps = (0..count).map(|_| ids.read(&mut g)).collect::<Result<_>>()?;
         g.u32()?;
         g.u32()?;
-        let target = new_id(&mut g)?;
+        let target = ids.read(&mut g)?;
         out.push(AutoTerrain { coord, steps, target });
     }
     let offset = r.i32()?;

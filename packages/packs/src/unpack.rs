@@ -198,7 +198,7 @@ fn u32_at(b: &[u8], p: usize) -> Option<u32> {
     b.get(p..p + 4).map(|s| u32::from_le_bytes(s.try_into().unwrap()))
 }
 
-fn new_id_at(b: &[u8], p: usize) -> Option<(String, usize)> {
+pub(crate) fn new_id_at(b: &[u8], p: usize) -> Option<(String, usize)> {
     let flag = u32_at(b, p)?;
     if flag != 0x4000_0000 && flag != 0x8000_0000 {
         return None;
