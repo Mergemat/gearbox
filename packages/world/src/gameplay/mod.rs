@@ -31,6 +31,9 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, start: u32, now: u3
     }
     for item in &map.items {
         let Some(waypoint) = &item.waypoint else { continue };
+        if !crate::statics::item_is_waypoint(map, item, &assets.assets, assets.packs)? {
+            continue;
+        }
         let pose = crate::statics::item_pose(map, item, &assets.assets, assets.packs)?;
         landmarks.push(landmark(waypoint, pose)?);
     }

@@ -82,6 +82,11 @@ pub(crate) fn waypoint_tag(kind: u32) -> Option<String> {
     Some(tag.into())
 }
 
+pub fn item_is_waypoint(file: &[u8]) -> Result<bool> {
+    let buf = crate::embedded::plain_gbx(file)?;
+    Ok(waypoint_tag(item_waypoint_type(&buf, &nodes::layout(&buf)?)?).is_some())
+}
+
 pub(crate) fn item_waypoint_type(buf: &[u8], layout: &nodes::Layout) -> Result<u32> {
     let chunk = 0x2e00_201fu32.to_le_bytes();
     let chunks: Vec<_> = buf[layout.head.body_start..]
@@ -157,7 +162,11 @@ fn item_waypoint(file: &[u8]) -> Result<[u32; 12]> {
     Ok(pose)
 }
 
-pub fn block_item_waypoint(file: &[u8], ground: bool, variant: usize) -> Result<(String, Option<[u32; 12]>)> {
+pub fn block_item_waypoint(
+    file: &[u8],
+    ground: bool,
+    mobil: [usize; 3],
+) -> Result<(String, Option<[u32; 12]>)> {
     let buf = crate::embedded::plain_gbx(file)?;
     let layout = nodes::layout(&buf)?;
     let node = layout
@@ -168,15 +177,16 @@ pub fn block_item_waypoint(file: &[u8], ground: bool, variant: usize) -> Result<
     let ctx = Ctx { buf: &buf, layout: &layout, path: "" };
     let block = crate::custom_block::read(&ctx, node.start)?;
     ensure!(block.collection == 26, "custom block archetype collection {}", block.collection);
-    let mut selected = block.mobils.iter().filter(|mobil| {
-        let (is_ground, index, _, _) = crate::custom_block::mobil_key(mobil.id);
-        is_ground == ground && index == variant
+    let custom = block.mobils.iter().find(|custom| {
+        let (is_ground, variant, group, sub) = crate::custom_block::mobil_key(custom.id);
+        is_ground == ground && [variant, group, sub] == mobil
     });
-    let mobil = selected.next().context("custom block waypoint mobil missing")?;
-    ensure!(selected.next().is_none(), "multiple custom block mobils for a waypoint");
-    let pose = match mobil.spawn {
-        Some(spawn) => Some(spawn.pose()),
-        None => mobil.crystal.map(|source| crystal::spawn(&ctx, source)).transpose()?.flatten(),
+    let pose = match custom {
+        Some(custom) => match custom.spawn {
+            Some(spawn) => Some(spawn.pose()),
+            None => custom.crystal.map(|source| crystal::spawn(&ctx, source)).transpose()?.flatten(),
+        },
+        None => None,
     };
     Ok((block.archetype, pose))
 }

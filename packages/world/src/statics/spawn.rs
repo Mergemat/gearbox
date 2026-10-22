@@ -78,11 +78,9 @@ pub fn block_pose(
     let mut custom = None;
     if let Some(name) = block.name.strip_suffix("_CustomBlock") {
         let file = map.embedded.item_file(name)?;
-        let (name, pose) = gearbox_packs::spawn::block_item_waypoint(
-            &file.data,
-            block.is_ground(),
-            ((block.flags >> 21) & 0x7f) as usize,
-        )?;
+        let mobil =
+            [((block.flags >> 21) & 0x7f) as usize, block.variant as usize, block.sub_variant as usize];
+        let (name, pose) = gearbox_packs::spawn::block_item_waypoint(&file.data, block.is_ground(), mobil)?;
         model.name = name;
         custom = pose;
     }
@@ -115,6 +113,33 @@ pub fn block_pose(
         frame
     };
     pose_bits(place::compose_iso(local, frame))
+}
+
+pub fn item_is_waypoint(
+    map: &gearbox_gbx::Map,
+    item: &gearbox_gbx::map::Item,
+    assets: &Assets,
+    files: &PackSet,
+) -> Result<bool> {
+    let name = item.model.as_deref().context("waypoint item has no model")?;
+    let file = if item.author.as_deref() == Some("Nadeo") {
+        files.read_path(&nadeo_item_path(assets, files, name)?)?
+    } else {
+        map.embedded.item_file(name)?.data.clone()
+    };
+    gearbox_packs::spawn::item_is_waypoint(&file)
+}
+
+fn nadeo_item_path(assets: &Assets, files: &PackSet, name: &str) -> Result<String> {
+    let indexed =
+        assets.index.items.keys().find(|path| gearbox_packs::assets::block_name(path) == name).cloned();
+    let packed = || {
+        files
+            .files()
+            .map(|(r, _)| files.paks[r.pak].file_path(r.file))
+            .find(|path| gearbox_packs::assets::block_name(path) == name)
+    };
+    indexed.or_else(packed).with_context(|| format!("item {name} absent from the packs"))
 }
 
 pub fn item_pose(
