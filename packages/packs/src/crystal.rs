@@ -405,6 +405,30 @@ fn read_layers(
                     r.string()?;
                     let enabled = (if v >= 1 { r.bool32()? } else { true }) && compile;
                     match kind {
+                        13 => {
+                            let voxels = crate::crystal_voxels::Voxels::read(&mut r)?;
+                            if enabled && (voxels.visible || voxels.collidable) {
+                                let g = voxels.compile()?;
+                                for (geometry, layers, include) in [
+                                    (&mut out.visual_geometry, &mut visual_layers, voxels.visible),
+                                    (&mut out.geometry, &mut layers, voxels.collidable),
+                                ] {
+                                    if include {
+                                        let first = geometry
+                                            .iter()
+                                            .map(|g| g.group_parents.len() as u32)
+                                            .sum::<u32>();
+                                        layers.push((
+                                            layer_id.clone(),
+                                            (first..first + voxels.groups as u32).collect(),
+                                            false,
+                                            geometry.len(),
+                                        ));
+                                        push_geometry(geometry, g.clone());
+                                    }
+                                }
+                            }
+                        }
                         0 => {
                             let gv = r.u32()?;
                             let g = geometry(&mut r, out.materials.len())?;
