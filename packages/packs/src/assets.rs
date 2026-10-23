@@ -93,6 +93,7 @@ pub struct PlacedSurface<'a> {
     pub chain: Vec<Loc>,
     pub materials: Vec<Option<(String, MaterialIds)>>,
     pub modified: bool,
+    pub mergeable: bool,
     pub vertex_loc: Option<[f32; 12]>,
 }
 
@@ -401,7 +402,7 @@ impl Assets {
                 EntModel::BlockTrigger { waypoint, shape } => {
                     out.push(self.place(*shape, Role::BlockTrigger(*waypoint), &[], mods))
                 }
-                EntModel::Trigger { waypoint, shape: Some(id), loc } => {
+                EntModel::Trigger { waypoint, shape: Some(id), loc, mergeable } => {
                     let mut ps = self.place(
                         *id,
                         waypoint.map(Role::Waypoint).unwrap_or(Role::SpecialTrigger),
@@ -409,6 +410,7 @@ impl Assets {
                         mods,
                     );
                     ps.vertex_loc = *loc;
+                    ps.mergeable = *mergeable;
                     out.push(ps);
                 }
                 _ => {}
@@ -457,10 +459,11 @@ impl Assets {
                 EntModel::BlockTrigger { waypoint, shape } => {
                     out.push(self.place(*shape, Role::BlockTrigger(*waypoint), chain, mods))
                 }
-                EntModel::Trigger { waypoint, shape: Some(id), loc } => {
+                EntModel::Trigger { waypoint, shape: Some(id), loc, mergeable } => {
                     let role = waypoint.map(Role::Waypoint).unwrap_or(Role::SpecialTrigger);
                     let mut ps = self.place(*id, role, chain, mods);
                     ps.vertex_loc = *loc;
+                    ps.mergeable = *mergeable;
                     out.push(ps);
                 }
                 _ => {}
@@ -505,6 +508,7 @@ impl Assets {
             chain: chain.to_vec(),
             materials,
             modified,
+            mergeable: false,
             vertex_loc: None,
         }
     }

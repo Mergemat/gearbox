@@ -42,7 +42,7 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Built> {
         statics::shapes::prepare(&mut source.shapes, body.shape, &mut prepared);
     }
     let statics = statics::finish(map, source, built, &selection)?;
-    let gates = crate::gameplay::gates(&statics, &effects)?;
+    let gates = crate::gameplay::gates::build(&statics, &effects)?;
     Ok(Built { statics, selection, gates, animations: decoder.animations, instances: decoder.bodies })
 }
 

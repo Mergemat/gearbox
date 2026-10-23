@@ -65,6 +65,7 @@ pub enum EntModel {
     Trigger {
         waypoint: Option<u32>,
         shape: Option<usize>,
+        mergeable: bool,
         #[serde(default)]
         loc: Option<[f32; 12]>,
     },
@@ -652,7 +653,7 @@ impl Crawler<'_> {
                 NodeLink::Inline(Model::DynaObject(d)) => {
                     self.dyna(d, path, head, format!("{name}#ent{k}"), None)
                 }
-                NodeLink::Inline(Model::Trigger { waypoint, shape }) => {
+                NodeLink::Inline(Model::Trigger { waypoint, shape, mergeable }) => {
                     let shape = match shape {
                         NodeLink::Inline(s) => {
                             Some(self.add_surface(s, format!("{name}#ent{k}#trigger"), head, path))
@@ -660,7 +661,7 @@ impl Crawler<'_> {
                         NodeLink::External(p) => self.shape_file(&p),
                         _ => None,
                     };
-                    EntModel::Trigger { waypoint, shape, loc: None }
+                    EntModel::Trigger { waypoint, shape, mergeable, loc: None }
                 }
                 NodeLink::Inline(Model::Kinematic(_)) => {
                     EntModel::Other { class_id: Some(0x2f0ca000), path: None }
@@ -729,6 +730,7 @@ impl Crawler<'_> {
                     models.push(EntModel::Trigger {
                         waypoint: Some(u32::MAX),
                         shape: Some(shape),
+                        mergeable: false,
                         loc: None,
                     });
                 }
@@ -799,6 +801,7 @@ impl Crawler<'_> {
                 models.push(EntModel::Trigger {
                     waypoint: Some(u32::MAX),
                     shape: Some(shape),
+                    mergeable: false,
                     loc: Some(loc),
                 });
             }

@@ -148,8 +148,8 @@ pub struct PackSource<'a> {
     pub catalog: Catalog,
     pub env: String,
     pub shapes: Vec<gearbox_engine::static_world::Shape>,
-    pub gameplay: HashMap<u32, u8>,
-    shape_cache: HashMap<(usize, Vec<u8>, u32, bool), u32>,
+    pub gameplay: HashMap<u32, crate::gameplay::gates::Properties>,
+    shape_cache: HashMap<(usize, Vec<u8>, u32, bool, bool), u32>,
     tree_scales: HashMap<(usize, i32), f32>,
     models: HashMap<(BlockKey, Mods), Option<CachedBlock<'a>>>,
     pub problems: HashMap<String, String>,
@@ -228,7 +228,7 @@ impl<'a> PackSource<'a> {
             })
             .collect();
         let preserve_ids = matches!(placed.role, Role::BlockSpecialTrigger | Role::BlockTrigger(_));
-        let key = (placed.id, ids, scale.to_bits(), preserve_ids);
+        let key = (placed.id, ids, scale.to_bits(), preserve_ids, placed.mergeable);
         if let Some(&shape) = self.shape_cache.get(&key) {
             return Ok(shape);
         }
@@ -252,7 +252,8 @@ impl<'a> PackSource<'a> {
             .and_then(|material| material.as_ref().map(|(_, ids)| ids.gameplay))
             .or_else(|| placed.surface.material_ids.first().map(|id| (id >> 8) as u8));
         if let Some(effect) = gameplay {
-            self.gameplay.insert(shape, effect);
+            self.gameplay
+                .insert(shape, crate::gameplay::gates::Properties { effect, mergeable: placed.mergeable });
         }
         self.shape_cache.insert(key, shape);
         Ok(shape)

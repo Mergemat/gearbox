@@ -1,3 +1,4 @@
+pub(crate) mod gates;
 mod player;
 mod scene;
 
@@ -147,27 +148,4 @@ fn groups(landmarks: Vec<(RaceWaypoint, bool)>) -> (Vec<RaceWaypoint>, u32) {
         }
     }
     (waypoints, checkpoints.len() as u32)
-}
-
-pub(crate) fn gates(
-    world: &gearbox_engine::static_world::StaticWorld,
-    effects: &std::collections::HashMap<u32, u8>,
-) -> Result<Vec<race::GateRecord>> {
-    world
-        .items
-        .iter()
-        .filter(|item| matches!(item.entity, gearbox_engine::static_world::Entity::Gate(_)))
-        .map(|item| {
-            let effect =
-                effects.get(&item.shape).copied().context("gate has no first material gameplay metadata")?;
-            let direction = world.shapes[item.shape as usize].main_dir;
-            let rows = item.iso.rot.rows;
-            let dir = gearbox_engine::Vec3::new(
-                direction.y * rows[0].y + direction.x * rows[0].x + direction.z * rows[0].z,
-                direction.x * rows[1].x + direction.y * rows[1].y + direction.z * rows[1].z,
-                direction.x * rows[2].x + direction.y * rows[2].y + direction.z * rows[2].z,
-            );
-            Ok(race::GateRecord { effect, dir, id: u32::MAX })
-        })
-        .collect()
 }

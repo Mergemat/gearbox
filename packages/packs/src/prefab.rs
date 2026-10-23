@@ -18,7 +18,7 @@ pub enum Model {
     StaticObject(StaticObject),
     DynaObject(DynaObject),
     Kinematic(crate::map_model::Animation),
-    Trigger { waypoint: Option<u32>, shape: NodeLink<Surface> },
+    Trigger { waypoint: Option<u32>, shape: NodeLink<Surface>, mergeable: bool },
     Surface(Surface),
     Other(u32),
 }
@@ -182,15 +182,13 @@ impl Ctx<'_> {
                 let kind = r.u32()?;
                 let shape = self.noderef(r, |c, r, _| c.surface(r))?;
                 r.u32()?;
-                Ok(Model::Trigger { waypoint: Some(kind), shape })
+                Ok(Model::Trigger { waypoint: Some(kind), shape, mergeable: false })
             }
             0x09179000 => {
                 let v = r.u32()?;
                 let shape = self.noderef(r, |c, r, _| c.surface(r))?;
-                if v >= 2 {
-                    r.u32()?;
-                }
-                Ok(Model::Trigger { waypoint: None, shape })
+                let mergeable = v >= 2 && r.u32()? != 0;
+                Ok(Model::Trigger { waypoint: None, shape, mergeable })
             }
             0x0917b000 => {
                 r.u32()?;
