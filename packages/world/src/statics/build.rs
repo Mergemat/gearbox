@@ -40,6 +40,9 @@ pub fn static_items(
             Placed::Items(items) => out.push(items, waypoint),
             Placed::Hidden => {}
             Placed::UnknownModel => {
+                if src.assets.block_is_null(&block.name) {
+                    continue;
+                }
                 let why = src.problems.get(&block.name).cloned().unwrap_or_default();
                 out.gaps.push(format!("block {} at {:?}: unknown model ({why})", block.name, block.coord));
             }

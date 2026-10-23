@@ -94,6 +94,9 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
     let mut cache = HashMap::new();
     let mut boxes = Vec::new();
     for block in map.blocks.iter().chain(&map.baked_blocks) {
+        if assets.assets.block_is_null(&block.name) {
+            continue;
+        }
         let key = BlockKey::of(block);
         let asset = assets
             .assets

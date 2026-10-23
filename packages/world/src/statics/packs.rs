@@ -72,6 +72,7 @@ fn custom_block_gates(catalog: &mut gearbox_packs::catalog::Catalog, map: &gearb
     use gearbox_packs::catalog::{Ent, EntModel, Prefab};
     let mut prefabs = Vec::new();
     for (name, block) in &mut catalog.index.custom_blocks {
+        let Some(block) = block else { continue };
         let Some(map_block) = map.blocks.iter().find(|block| block.name.eq_ignore_ascii_case(name)) else {
             continue;
         };

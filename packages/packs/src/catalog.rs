@@ -119,7 +119,7 @@ pub struct Modifier {
 pub struct Index {
     pub blocks: BTreeMap<String, Block>,
     #[serde(skip)]
-    pub custom_blocks: BTreeMap<String, Block>,
+    pub custom_blocks: BTreeMap<String, Option<Block>>,
     pub prefabs: BTreeMap<String, Prefab>,
     pub surfaces: Vec<SurfaceInfo>,
     pub materials: BTreeMap<String, (u8, u8)>,
@@ -199,16 +199,32 @@ struct Crawler<'a> {
 }
 
 impl Crawler<'_> {
-    fn custom_block(&mut self, key: &str, path: &str, known: &Index) -> Result<bool> {
+    fn custom_block(
+        &mut self,
+        key: &str,
+        path: &str,
+        known: &Index,
+        items: &[(String, String)],
+    ) -> Result<bool> {
+        let name = format!("{key}_CustomBlock");
+        if self.cat.index.custom_blocks.contains_key(&name) {
+            return Ok(true);
+        }
         let (buf, l) = self.read(path)?;
         let Some(n) = l.nodes.iter().find(|n| n.class_id == 0x2e025000) else { return Ok(false) };
+        anyhow::ensure!(self.seen.insert(format!("block:{}", norm(key))), "cyclic custom block {key}");
         let ctx = Ctx { buf: &buf, layout: &l, path };
         let item = crate::custom_block::read(&ctx, n.start)?;
         let collection = item.collection.to_string();
         let env = crate::packs::environment(Some(&collection))
             .with_context(|| format!("custom block collection {}", item.collection))?;
         let own = format!("{env}\\");
-        let (_, archetype) = known
+        if let Some((parent, path)) =
+            items.iter().find(|(key, _)| format!("{key}_CustomBlock").eq_ignore_ascii_case(&item.archetype))
+        {
+            self.custom_block(parent, path, known, items)?;
+        }
+        let archetype = known
             .blocks
             .iter()
             .filter(|(p, block)| {
@@ -220,7 +236,20 @@ impl Crawler<'_> {
                     && p.starts_with(&own)
             })
             .min_by_key(|(p, _)| (p.contains("\\Deprecated\\"), *p))
-            .ok_or_else(|| anyhow::anyhow!("custom block archetype {} not extracted", item.archetype))?;
+            .map(|(_, block)| block)
+            .or_else(|| {
+                self.cat
+                    .index
+                    .custom_blocks
+                    .iter()
+                    .chain(&known.custom_blocks)
+                    .find(|(key, _)| key.eq_ignore_ascii_case(&item.archetype))
+                    .and_then(|(_, block)| block.as_ref())
+            });
+        let Some(archetype) = archetype else {
+            self.cat.index.custom_blocks.insert(name, None);
+            return Ok(true);
+        };
         let mut block = archetype.clone();
         let (archetype_buf, archetype_layout) = self.read(&archetype.path)?;
         let original = crate::blockinfo::read_block_info(&archetype_buf, &archetype_layout, &archetype.path)?;
@@ -243,7 +272,22 @@ impl Crawler<'_> {
                         self.static_object(so, path, &l.head, format!("{path}#mobil{}", mobil.id))
                     }
                     NodeLink::External(p) => self.static_file(&p),
-                    NodeLink::Earlier(_) => bail!("shared custom mobil static object"),
+                    NodeLink::Earlier(index) => {
+                        let node = l
+                            .nodes
+                            .iter()
+                            .find(|node| node.index == index)
+                            .context("custom mobil static node missing")?;
+                        anyhow::ensure!(
+                            node.class_id == 0x09159000,
+                            "custom mobil static class {:#x}",
+                            node.class_id
+                        );
+                        let mut r = gearbox_gbx::reader::Reader::new(&buf);
+                        r.skip(node.start)?;
+                        let object = ctx.static_object(&mut r)?;
+                        self.static_object(object, path, &l.head, format!("{path}#mobil{}", mobil.id))
+                    }
                 })
             } else if let Some(start) = mobil.crystal.filter(|_| !item.compiled) {
                 let crystal = crate::crystal::read(&ctx, start, |p| self.crystal_material(p))?;
@@ -325,7 +369,7 @@ impl Crawler<'_> {
                 v.waypoint_trigger = None;
             }
         }
-        self.cat.index.custom_blocks.insert(format!("{key}_CustomBlock"), block);
+        self.cat.index.custom_blocks.insert(name, Some(block));
         Ok(true)
     }
     fn read(&self, path: &str) -> Result<(Vec<u8>, crate::nodes::Layout)> {
@@ -1085,7 +1129,7 @@ pub fn crawl_embedded(
     c.cat.index.modifiers = known.modifiers.clone();
     c.cat.index.materials = known.materials.clone();
     for (key, path) in items {
-        match c.custom_block(key, path, known) {
+        match c.custom_block(key, path, known, items) {
             Ok(true) => continue,
             Ok(false) => {}
             Err(e) => {

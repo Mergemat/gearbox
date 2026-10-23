@@ -240,7 +240,7 @@ impl Assets {
         if let Some((_, block)) =
             self.index.custom_blocks.iter().find(|(key, _)| key.eq_ignore_ascii_case(name))
         {
-            return Some(block);
+            return block.as_ref();
         }
         let paths = self.by_name.get(&name.to_ascii_lowercase())?;
         let own = format!("{env}\\");
@@ -255,6 +255,10 @@ impl Assets {
 
     pub fn block_names(&self) -> impl Iterator<Item = &str> {
         self.by_name.keys().map(String::as_str)
+    }
+
+    pub fn block_is_null(&self, name: &str) -> bool {
+        self.index.custom_blocks.iter().any(|(key, block)| key.eq_ignore_ascii_case(name) && block.is_none())
     }
 
     pub fn block_paths(&self, name: &str) -> &[String] {

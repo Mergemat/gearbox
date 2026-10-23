@@ -312,6 +312,9 @@ impl<'a> Decoder<'a> {
     }
 
     fn block_prefab(source: &PackSource<'_>, key: &statics::BlockKey) -> Result<Option<String>> {
+        if source.assets.block_is_null(&key.name) {
+            return Ok(None);
+        }
         let asset = source.assets.block_in(&key.name, &source.env).context("dynamic block asset absent")?;
         let variant = asset
             .variants
