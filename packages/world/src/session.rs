@@ -18,6 +18,7 @@ use std::sync::Arc;
 const RECENT_EVENT_DURATION_MS: u32 = 100;
 const DEFAULT_INPUT_START_MS: i32 = -1500;
 const VEHICLE_CLASS: u32 = 0x0a02_0000;
+const GATE_CARS: [Car; 3] = [Car::Snow, Car::Rally, Car::Desert];
 
 #[derive(Clone, Copy, Debug)]
 pub struct OpenOptions {
@@ -37,9 +38,8 @@ pub fn open(map: &gearbox_gbx::Map, packs: &PackSet, options: OpenOptions) -> Re
     let gameplay = gameplay::build(map, &map_assets, clock.start, clock.now)?;
     let (mut world, mut state, mut dyna) = build_world(map, &map_assets, clock.start)?;
     let car = load_car(map, packs, options.car, &mut world, &mut state)?;
-    let (mut vehicle, effects, assets) =
+    let (vehicle, effects, assets) =
         spawn_car(&car, &gameplay, clock.now, &mut world, &mut state, &mut dyna)?;
-    vehicle.model_choice = car.car as u8;
     let models = load_models(packs, car, assets, &mut world, &mut state)?;
     state.scene.push(gameplay.scene);
     let config = session_config(models, &gameplay.settings, gameplay.initial_pose);
@@ -160,13 +160,12 @@ fn load_models(
         collision: state.compound_instance[car.template.compound().unwrap().index()].clone(),
     };
     let mut models = std::array::from_fn(|_| None);
-    let choice = initial.car as usize;
-    models[choice] = Some(model(initial, assets, state));
-    for car in Car::ALL {
-        if needed[car as usize] && models[car as usize].is_none() {
+    models[0] = Some(model(initial, assets, state));
+    for (choice, car) in GATE_CARS.into_iter().enumerate().map(|(index, car)| (index + 1, car)) {
+        if needed[choice] {
             let loaded = CarAssets::load(packs, car, world, state)?;
             let assets = vehicle_assets(&loaded);
-            models[car as usize] = Some(model(loaded, assets, state));
+            models[choice] = Some(model(loaded, assets, state));
         }
     }
     Ok(models)
