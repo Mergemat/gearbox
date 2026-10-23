@@ -19,6 +19,8 @@ pub struct Block {
     pub class_id: u32,
     #[serde(default)]
     pub waypoint: Option<String>,
+    #[serde(default)]
+    pub no_respawn: bool,
     pub variants: Vec<Variant>,
     pub material_modifier: Option<String>,
     pub material_modifier2: Option<String>,
@@ -967,6 +969,7 @@ pub fn crawl(set: &PackSet, paks: &[&str]) -> Result<Catalog> {
                 path: path.clone(),
                 class_id: b.class_id,
                 waypoint: b.waypoint,
+                no_respawn: b.no_respawn,
                 variants: b
                     .variants
                     .into_iter()
