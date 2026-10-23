@@ -13,7 +13,69 @@ pub const CLASS_TRANSITION: u32 = 0x0314_d000;
 pub enum Zone {
     Flat,
     Frontier { from: Option<String>, to: Option<String>, height: i32, top: i32 },
-    Transition,
+    Transition(Transition),
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Border {
+    kind: u32,
+    steps: Vec<Option<String>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Transition {
+    mode: u32,
+    replacement: Option<String>,
+    sub_zones: [Option<String>; 3],
+    borders: [Border; 4],
+}
+
+impl Transition {
+    fn borders(&self, zones: &Zones, env: &str, index: u32) -> Result<[Border; 4]> {
+        if self.mode == 0 {
+            return Ok(self.borders.clone());
+        }
+        let shapes = match self.mode {
+            1 => &[
+                [(3, 4), (0, 1), (2, 1), (1, 2)],
+                [(3, 4), (1, 1), (2, 2), (0, 2)],
+                [(0, 4), (0, 2), (1, 1), (2, 2)],
+                [(0, 4), (2, 1), (1, 2), (0, 1)],
+                [(1, 4), (1, 2), (0, 1), (2, 1)],
+                [(1, 4), (2, 2), (0, 2), (1, 1)],
+                [(0, 1), (0, 2), (1, 1), (1, 2)],
+                [(2, 1), (2, 2), (0, 2), (0, 1)],
+                [(1, 2), (1, 1), (2, 2), (2, 1)],
+            ][..],
+            2 => &[
+                [(2, 3), (0, 1), (3, 3), (0, 2)],
+                [(2, 1), (1, 1), (3, 2), (0, 2)],
+                [(2, 2), (0, 1), (3, 1), (1, 2)],
+            ][..],
+            mode => bail!("unknown transition mode {mode}"),
+        };
+        let shape = if self.mode == 2 { index.checked_sub(9) } else { Some(index) }
+            .and_then(|i| shapes.get(i as usize))
+            .ok_or_else(|| anyhow::anyhow!("invalid transition index {index}"))?;
+        let replacement = &self.sub_zones[usize::from(self.mode == 1)];
+        let Zone::Frontier { from: Some(from), .. } = zones.resolve(env, replacement)? else {
+            bail!("transition replacement is not a frontier");
+        };
+        Ok(std::array::from_fn(|i| {
+            let (path, kind) = shape[i];
+            let mut steps = vec![Some(format!("VoidTo{from}"))];
+            let ids: &[usize] = match (self.mode, path) {
+                (_, 0) => &[0],
+                (1, 1) => &[1],
+                (1, 2) | (2, 3) => &[0, 2],
+                (2, 1) => &[2, 1],
+                (2, 2) => &[2],
+                _ => &[],
+            };
+            steps.extend(ids.iter().map(|&i| self.sub_zones[i].clone()));
+            Border { kind, steps }
+        }))
+    }
 }
 
 impl Zone {
@@ -54,6 +116,50 @@ impl Zones {
             height: 0,
             top: 0,
         })
+    }
+
+    fn resolve(&self, env: &str, name: &Option<String>) -> Result<Zone> {
+        name.as_deref()
+            .and_then(|name| self.get(env, name))
+            .ok_or_else(|| anyhow::anyhow!("unknown zone {name:?}"))
+    }
+
+    fn transition_heights(
+        &self,
+        env: &str,
+        transition: &Transition,
+        index: u32,
+        depth: usize,
+    ) -> Result<[i32; 4]> {
+        ensure!(depth <= self.0.len(), "cyclic transition genealogy");
+        let borders = transition.borders(self, env, index)?;
+        let mut heights = [0; 4];
+        for (i, border) in borders.iter().enumerate() {
+            let steps =
+                border.steps.iter().map(|name| self.resolve(env, name)).collect::<Result<Vec<_>>>()?;
+            let last = steps.last().ok_or_else(|| anyhow::anyhow!("empty transition border"))?;
+            let target = if border.kind == 4 {
+                let Zone::Frontier { to, .. } = last else { bail!("transition child is not a frontier") };
+                self.resolve(env, to)?
+            } else {
+                last.clone()
+            };
+            let high: i32 = steps.iter().map(Zone::height).sum();
+            let low = high - last.height();
+            heights[i] = match target {
+                Zone::Flat => high,
+                Zone::Frontier { .. } => {
+                    low + match last {
+                        Zone::Frontier { top, .. } => *top,
+                        _ => 0,
+                    }
+                }
+                Zone::Transition(ref transition) => {
+                    low + self.transition_heights(env, transition, 0, depth + 1)?.into_iter().min().unwrap()
+                }
+            };
+        }
+        Ok(heights)
     }
 }
 
@@ -127,10 +233,56 @@ fn read(buf: &[u8]) -> Result<(String, Zone)> {
             chunk(&mut r, 0x0305_e002)?;
             Zone::Frontier { from, to, height: r.i32()?, top: r.i32()? }
         }
-        CLASS_TRANSITION => Zone::Transition,
+        CLASS_TRANSITION => Zone::Transition(read_transition(&mut r, &mut ids)?),
         _ => bail!("class {class:08x} is not a zone"),
     };
     Ok((name, zone))
+}
+
+fn read_transition(r: &mut Reader, ids: &mut Ids) -> Result<Transition> {
+    let mut transition = Transition::default();
+    loop {
+        match r.u32()? {
+            0xfaca_de01 => return Ok(transition),
+            0x0314_d000 => {
+                r.u32()?;
+            }
+            id @ (0x0314_d004 | 0x0314_d008) => {
+                if id == 0x0314_d008 {
+                    r.u32()?;
+                }
+                for border in &mut transition.borders {
+                    border.kind = r.u32()?;
+                    if id == 0x0314_d004 {
+                        ids.read(r)?;
+                    }
+                    chunk(r, 0x0311_d002)?;
+                    let count = r.u32()?;
+                    ensure!(count < 256, "transition genealogy length {count}");
+                    border.steps = (0..count).map(|_| ids.read(r)).collect::<Result<_>>()?;
+                    r.u32()?;
+                    r.u32()?;
+                    ids.read(r)?;
+                    chunk(r, 0xfaca_de01)?;
+                }
+            }
+            0x0314_d005 => {
+                r.u32()?;
+                transition.replacement = ids.read(r)?;
+            }
+            0x0314_d006 => {
+                r.u32()?;
+                transition.mode = r.u32()?;
+            }
+            0x0314_d007 => {
+                r.u32()?;
+                for name in &mut transition.sub_zones {
+                    *name = ids.read(r)?;
+                }
+            }
+            id => bail!("unsupported transition chunk {id:08x}"),
+        }
+    }
 }
 
 const PATTERNS: [[i32; 9]; 15] = [
@@ -181,6 +333,7 @@ pub enum Ground {
     None,
     Level(i32),
     Frontier { grid: [i32; 9], low: Option<i32>, high: i32, side: i32 },
+    Transition([i32; 4]),
     Unsupported(String),
 }
 
@@ -190,7 +343,9 @@ impl Ground {
             return Ground::None;
         }
         let zone = |name: &Option<String>| {
-            name.as_deref().and_then(|name| zones.get(env, name)).ok_or_else(|| format!("unknown zone {name:?}"))
+            name.as_deref()
+                .and_then(|name| zones.get(env, name))
+                .ok_or_else(|| format!("unknown zone {name:?}"))
         };
         let steps = match column.steps.iter().map(zone).collect::<Result<Vec<_>, _>>() {
             Ok(steps) => steps,
@@ -217,7 +372,14 @@ impl Ground {
                 high,
                 side: low.unwrap_or(offset) + top,
             },
-            Ok(Zone::Transition) => Ground::Unsupported(format!("transition zone {:?}", column.target)),
+            Ok(Zone::Transition(transition)) => {
+                match zones.transition_heights(env, &transition, column.index, 0) {
+                    Ok(heights) => Ground::Transition(std::array::from_fn(|face| {
+                        low.unwrap_or(offset) + heights[(face as u32).wrapping_sub(column.dir) as usize & 3]
+                    })),
+                    Err(e) => Ground::Unsupported(e.to_string()),
+                }
+            }
             Err(e) => Ground::Unsupported(e),
         }
     }
@@ -229,6 +391,7 @@ impl Ground {
         Ok(match self {
             Ground::None => false,
             Ground::Level(height) => y == *height,
+            Ground::Transition(heights) => y == heights[face],
             Ground::Frontier { grid, low, high, side } => {
                 y == match edge(grid, face) {
                     4 => *high,
