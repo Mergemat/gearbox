@@ -41,6 +41,10 @@ pub fn is_class(id: u32) -> bool {
     id & 0xfff == 0 && registry().ids.contains(&id)
 }
 
+pub fn is_node_class(id: u32) -> bool {
+    id & 0x00ff_f000 != 0 && is_class(id)
+}
+
 fn dummy_id(id: u32) -> u32 {
     let id = classid::remap_class_id(id);
     match id {

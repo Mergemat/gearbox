@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{Result, ensure};
 
-use crate::unpack::{GbxHead, is_class, parse_head};
+use crate::unpack::{GbxHead, is_class, is_node_class, parse_head};
 
 #[derive(Clone, Debug)]
 pub struct NodeSpan {
@@ -81,7 +81,7 @@ pub fn layout(buf: &[u8]) -> Result<Layout> {
             let w = u32::from_le_bytes(buf[p..p + 4].try_into().unwrap());
             if w == next && w < head.num_nodes {
                 let cid = u32::from_le_bytes(buf[p + 4..p + 8].try_into().unwrap());
-                if is_class(cid) {
+                if is_node_class(cid) {
                     let chunked = buf
                         .get(p + 8..p + 12)
                         .is_some_and(|b| is_class(u32::from_le_bytes(b.try_into().unwrap()) & !0xfff));
