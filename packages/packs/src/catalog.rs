@@ -82,6 +82,10 @@ pub enum EntModel {
         class_id: Option<u32>,
         path: Option<String>,
     },
+    Vehicle {
+        physics: String,
+        visual: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -647,6 +651,10 @@ impl Crawler<'_> {
     fn item(&mut self, path: &str) -> Result<Item> {
         let (buf, l) = self.read(path)?;
         let ctx = Ctx { buf: &buf, layout: &l, path };
+        if let Some(n) = l.nodes.iter().find(|n| n.class_id == 0x2e01c000) {
+            let (physics, visual) = crate::car_aux::selection_at(&ctx, n.start)?;
+            return Ok(Item { models: vec![EntModel::Vehicle { physics, visual }], ..Default::default() });
+        }
         let mut material_modifier = None;
         let mut modifiers = l.nodes.iter().filter(|node| node.class_id == 0x0915d000);
         if let Some(node) = modifiers.next() {
@@ -1164,8 +1172,15 @@ pub fn crawl_embedded(
 
 const KEEP_CATALOGS: usize = 4;
 
-pub const PAKS: [&str; 6] =
-    ["stadium.pak", "stadium256.pak", "greencoast.pak", "redisland.pak", "bluebay.pak", "whiteshore.pak"];
+pub const PAKS: [&str; 7] = [
+    "stadium.pak",
+    "stadium256.pak",
+    "greencoast.pak",
+    "redisland.pak",
+    "bluebay.pak",
+    "whiteshore.pak",
+    "maniaplanet_modelssport.pak",
+];
 
 pub fn cached(set: &PackSet) -> Result<Catalog> {
     crawl_cached(set, &PAKS, &crate::install::cache_dir())

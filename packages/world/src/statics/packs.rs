@@ -506,7 +506,12 @@ impl<'a> PackSource<'a> {
         }
         crate::sort_by_key(&mut out, |p| matches!(p.0, Role::Waypoint(_)));
         let models = item.models(variant);
-        let empty = models.iter().all(|m| matches!(m, gearbox_packs::catalog::EntModel::None));
+        let empty = models.iter().all(|m| {
+            matches!(
+                m,
+                gearbox_packs::catalog::EntModel::None | gearbox_packs::catalog::EntModel::Vehicle { .. }
+            )
+        });
         if out.is_empty() && !dynamic && !empty {
             return Err(format!(
                 "{path}: item has no decoded collision parts \

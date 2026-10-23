@@ -23,6 +23,7 @@ pub fn environment(collection: Option<&str>) -> Option<&'static str> {
         "16" => Some("RedIsland"),
         "28" => Some("BlueBay"),
         "29" => Some("WhiteShore"),
+        "10003" | "Vehicles" => Some("Vehicles"),
         _ => None,
     }
 }

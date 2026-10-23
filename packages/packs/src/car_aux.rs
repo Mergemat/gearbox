@@ -47,15 +47,19 @@ pub fn selection(packs: &PackSet, car: &str) -> Result<(String, String)> {
     let b = packs.read_path(&own)?;
     let l = nodes::layout(&b)?;
     let n = l.nodes.iter().find(|n| n.class_id == 0x2e01c000).context("VehicleStruct absent")?;
-    let mut r = Reader::new(&b);
-    r.skip(n.start)?;
+    selection_at(&crate::prefab::Ctx { buf: &b, layout: &l, path: &own }, n.start)
+}
+
+pub(crate) fn selection_at(ctx: &crate::prefab::Ctx<'_>, start: usize) -> Result<(String, String)> {
+    let mut r = Reader::new(ctx.buf);
+    r.skip(start)?;
     ensure!(r.u32()? == 0x2e01c000 && r.u32()? == 3, "unsupported VehicleStruct version");
     let model = r.u32()?;
     let visual = r.u32()?;
     ensure!(r.u32()? == 0 && r.u32()? == 0 && r.u32()? == FACADE, "unsupported VehicleStruct extra objects");
     Ok((
-        l.head.ref_path(&own, model).context("VehicleStruct physics reference")?,
-        l.head.ref_path(&own, visual).context("VehicleStruct visual reference")?,
+        ctx.layout.head.ref_path(ctx.path, model).context("vehicle physics reference")?,
+        ctx.layout.head.ref_path(ctx.path, visual).context("vehicle visual reference")?,
     ))
 }
 
