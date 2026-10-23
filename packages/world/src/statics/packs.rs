@@ -464,6 +464,10 @@ impl<'a> PackSource<'a> {
             assets.find_anchored_item(anchored, &self.env).ok_or_else(|| format!("unknown item {name}"))?;
         let variant = (anchored.flags >> 8) as usize;
         let item = &assets.index.items[path];
+        let models = item.models(variant);
+        if models.iter().any(|model| matches!(model, gearbox_packs::catalog::EntModel::Vehicle { .. })) {
+            return Err(format!("{path}: parked vehicle body not simulated"));
+        }
         if item.models.is_empty() && item.variants.is_empty() {
             let why = assets
                 .index
@@ -505,13 +509,7 @@ impl<'a> PackSource<'a> {
             out.push((placed.role, shape, gearbox_engine::Iso::from_array(transform.map(f32::from_bits))));
         }
         crate::sort_by_key(&mut out, |p| matches!(p.0, Role::Waypoint(_)));
-        let models = item.models(variant);
-        let empty = models.iter().all(|m| {
-            matches!(
-                m,
-                gearbox_packs::catalog::EntModel::None | gearbox_packs::catalog::EntModel::Vehicle { .. }
-            )
-        });
+        let empty = models.iter().all(|m| matches!(m, gearbox_packs::catalog::EntModel::None));
         if out.is_empty() && !dynamic && !empty {
             return Err(format!(
                 "{path}: item has no decoded collision parts \
