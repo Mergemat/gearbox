@@ -233,6 +233,7 @@ mod tests {
             player: None,
             build: Some(build.into()),
             input_states: Vec::new(),
+            starting_steer_limit: None,
         }
     }
 
