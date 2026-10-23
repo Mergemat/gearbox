@@ -121,6 +121,10 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
         for &(model, local) in &cache[&cache_key] {
             let transform = place::transform(place::compose(parent, local));
             let placement = Iso::from_array(transform.map(f32::from_bits));
+            let [x, y, z] = placement.rot.rows;
+            if [x.y, y.x, y.y - 1.0, y.z, z.y].iter().any(|value| value.abs() > 0.00001) {
+                continue;
+            }
             boxes.push(ModelBox { model, placement, inverse: placement.inverse() });
         }
     }
