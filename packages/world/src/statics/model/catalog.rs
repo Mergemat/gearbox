@@ -13,7 +13,7 @@ pub struct Geometry {
     pub size: [u32; 3],
     pub units: Vec<[i32; 3]>,
     pub clip_faces: std::rc::Rc<Vec<gearbox_packs::blockinfo::UnitClips>>,
-    pub ground_heights: std::rc::Rc<Vec<([i32; 2], Option<i32>)>>,
+    pub ground: std::rc::Rc<Vec<([i32; 2], gearbox_packs::zones::Ground)>>,
     pub ground_offset: i32,
     pub class: u32,
     pub kind: GeometrySource,
@@ -32,7 +32,7 @@ impl Geometry {
 struct Variant {
     units: Vec<[i32; 3]>,
     clip_faces: std::rc::Rc<Vec<gearbox_packs::blockinfo::UnitClips>>,
-    ground_heights: std::rc::Rc<Vec<([i32; 2], Option<i32>)>>,
+    ground: std::rc::Rc<Vec<([i32; 2], gearbox_packs::zones::Ground)>>,
     ground_offset: i32,
     size: [u32; 3],
     mobils: Vec<Vec<VariantOffset>>,
@@ -81,7 +81,7 @@ impl Catalog {
                     .collect();
                 let metadata = Variant {
                     clip_faces: Default::default(),
-                    ground_heights: Default::default(),
+                    ground: Default::default(),
                     ground_offset: 0,
                     units: variant.units.clone(),
                     size: size_of(&variant.units),
@@ -106,6 +106,7 @@ impl Catalog {
         packs: &gearbox_packs::packs::PackSet,
     ) -> anyhow::Result<()> {
         let mut seen = std::collections::HashSet::new();
+        let mut zones = None;
         for block in map.blocks.iter().chain(&map.baked_blocks) {
             if block.free.is_none() && !block.is_ghost() {
                 continue;
@@ -138,22 +139,22 @@ impl Catalog {
                         None => (Vec::new(), 0),
                     };
                     metadata.ground_offset = offset;
-                    metadata.ground_heights = std::rc::Rc::new(
+                    if columns.is_empty() {
+                        metadata.ground = Default::default();
+                        continue;
+                    }
+                    let zones = match zones {
+                        Some(ref zones) => zones,
+                        None => zones.insert(gearbox_packs::zones::Zones::load(packs)?),
+                    };
+                    let env = info.path.split('\\').next().unwrap_or(env);
+                    metadata.ground = std::rc::Rc::new(
                         columns
                             .iter()
                             .filter(|column| column.target.is_some())
                             .map(|column| {
-                                let height = column.target.as_deref().and_then(|target| {
-                                    let flat = assets
-                                        .block_in(target, env)
-                                        .is_some_and(|block| block.class_id == 0x0304f000);
-                                    (flat
-                                        && column.steps.len() == 1
-                                        && column.steps[0].as_deref()
-                                            == Some(format!("VoidTo{target}").as_str()))
-                                    .then_some(offset)
-                                });
-                                ([column.coord[0], column.coord[2]], height)
+                                let ground = gearbox_packs::zones::Ground::of(zones, env, column, offset);
+                                ([column.coord[0], column.coord[2]], ground)
                             })
                             .collect(),
                     );
@@ -177,7 +178,7 @@ impl Catalog {
             size: variant.size,
             units: variant.units.clone(),
             clip_faces: variant.clip_faces.clone(),
-            ground_heights: variant.ground_heights.clone(),
+            ground: variant.ground.clone(),
             ground_offset: variant.ground_offset,
             class: gearbox_gbx::classid::remap_class_id(*class),
             kind: *kind,

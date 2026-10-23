@@ -29,6 +29,8 @@ pub struct UnitClips {
 pub struct AutoTerrain {
     pub coord: [i32; 3],
     pub steps: Vec<Option<String>>,
+    pub index: u32,
+    pub dir: u32,
     pub target: Option<String>,
 }
 
@@ -207,10 +209,10 @@ pub fn auto_terrain(buf: &[u8], layout: &Layout, path: &str, at: usize) -> Resul
         let count = g.u32()?;
         ensure!(count < 256, "zone genealogy length {count}");
         let steps = (0..count).map(|_| ids.read(&mut g)).collect::<Result<_>>()?;
-        g.u32()?;
-        g.u32()?;
+        let index = g.u32()?;
+        let dir = g.u32()?;
         let target = ids.read(&mut g)?;
-        out.push(AutoTerrain { coord, steps, target });
+        out.push(AutoTerrain { coord, steps, index, dir, target });
     }
     let offset = r.i32()?;
     Ok((out, offset))

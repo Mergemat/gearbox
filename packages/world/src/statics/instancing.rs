@@ -25,7 +25,7 @@ pub fn hidden_terrain(map: &gearbox_gbx::Map, src: &dyn ModelSource) -> Result<[
         let replaces_terrain = |unit: &[i32; 3]| {
             !block.is_ghost()
                 || unit[1] == geometry.ground_offset
-                    && geometry.ground_heights.iter().any(|(cell, _)| *cell == [unit[0], unit[2]])
+                    && geometry.ground.iter().any(|(cell, _)| *cell == [unit[0], unit[2]])
         };
         for &unit in geometry.units.iter().filter(|unit| replaces_terrain(unit)) {
             let coord = unit_coord(block.coord, unit, block.dir, geometry.size)?;

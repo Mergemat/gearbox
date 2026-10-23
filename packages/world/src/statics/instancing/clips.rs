@@ -138,14 +138,9 @@ pub(super) fn free_parents(
                     continue;
                 }
                 let ground = || -> Result<bool> {
-                    if face >= 4 {
-                        return Ok(false);
-                    }
-                    let zone = geometry.ground_heights.iter().find(|(cell, _)| *cell == [unit[0], unit[2]]);
-                    let Some((_, height)) = zone else { return Ok(false) };
-                    let height = height
-                        .with_context(|| format!("non-flat free clip ground zone on {}", block.name,))?;
-                    Ok(unit[1] == height)
+                    let zone = geometry.ground.iter().find(|(cell, _)| *cell == [unit[0], unit[2]]);
+                    let Some((_, ground)) = zone else { return Ok(false) };
+                    ground.contains(unit[1], face).with_context(|| format!("free clip ground on {}", block.name))
                 };
                 for (j, name) in names.iter().enumerate() {
                     let Some(name) = name else { continue };
