@@ -45,10 +45,11 @@ pub fn static_items(
             }
         }
     }
-    for (item, result) in map.items.iter().zip(crate::statics::anchored::items(map, src)) {
-        let has_waypoint =
-            item.waypoint.is_some() && crate::statics::item_is_waypoint(map, item, src.assets, packs)?;
-        let waypoint = has_waypoint.then(|| {
+    let item_waypoints = crate::statics::item_waypoint_tags(map, src.assets, packs)?;
+    for ((item, result), tag) in
+        map.items.iter().zip(crate::statics::anchored::items(map, src)).zip(item_waypoints)
+    {
+        let waypoint = tag.is_some().then(|| {
             let id = next_waypoint;
             next_waypoint += 1;
             id

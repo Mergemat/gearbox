@@ -25,17 +25,15 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, start: u32, now: u3
     let environment = crate::statics::packs::environment(map).map_err(anyhow::Error::msg)?;
     let mut landmarks = Vec::new();
     for block in &map.blocks {
-        let Some(waypoint) = block_waypoint(block, &assets.assets, environment) else { continue };
+        let Some(kind) = block_waypoint(block, &assets.assets, environment) else { continue };
         let pose = crate::statics::block_pose(map, block, &assets.assets, assets.packs, &catalog)?;
-        landmarks.push(landmark(&waypoint, pose)?);
+        landmarks.push(landmark(&kind, block.waypoint.as_ref(), pose)?);
     }
-    for item in &map.items {
-        let Some(waypoint) = &item.waypoint else { continue };
-        if !crate::statics::item_is_waypoint(map, item, &assets.assets, assets.packs)? {
-            continue;
-        }
+    let item_waypoints = crate::statics::item_waypoint_tags(map, &assets.assets, assets.packs)?;
+    for (item, kind) in map.items.iter().zip(item_waypoints) {
+        let Some(kind) = kind else { continue };
         let pose = crate::statics::item_pose(map, item, &assets.assets, assets.packs)?;
-        landmarks.push(landmark(waypoint, pose)?);
+        landmarks.push(landmark(&kind, item.waypoint.as_ref(), pose)?);
     }
     let spawn = select_spawn(&landmarks)?;
     let (waypoints, checkpoints_per_lap) = groups(landmarks);
@@ -72,32 +70,34 @@ pub(crate) fn block_waypoint(
     block: &gearbox_gbx::map::Block,
     assets: &gearbox_packs::assets::Assets,
     environment: &str,
-) -> Option<gearbox_gbx::map::Waypoint> {
-    block.waypoint.clone().or_else(|| {
-        let tag = assets.block_in(&block.name, environment)?.waypoint.clone()?;
-        Some(gearbox_gbx::map::Waypoint { tag: Some(tag), order: 0 })
-    })
+) -> Option<String> {
+    assets.block_in(&block.name, environment)?.waypoint.clone()
 }
 
-fn landmark(waypoint: &gearbox_gbx::map::Waypoint, pose: [u32; 12]) -> Result<(RaceWaypoint, bool)> {
-    let tag = waypoint.tag.as_deref().context("unnamed waypoint")?;
-    let flags = match tag {
+fn landmark(
+    kind: &str,
+    placed: Option<&gearbox_gbx::map::Waypoint>,
+    pose: [u32; 12],
+) -> Result<(RaceWaypoint, bool)> {
+    let flags = match kind {
         "Spawn" => WaypointFlags::SPAWN,
-        "Checkpoint" | "LinkedCheckpoint" => WaypointFlags::CHECKPOINT,
+        "Checkpoint" => WaypointFlags::CHECKPOINT,
         "Goal" => WaypointFlags::GOAL,
         "StartFinish" => WaypointFlags(WaypointFlags::SPAWN.0 | WaypointFlags::GOAL.0),
-        _ => anyhow::bail!("unsupported waypoint tag {tag}"),
+        _ => anyhow::bail!("unsupported waypoint kind {kind}"),
     };
+    let linked = placed.and_then(|waypoint| waypoint.tag.as_deref()) == Some("LinkedCheckpoint")
+        && (flags.contains(WaypointFlags::CHECKPOINT) || flags.contains(WaypointFlags::GOAL));
     Ok((
         RaceWaypoint {
             flags,
             group: NO_GROUP,
-            order: waypoint.order as u32,
+            order: placed.map_or(0, |waypoint| waypoint.order as u32),
             pose: Iso::from_array(pose.map(f32::from_bits)),
             linked: flags.counts(),
             respawn: flags.contains(WaypointFlags::SPAWN) || flags.contains(WaypointFlags::GOAL),
         },
-        tag == "LinkedCheckpoint",
+        linked,
     ))
 }
 

@@ -220,7 +220,6 @@ impl Crawler<'_> {
             .min_by_key(|(p, _)| (p.contains("\\Deprecated\\"), *p))
             .ok_or_else(|| anyhow::anyhow!("custom block archetype {} not extracted", item.archetype))?;
         let mut block = archetype.clone();
-        block.waypoint = crate::spawn::waypoint_tag(crate::spawn::item_waypoint_type(&buf, &l)?);
         let (archetype_buf, archetype_layout) = self.read(&archetype.path)?;
         let original = crate::blockinfo::read_block_info(&archetype_buf, &archetype_layout, &archetype.path)?;
         let customized: std::collections::HashSet<_> =

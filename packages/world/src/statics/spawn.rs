@@ -115,19 +115,31 @@ pub fn block_pose(
     pose_bits(place::compose_iso(local, frame))
 }
 
-pub fn item_is_waypoint(
+pub fn item_waypoint_tags(
     map: &gearbox_gbx::Map,
-    item: &gearbox_gbx::map::Item,
     assets: &Assets,
     files: &PackSet,
-) -> Result<bool> {
-    let name = item.model.as_deref().context("waypoint item has no model")?;
-    let file = if item.author.as_deref() == Some("Nadeo") {
-        files.read_path(&nadeo_item_path(assets, files, name)?)?
-    } else {
-        map.embedded.item_file(name)?.data.clone()
-    };
-    gearbox_packs::spawn::item_is_waypoint(&file)
+) -> Result<Vec<Option<String>>> {
+    let mut models = std::collections::HashMap::new();
+    map.items
+        .iter()
+        .map(|item| {
+            let name = item.model.as_deref().context("item has no model")?;
+            let nadeo = item.author.as_deref() == Some("Nadeo");
+            if let Some(tag) = models.get(&(nadeo, name)) {
+                return Ok(Option::clone(tag));
+            }
+            let file = if nadeo {
+                files.read_path(&nadeo_item_path(assets, files, name)?)?
+            } else {
+                map.embedded.item_file(name)?.data.clone()
+            };
+            let tag =
+                gearbox_packs::spawn::item_waypoint_tag(&file).with_context(|| format!("item {name}"))?;
+            models.insert((nadeo, name), tag.clone());
+            Ok(tag)
+        })
+        .collect()
 }
 
 fn nadeo_item_path(assets: &Assets, files: &PackSet, name: &str) -> Result<String> {

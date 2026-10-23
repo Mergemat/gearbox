@@ -121,12 +121,10 @@ fn add_block_triggers(
             continue;
         }
         let waypoint = crate::gameplay::block_waypoint(block, assets, env)
-            .as_ref()
-            .and_then(|w| w.tag.as_deref())
-            .map(|tag| match tag {
+            .map(|tag| match tag.as_str() {
                 "Spawn" => Ok(0),
                 "Goal" => Ok(1),
-                "Checkpoint" | "LinkedCheckpoint" => Ok(2),
+                "Checkpoint" => Ok(2),
                 "StartFinish" => Ok(4),
                 _ => anyhow::bail!("legacy block waypoint {tag} on {}", block.name),
             })

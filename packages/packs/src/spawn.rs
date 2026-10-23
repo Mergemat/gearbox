@@ -76,15 +76,22 @@ pub(crate) fn waypoint_tag(kind: u32) -> Option<String> {
         1 => "Goal",
         2 => "Checkpoint",
         4 => "StartFinish",
-        5 => "Dispenser",
         _ => return None,
     };
     Some(tag.into())
 }
 
-pub fn item_is_waypoint(file: &[u8]) -> Result<bool> {
+const DECORATION_ITEM: i32 = 1;
+const SPOT_ITEM: i32 = 5;
+
+pub fn item_waypoint_tag(file: &[u8]) -> Result<Option<String>> {
+    let container = gearbox_gbx::Container::parse(file)?;
+    let header = container.header_chunk(0x2e00_2000).context("item model without type header")?;
+    if !matches!(Reader::new(header).i32()?, DECORATION_ITEM | SPOT_ITEM) {
+        return Ok(None);
+    }
     let buf = crate::embedded::plain_gbx(file)?;
-    Ok(waypoint_tag(item_waypoint_type(&buf, &nodes::layout(&buf)?)?).is_some())
+    Ok(waypoint_tag(item_waypoint_type(&buf, &nodes::layout(&buf)?)?))
 }
 
 pub(crate) fn item_waypoint_type(buf: &[u8], layout: &nodes::Layout) -> Result<u32> {
