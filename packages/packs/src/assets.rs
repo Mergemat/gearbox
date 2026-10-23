@@ -441,6 +441,9 @@ impl Assets {
                 EntModel::Other { class_id: Some(0x09144000), path: source } => {
                     bail!("{prefab}: dynamic collision model not decoded ({source:?})")
                 }
+                EntModel::Vehicle { .. } | EntModel::Other { class_id: Some(0x2e01c000), .. } => {
+                    bail!("{prefab}: parked vehicle body not simulated")
+                }
                 EntModel::Prefab(x) => self.walk(x, chain, mods, out, depth + 1)?,
                 EntModel::Static { shape: None, mesh_collidable: true, .. } => {
                     bail!("{prefab}: mesh collision not decoded")

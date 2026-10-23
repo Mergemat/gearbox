@@ -8,8 +8,11 @@ use gearbox_engine::{
 use gearbox_packs::{
     assets::{BlockLookup, Loc, ModifierRef, Role},
     catalog::EntModel,
+    prefab::NodeLink,
 };
 use std::collections::HashMap;
+
+const KINEMATIC_PARAMS: u32 = 0x2f0b_6000;
 
 pub(super) struct Decoder<'a> {
     archives: Archives<'a>,
@@ -104,34 +107,42 @@ impl<'a> Decoder<'a> {
         Ok(())
     }
 
-    fn active(&mut self, path: &str, entity: &gearbox_packs::prefab::Ent) -> Result<bool> {
+    fn active(
+        &mut self,
+        path: &str,
+        model: &NodeLink<gearbox_packs::prefab::Model>,
+        params: Option<&(u32, Vec<u8>)>,
+    ) -> Result<bool> {
         if !self.assets.contains_key(path) {
-            let object = match &entity.model {
-                gearbox_packs::prefab::NodeLink::Inline(gearbox_packs::prefab::Model::DynaObject(object)) => {
-                    object.clone()
-                }
+            let object = match model {
+                NodeLink::Inline(gearbox_packs::prefab::Model::DynaObject(object)) => object.clone(),
                 _ => gearbox_packs::map_model::dyna(&self.archives.read(path)?, path)?,
             };
             self.assets.insert(path.to_owned(), object);
         }
-        let asset = &self.assets[path].physics;
-        let Some(params) = entity.params.as_ref() else {
-            ensure!(!asset.dynamize_on_spawn, "non-kinematic dynamic item: {path}");
+        let object = &self.assets[path];
+        let asset = &object.physics;
+        let timing = match params {
+            Some((KINEMATIC_PARAMS, data)) => {
+                let mut reader = gearbox_gbx::reader::Reader::new(data);
+                ensure!(reader.u32()? == 2, "dynamic instance version: {path}");
+                let period = reader.f32()?;
+                reader.u32()?;
+                let kinematic = reader.u32()? != 0;
+                let period_max = reader.f32()?;
+                let phase = reader.f32()?;
+                let phase_max = reader.f32()?;
+                kinematic.then_some((period, period_max, phase, phase_max))
+            }
+            _ => None,
+        };
+        let Some((period, period_max, phase, phase_max)) = timing else {
+            let dynamic = !object.is_static
+                && asset.animation.is_none()
+                && !matches!(object.dyna_shape, NodeLink::Null);
+            ensure!(!(dynamic && asset.dynamize_on_spawn), "non-kinematic dynamic item: {path}");
             return Ok(false);
         };
-        ensure!(params.0 == 0x2f0b_6000, "dynamic params class {:x}: {path}", params.0);
-        let mut reader = gearbox_gbx::reader::Reader::new(&params.1);
-        ensure!(reader.u32()? == 2, "dynamic instance version: {path}");
-        let period = reader.f32()?;
-        reader.u32()?;
-        let kinematic = reader.u32()? != 0;
-        let period_max = reader.f32()?;
-        let phase = reader.f32()?;
-        let phase_max = reader.f32()?;
-        if !kinematic && !asset.dynamize_on_spawn {
-            return Ok(false);
-        }
-        ensure!(kinematic, "non-kinematic dynamic item: {path}");
         ensure!(
             period == 1.0 && period_max < 0.0 && phase < 0.0 && phase_max < 0.0,
             "random or overridden animation timing: {path}"
@@ -184,7 +195,7 @@ impl<'a> Decoder<'a> {
         dynamic_index: &mut u32,
     ) -> Result<()> {
         let entity = raw.ents.get(index).context("dynamic entity metadata absent")?;
-        if !self.active(path, entity)? {
+        if !self.active(path, &entity.model, entity.params.as_ref())? {
             return Ok(());
         }
         let ordinal = *dynamic_index;
@@ -367,9 +378,12 @@ impl<'a> Decoder<'a> {
             let models = source.assets.index.items[path].models((item.flags >> 8) as usize).to_vec();
             let modifier = source.assets.index.items[path].material_modifier.clone();
             for model in models {
-                if let EntModel::Dyna { dyna_shape: Some(id), is_static: false, .. } = &model {
+                if let EntModel::Dyna { dyna_shape: Some(id), source: asset, .. } = &model
+                    && source.assets.place(*id, Role::DynaShape, &[], &[]).surface.surf.is_some()
+                {
+                    let asset = asset.as_deref().context("direct dynamic item asset absent")?;
                     ensure!(
-                        source.assets.place(*id, Role::DynaShape, &[], &[]).surface.surf.is_none(),
+                        !self.active(asset, &NodeLink::Null, None)?,
                         "direct dynamic item animation: {name}"
                     );
                 }

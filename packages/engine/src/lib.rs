@@ -5,6 +5,7 @@ macro_rules! copy_fields {
 }
 
 pub mod curve;
+pub mod gameplay;
 pub mod ids;
 pub mod math;
 pub mod numeric;

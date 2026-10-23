@@ -7,6 +7,7 @@ use gearbox_packs::surface::Surf;
 
 use crate::statics::model::{BlockKey, BlockModel, Catalog, Geometry, ModelSource, Part, PartLocation};
 use crate::statics::place::Iso;
+use crate::statics::veget::Orientation;
 
 pub use gearbox_engine::static_world::{LAYER_STATIC, LAYER_TRIGGER};
 
@@ -38,9 +39,18 @@ pub fn add_map_items(
     map: &gearbox_gbx::Map,
     packs: &gearbox_packs::packs::PackSet,
 ) -> Vec<String> {
+    let mut errors = add_embedded_items(assets, map, packs);
     if let Err(error) = add_block_triggers(assets, map, packs) {
-        return vec![format!("block triggers: {error:#}")];
+        errors.push(format!("block triggers: {error:#}"));
     }
+    errors
+}
+
+fn add_embedded_items(
+    assets: &mut Assets,
+    map: &gearbox_gbx::Map,
+    packs: &gearbox_packs::packs::PackSet,
+) -> Vec<String> {
     let items: Vec<(String, String)> =
         map.embedded.files.iter().filter_map(|f| Some((f.model_path()?, f.path.clone()))).collect();
     if items.is_empty() {
@@ -117,6 +127,9 @@ fn add_block_triggers(
     let mut seen = std::collections::HashSet::new();
     let mut blocks = Vec::new();
     for block in map.blocks.iter().chain(&map.baked_blocks) {
+        if assets.index.custom_blocks.contains_key(&block.name.to_ascii_lowercase()) {
+            continue;
+        }
         let Some(info) = assets.block_in(&block.name, env).block() else { continue };
         if !seen.insert(info.path.clone()) {
             continue;
@@ -441,10 +454,10 @@ impl<'a> PackSource<'a> {
         &mut self,
         placed: &PlacedSurface<'_>,
         pose: Iso,
-        random_rotation: bool,
+        orientation: Orientation,
     ) -> Result<(Iso, u32), String> {
         let params = self.assets.index.surfaces[placed.id].tree.ok_or("tree parameters missing")?;
-        let (pose, scale) = crate::statics::veget::placement(pose, params, random_rotation);
+        let (pose, scale) = crate::statics::veget::placement(pose, params, orientation);
         let bin = gearbox_engine::numeric::lroundf(
             ((scale - params.scale_variation) / (1.0 - params.scale_variation)) * 7.0,
         );
@@ -498,7 +511,8 @@ impl<'a> PackSource<'a> {
             let pose = local.map_or(iso, |local| crate::statics::place::compose(iso, local));
             let (transform, shape) = match assets.index.surfaces[placed.id].tree {
                 Some(_) => {
-                    let (pose, shape) = self.tree_instance(&placed, pose, local.is_none())?;
+                    let orientation = if local.is_none() { Orientation::Random } else { Orientation::Kept };
+                    let (pose, shape) = self.tree_instance(&placed, pose, orientation)?;
                     (crate::statics::place::transform(pose), shape)
                 }
                 None => (
@@ -575,7 +589,7 @@ impl ModelSource for PackSource<'_> {
             let parent = crate::statics::model::block_iso_with(b, &model.geometry);
             for placed in cached.trees {
                 let pose = crate::statics::place::compose(parent, chain_iso(&placed.chain));
-                let (pose, shape) = self.tree_instance(&placed, pose, false)?;
+                let (pose, shape) = self.tree_instance(&placed, pose, Orientation::Kept)?;
                 model.parts.push(Part {
                     shape,
                     location: PartLocation::World(pose),

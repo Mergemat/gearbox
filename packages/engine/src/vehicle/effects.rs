@@ -5,7 +5,7 @@ use super::{
 };
 use crate::race::countdown::{ControlFlags, ControlPhase};
 use crate::{
-    ItemId, Vec3,
+    ItemId, Vec3, gameplay,
     math::{cvtt, cvtt64, minss},
 };
 
@@ -188,11 +188,11 @@ pub fn surface_effects(
     let start = turbo_pads(vehicle, tuning, tick, power, &mut changes, &mut events);
     let mut bits = vehicle.effect_flags;
     reactor(vehicle, tick, power, &mut bits, &mut changes);
-    for effect in 20..=23 {
+    for effect in gameplay::VEHICLE_TRANSFORM_RESET..=gameplay::VEHICLE_TRANSFORM_CAR_DESERT {
         if vehicle.find_surface_contact(effect, &[], &mut SurfaceContact::default())
             && ControlFlags(vehicle.control_flags).phase() == ControlPhase::Racing
         {
-            vehicle.pending_car_changes.push(effect - 20);
+            vehicle.pending_car_changes.push(effect - gameplay::VEHICLE_TRANSFORM_RESET);
         }
     }
     if vehicle.level_power_scale == 1.0 {
@@ -434,7 +434,7 @@ fn controls(vehicle: &mut Vehicle, speed: f32, bits: &mut u8, changes: &mut Chan
 
 fn slow_motion(vehicle: &mut Vehicle, tuning: &Tuning, tick: u32, changes: &mut Changes) {
     let mut contact = SurfaceContact::default();
-    if vehicle.find_surface_contact(9, &[], &mut contact) {
+    if vehicle.find_surface_contact(gameplay::SLOW_MOTION, &[], &mut contact) {
         let mut new = contact.item
             != if contact.wheel {
                 vehicle.slow_motion_wheel_contact

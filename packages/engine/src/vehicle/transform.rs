@@ -8,37 +8,55 @@ impl Session {
         }
     }
 
-    pub(crate) fn change_car(&mut self, choice: u8, now: u32) {
+    pub(crate) fn select_car(&mut self, choice: u8) {
         if choice == self.vehicle.model_choice {
             return;
         }
         let model = self.config.model(choice);
-        let previous_model = self.config.model(self.vehicle.model_choice);
-        let tuning = &model.assets.tuning;
-        let old_tuning = &previous_model.assets.tuning;
+        let compound =
+            self.vehicle.shape.and_then(|shape| shape.compound()).expect("vehicle collision compound");
+        self.state.compound_instance[compound.index()] = model.collision.clone();
+        if self.vehicle.body != u32::MAX {
+            let body = self.dyna.body_mut(BodyHandle(self.vehicle.body));
+            body.model = model.body.clone();
+            body.inertia.diagonal = body.model.inverse_inertia();
+        }
+        let mut shapes = [u32::MAX; 4];
+        for (shape, wheel) in shapes.iter_mut().zip(&model.spawn.wheels) {
+            *shape = wheel.shape;
+        }
+        [
+            self.vehicle.wheel_transform_0,
+            self.vehicle.wheel_transform_1,
+            self.vehicle.wheel_transform_2,
+            self.vehicle.wheel_transform_3,
+        ] = shapes;
+        self.vehicle.model_choice = choice;
+    }
+
+    fn change_car(&mut self, choice: u8, now: u32) {
+        if choice == self.vehicle.model_choice {
+            return;
+        }
+        let tuning = &self.config.model(choice).assets.tuning;
+        let old_tuning = &self.config.model(self.vehicle.model_choice).assets.tuning;
         let height = (tuning.transform_suspension_length - tuning.transform_height_offset)
             - (old_tuning.transform_suspension_length - old_tuning.transform_height_offset);
         let rotation = Mat3::from_quat(self.vehicle.quat);
         let pose =
             Iso::new(rotation, self.vehicle.pos + rotation.transform_y_first(Vec3::new(0.0, height, 0.0)));
+        self.select_car(choice);
+        let model = self.config.model(choice);
+        let tuning = &model.assets.tuning;
         let previous = std::mem::take(&mut self.vehicle);
-        let shape = previous.shape.expect("vehicle collision shape");
-        let compound = shape.compound().expect("vehicle collision compound");
-        self.state.compound_instance[compound.index()] = model.collision.clone();
         let mut vehicle = spawn::constructed(previous.key);
         vehicle.body = previous.body;
         vehicle.body_enabled = previous.body_enabled;
         vehicle.item = previous.item;
-        vehicle.shape = Some(shape);
+        vehicle.shape = previous.shape;
         vehicle.wheel_count = 4;
         vehicle.model_choice = choice;
         vehicle.tag = previous.tag;
-        if vehicle.body != u32::MAX {
-            let handle = BodyHandle(vehicle.body);
-            let body = self.dyna.body_mut(handle);
-            body.model = model.body.clone();
-            body.inertia.diagonal = body.model.inverse_inertia();
-        }
         let mut visuals = vis::Refresh {
             config: vis::Config {
                 tuning,
@@ -71,7 +89,7 @@ impl Session {
             wheel.suspension_length = tuning.transform_suspension_length;
         }
         if vehicle.surface_effect == 0 {
-            vehicle.surface_effect = choice + 20;
+            vehicle.surface_effect = choice + crate::gameplay::VEHICLE_TRANSFORM_RESET;
         }
         vis::vehicle_vis(&mut vehicle, &self.dyna, &visuals.config, 1);
         self.vehicle = vehicle;

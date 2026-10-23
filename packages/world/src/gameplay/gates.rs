@@ -2,10 +2,12 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use gearbox_engine::{
-    Aabb, Quat, Vec3,
+    Aabb, Quat, Vec3, gameplay,
     race::GateRecord,
     static_world::{Entity, StaticWorld},
 };
+
+const ADJACENT_TOLERANCE: f32 = 0.01;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Properties {
@@ -32,7 +34,7 @@ pub(crate) fn build(world: &StaticWorld, properties: &HashMap<u32, Properties>) 
             direction.x * rows[1].x + direction.y * rows[1].y + direction.z * rows[1].z,
             direction.x * rows[2].x + direction.y * rows[2].y + direction.z * rows[2].z,
         );
-        if property.mergeable && property.effect == 9 {
+        if property.mergeable && property.effect == gameplay::SLOW_MOTION {
             let rotation = Quat::from_mat3(&item.iso.rot);
             mergeable.push(Mergeable {
                 index: gates.len(),
@@ -54,10 +56,10 @@ fn merge(gates: &mut [GateRecord], mergeable: &[Mergeable]) {
         for second in &mergeable[i + 1..] {
             let other_half = first.inverse.rotate(second.bounds.half);
             let delta = first.inverse.rotate(second.bounds.center - first.bounds.center);
-            let adjacent = delta.z.abs() <= 0.01
-                && delta.x.abs() <= (half.x + other_half.x).abs() + 0.01
-                && delta.y.abs() <= (half.y + other_half.y).abs() + 0.01
-                && (delta.x.abs() <= 0.01 || delta.y.abs() <= 0.01);
+            let adjacent = delta.z.abs() <= ADJACENT_TOLERANCE
+                && delta.x.abs() <= (half.x + other_half.x).abs() + ADJACENT_TOLERANCE
+                && delta.y.abs() <= (half.y + other_half.y).abs() + ADJACENT_TOLERANCE
+                && (delta.x.abs() <= ADJACENT_TOLERANCE || delta.y.abs() <= ADJACENT_TOLERANCE);
             if !adjacent {
                 continue;
             }
@@ -77,7 +79,6 @@ fn merge(gates: &mut [GateRecord], mergeable: &[Mergeable]) {
         }
     }
     let mut parents: Vec<u32> = (0..count).collect();
-    joins.sort_unstable();
     for (left, right) in joins {
         let left = root(&parents, left);
         let right = root(&parents, right);

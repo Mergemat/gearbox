@@ -35,13 +35,19 @@ fn rotate(q: [f32; 4], angle: f32, axis: usize) -> [f32; 4] {
     ]
 }
 
-pub fn placement(mut iso: Iso, params: Params, random_rotation: bool) -> (Iso, f32) {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Orientation {
+    Random,
+    Kept,
+}
+
+pub fn placement(mut iso: Iso, params: Params, orientation: Orientation) -> (Iso, f32) {
     let mut seed = instance_hash(iso);
     let mut scale_seed = seed;
     let bin = (next(&mut scale_seed) as u64 * 8) >> 15;
     let scale = 1.0 - (bin as f32 / 7.0) * params.scale_variation;
     let tilt = (params.tilt_degrees * std::f32::consts::PI) / 180.0;
-    if random_rotation && (params.random_y || tilt != 0.0) {
+    if orientation == Orientation::Random && (params.random_y || tilt != 0.0) {
         let yaw =
             if params.random_y { range(&mut seed, 0.0, (360.0 * std::f32::consts::PI) / 180.0) } else { 0.0 };
         let pitch = range(&mut seed, -tilt, tilt);
