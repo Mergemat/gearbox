@@ -437,9 +437,14 @@ impl<'a> PackSource<'a> {
         Ok(CachedBlock { model: BlockModel { geometry, parts }, trees })
     }
 
-    fn tree_instance(&mut self, placed: &PlacedSurface<'_>, pose: Iso) -> Result<(Iso, u32), String> {
+    fn tree_instance(
+        &mut self,
+        placed: &PlacedSurface<'_>,
+        pose: Iso,
+        random_rotation: bool,
+    ) -> Result<(Iso, u32), String> {
         let params = self.assets.index.surfaces[placed.id].tree.ok_or("tree parameters missing")?;
-        let (pose, scale) = crate::statics::veget::placement(pose, params);
+        let (pose, scale) = crate::statics::veget::placement(pose, params, random_rotation);
         let bin = gearbox_engine::numeric::lroundf(
             ((scale - params.scale_variation) / (1.0 - params.scale_variation)) * 7.0,
         );
@@ -493,7 +498,7 @@ impl<'a> PackSource<'a> {
             let pose = local.map_or(iso, |local| crate::statics::place::compose(iso, local));
             let (transform, shape) = match assets.index.surfaces[placed.id].tree {
                 Some(_) => {
-                    let (pose, shape) = self.tree_instance(&placed, pose)?;
+                    let (pose, shape) = self.tree_instance(&placed, pose, true)?;
                     (crate::statics::place::transform(pose), shape)
                 }
                 None => (
@@ -570,7 +575,7 @@ impl ModelSource for PackSource<'_> {
             let parent = crate::statics::model::block_iso_with(b, &model.geometry);
             for placed in cached.trees {
                 let pose = crate::statics::place::compose(parent, chain_iso(&placed.chain));
-                let (pose, shape) = self.tree_instance(&placed, pose)?;
+                let (pose, shape) = self.tree_instance(&placed, pose, false)?;
                 model.parts.push(Part {
                     shape,
                     location: PartLocation::World(pose),
