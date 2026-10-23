@@ -498,7 +498,7 @@ impl<'a> PackSource<'a> {
             let pose = local.map_or(iso, |local| crate::statics::place::compose(iso, local));
             let (transform, shape) = match assets.index.surfaces[placed.id].tree {
                 Some(_) => {
-                    let (pose, shape) = self.tree_instance(&placed, pose, true)?;
+                    let (pose, shape) = self.tree_instance(&placed, pose, local.is_none())?;
                     (crate::statics::place::transform(pose), shape)
                 }
                 None => (
