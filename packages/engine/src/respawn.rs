@@ -18,7 +18,6 @@ struct Checkpoint {
 }
 
 const DELAY_MS: u32 = 1000;
-const SNAPSHOT_DELAY_MS: u32 = 10;
 
 fn restore(vehicle: &mut Vehicle, saved: &Vehicle) {
     vehicle.copy_state(saved);
@@ -190,9 +189,8 @@ impl Session {
         if is_respawn_point {
             respawns.respawn_point = Some(waypoint);
         }
-        let taken_at = now.wrapping_add(SNAPSHOT_DELAY_MS);
         let state = Box::new(self.vehicle.clone());
         respawns.saved.retain(|checkpoint| checkpoint.waypoint != waypoint);
-        respawns.saved.push(Checkpoint { waypoint, taken_at, state });
+        respawns.saved.push(Checkpoint { waypoint, taken_at: now, state });
     }
 }
