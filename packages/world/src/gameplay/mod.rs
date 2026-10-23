@@ -27,7 +27,8 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, start: u32, now: u3
     for block in &map.blocks {
         let Some(kind) = block_waypoint(block, &assets.assets, environment) else { continue };
         let pose = crate::statics::block_pose(map, block, &assets.assets, assets.packs, &catalog)?;
-        let respawn = !assets.assets.block_in(&block.name, environment).is_some_and(|info| info.no_respawn);
+        let respawn =
+            !assets.assets.block_in(&block.name, environment).block().is_some_and(|info| info.no_respawn);
         landmarks.push(landmark(&kind, block.waypoint.as_ref(), pose, respawn)?);
     }
     let item_waypoints = crate::statics::item_waypoint_tags(map, &assets.assets, assets.packs)?;
@@ -72,7 +73,7 @@ pub(crate) fn block_waypoint(
     assets: &gearbox_packs::assets::Assets,
     environment: &str,
 ) -> Option<String> {
-    assets.block_in(&block.name, environment)?.waypoint.clone()
+    assets.block_in(&block.name, environment).block()?.waypoint.clone()
 }
 
 fn landmark(

@@ -25,7 +25,6 @@ struct Border {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Transition {
     mode: u32,
-    replacement: Option<String>,
     sub_zones: [Option<String>; 3],
     borders: [Border; 4],
 }
@@ -268,7 +267,7 @@ fn read_transition(r: &mut Reader, ids: &mut Ids) -> Result<Transition> {
             }
             0x0314_d005 => {
                 r.u32()?;
-                transition.replacement = ids.read(r)?;
+                ids.read(r)?;
             }
             0x0314_d006 => {
                 r.u32()?;
@@ -342,14 +341,10 @@ impl Ground {
         if column.steps.is_empty() {
             return Ground::None;
         }
-        let zone = |name: &Option<String>| {
-            name.as_deref()
-                .and_then(|name| zones.get(env, name))
-                .ok_or_else(|| format!("unknown zone {name:?}"))
-        };
-        let steps = match column.steps.iter().map(zone).collect::<Result<Vec<_>, _>>() {
+        let steps = match column.steps.iter().map(|name| zones.resolve(env, name)).collect::<Result<Vec<_>>>()
+        {
             Ok(steps) => steps,
-            Err(e) => return Ground::Unsupported(e),
+            Err(e) => return Ground::Unsupported(format!("{e:#}")),
         };
         let heights: Vec<i32> = steps
             .iter()
@@ -364,7 +359,7 @@ impl Ground {
             Some(Zone::Frontier { top, .. }) => *top,
             _ => 0,
         };
-        match zone(&column.target) {
+        match zones.resolve(env, &column.target) {
             Ok(Zone::Flat) => Ground::Level(high),
             Ok(Zone::Frontier { .. }) => Ground::Frontier {
                 grid: pattern(column.index, column.dir),
@@ -377,10 +372,10 @@ impl Ground {
                     Ok(heights) => Ground::Transition(std::array::from_fn(|face| {
                         low.unwrap_or(offset) + heights[(face as u32).wrapping_sub(column.dir) as usize & 3]
                     })),
-                    Err(e) => Ground::Unsupported(e.to_string()),
+                    Err(e) => Ground::Unsupported(format!("{e:#}")),
                 }
             }
-            Err(e) => Ground::Unsupported(e),
+            Err(e) => Ground::Unsupported(format!("{e:#}")),
         }
     }
 

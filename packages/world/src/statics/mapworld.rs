@@ -18,7 +18,7 @@ pub fn blocks(map: &gearbox_gbx::Map, src: &mut dyn ModelSource) -> Result<Vec<P
     let grid = crate::statics::instancing::Grid::new(map, src)?;
     for (list, blocks) in [&map.blocks, &map.baked_blocks].into_iter().enumerate() {
         for (i, block) in blocks.iter().enumerate() {
-            if hidden[list][i] {
+            if hidden[list][i] || src.null_block(block) {
                 out.push(Placed::Hidden);
                 continue;
             }

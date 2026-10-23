@@ -4,6 +4,7 @@ use crate::statics::{BlockKey, MapAssets, place};
 use anyhow::{Context, Result, ensure};
 use gearbox_engine::world_water::{Column, Entry, Grid, Layer, ModelBox, Volume, VoxelGrid, Water};
 use gearbox_engine::{Aabb, Iso, Quat, Vec3};
+use gearbox_packs::assets::BlockLookup;
 use std::collections::HashMap;
 
 const EMPTY: u32 = u32::MAX;
@@ -94,14 +95,12 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
     let mut cache = HashMap::new();
     let mut boxes = Vec::new();
     for block in map.blocks.iter().chain(&map.baked_blocks) {
-        if assets.assets.block_is_null(&block.name) {
-            continue;
-        }
+        let asset = match assets.assets.block_in(&block.name, env) {
+            BlockLookup::Block(asset) => asset,
+            BlockLookup::Null => continue,
+            BlockLookup::Missing => anyhow::bail!("water block {}", block.name),
+        };
         let key = BlockKey::of(block);
-        let asset = assets
-            .assets
-            .block_in(&block.name, env)
-            .with_context(|| format!("water block {}", block.name))?;
         let cache_key = (asset.path.clone(), key.flags & 0x1000 != 0, ((key.flags >> 21) & 0x7f) as usize);
         if !cache.contains_key(&cache_key) {
             let bytes = assets.packs.read_path(&asset.path)?;

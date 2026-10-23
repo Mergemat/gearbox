@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use gearbox_engine::static_world::{Entity, LAYER_GATE};
-use gearbox_packs::assets::{Assets, ModifierRef, PlacedSurface, Role};
-use gearbox_packs::catalog::Decoration;
+use gearbox_packs::assets::{Assets, BlockLookup, ModifierRef, PlacedSurface, Role};
+use gearbox_packs::catalog::{Decoration, custom_block_name};
 use gearbox_packs::surface::Surf;
 
 use crate::statics::model::{BlockKey, BlockModel, Catalog, Geometry, ModelSource, Part, PartLocation};
@@ -58,8 +58,8 @@ pub fn add_map_items(
         if let Some(item) = catalog.index.items.get(&path).cloned() {
             catalog.index.items.entry(name.clone()).or_insert(item);
         }
-        if let Some(block) = catalog.index.custom_blocks.get(&format!("{path}_CustomBlock")).cloned() {
-            catalog.index.custom_blocks.entry(format!("{name}_CustomBlock")).or_insert(block);
+        if let Some(block) = catalog.index.custom_blocks.get(&custom_block_name(&path)).cloned() {
+            catalog.index.custom_blocks.entry(custom_block_name(name)).or_insert(block);
         }
     }
     custom_block_gates(&mut catalog, map);
@@ -117,7 +117,7 @@ fn add_block_triggers(
     let mut seen = std::collections::HashSet::new();
     let mut blocks = Vec::new();
     for block in map.blocks.iter().chain(&map.baked_blocks) {
-        let Some(info) = assets.block_in(&block.name, env) else { continue };
+        let Some(info) = assets.block_in(&block.name, env).block() else { continue };
         if !seen.insert(info.path.clone()) {
             continue;
         }
@@ -159,14 +159,6 @@ pub struct PackSource<'a> {
 fn iso_of(l: &gearbox_packs::assets::Loc) -> Iso {
     let [x, y, z, w] = l.rotation;
     Iso { q: [w, x, y, z], p: l.position }
-}
-
-fn gameplay_effect(placed: &PlacedSurface<'_>) -> Option<u8> {
-    placed
-        .materials
-        .first()
-        .and_then(|material| material.as_ref().map(|(_, ids)| ids.gameplay))
-        .or_else(|| placed.surface.material_ids.first().map(|id| (id >> 8) as u8))
 }
 
 fn game_triangle(triangle: &gearbox_packs::surface::MeshTri, placed: &PlacedSurface<'_>) -> [u8; 16] {
@@ -254,7 +246,12 @@ impl<'a> PackSource<'a> {
                 *vertex *= scale;
             }
         }
-        if let Some(effect) = gameplay_effect(placed) {
+        let gameplay = placed
+            .materials
+            .first()
+            .and_then(|material| material.as_ref().map(|(_, ids)| ids.gameplay))
+            .or_else(|| placed.surface.material_ids.first().map(|id| (id >> 8) as u8));
+        if let Some(effect) = gameplay {
             self.gameplay.insert(shape, effect);
         }
         self.shape_cache.insert(key, shape);
@@ -312,7 +309,7 @@ impl<'a> PackSource<'a> {
             return Ok(modifier.clone());
         }
         let assets = self.assets;
-        let Some(info) = assets.block_in(&block.name, &self.env) else { return Ok([None, None]) };
+        let Some(info) = assets.block_in(&block.name, &self.env).block() else { return Ok([None, None]) };
         let key = BlockKey::of(block);
         let is_clip = gearbox_packs::blockinfo::is_clip(info.class_id);
         let geometry = self.catalog.geometry(&key);
@@ -347,7 +344,7 @@ impl<'a> PackSource<'a> {
 
     pub fn surfaces(&self, key: &BlockKey, mods: &Mods) -> Result<Vec<PlacedSurface<'a>>, String> {
         let assets = self.assets;
-        let block = assets.block_in(&key.name, &self.env).ok_or("unknown block")?;
+        let block = assets.block_in(&key.name, &self.env).block().ok_or("unknown block")?;
         let (ground, index) = (key.flags & 0x1000 != 0, ((key.flags >> 21) & 0x7f) as usize);
         let variant = block
             .variants
@@ -394,8 +391,8 @@ impl<'a> PackSource<'a> {
         let mut trees = Vec::new();
         for mut placed in self.surfaces(key, mods)? {
             if placed.role == Role::BlockTrigger(None)
-                && ((placed.surface.materials.is_empty() && placed.surface.material_ids.is_empty())
-                    || gameplay_effect(&placed) == Some(0))
+                && placed.surface.materials.is_empty()
+                && placed.surface.material_ids.is_empty()
             {
                 continue;
             }
@@ -545,8 +542,12 @@ impl ModelSource for PackSource<'_> {
         self.catalog.geometry(key)
     }
 
+    fn null_block(&self, block: &gearbox_gbx::map::Block) -> bool {
+        matches!(self.assets.block_in(&block.name, &self.env), BlockLookup::Null)
+    }
+
     fn block_model(&mut self, key: &BlockKey) -> Option<BlockModel> {
-        let info = self.assets.block_in(&key.name, &self.env);
+        let info = self.assets.block_in(&key.name, &self.env).block();
         let mods = [
             info.and_then(|block| block.material_modifier.clone()).map(|path| (path, None, false)),
             info.and_then(|block| block.material_modifier2.clone()).map(|path| (path, None, false)),

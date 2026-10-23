@@ -59,7 +59,7 @@ impl Catalog {
         let names: std::collections::BTreeSet<&str> =
             assets.block_names().chain(assets.index.custom_blocks.keys().map(String::as_str)).collect();
         for name in names {
-            let Some(block) = assets.block_in(name, env) else { continue };
+            let Some(block) = assets.block_in(name, env).block() else { continue };
             let kind = if gearbox_packs::blockinfo::is_clip(block.class_id) {
                 GeometrySource::Clip
             } else {
@@ -111,7 +111,7 @@ impl Catalog {
             if block.free.is_none() && !block.is_ghost() {
                 continue;
             }
-            let Some(info) = assets.block_in(&block.name, env) else { continue };
+            let Some(info) = assets.block_in(&block.name, env).block() else { continue };
             if gearbox_packs::blockinfo::is_clip(info.class_id)
                 || !seen.insert(block.name.to_ascii_lowercase())
             {
@@ -139,25 +139,25 @@ impl Catalog {
                         None => (Vec::new(), 0),
                     };
                     metadata.ground_offset = offset;
-                    if columns.is_empty() {
-                        metadata.ground = Default::default();
-                        continue;
-                    }
-                    let zones = match zones {
-                        Some(ref zones) => zones,
-                        None => zones.insert(gearbox_packs::zones::Zones::load(packs)?),
+                    metadata.ground = if columns.is_empty() {
+                        Default::default()
+                    } else {
+                        let zones = match zones {
+                            Some(ref zones) => zones,
+                            None => zones.insert(gearbox_packs::zones::Zones::load(packs)?),
+                        };
+                        let env = info.path.split('\\').next().unwrap_or(env);
+                        std::rc::Rc::new(
+                            columns
+                                .iter()
+                                .filter(|column| column.target.is_some())
+                                .map(|column| {
+                                    let ground = gearbox_packs::zones::Ground::of(zones, env, column, offset);
+                                    ([column.coord[0], column.coord[2]], ground)
+                                })
+                                .collect(),
+                        )
                     };
-                    let env = info.path.split('\\').next().unwrap_or(env);
-                    metadata.ground = std::rc::Rc::new(
-                        columns
-                            .iter()
-                            .filter(|column| column.target.is_some())
-                            .map(|column| {
-                                let ground = gearbox_packs::zones::Ground::of(zones, env, column, offset);
-                                ([column.coord[0], column.coord[2]], ground)
-                            })
-                            .collect(),
-                    );
                 }
             }
         }

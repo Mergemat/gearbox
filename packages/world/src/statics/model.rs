@@ -48,6 +48,7 @@ pub struct BlockModel {
 pub trait ModelSource {
     fn block_geometry(&self, key: &BlockKey) -> Option<Geometry>;
     fn block_model(&mut self, key: &BlockKey) -> Option<BlockModel>;
+    fn null_block(&self, block: &gearbox_gbx::map::Block) -> bool;
     fn block_model_at(
         &mut self,
         map: &gearbox_gbx::Map,

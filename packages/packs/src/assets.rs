@@ -163,6 +163,22 @@ pub struct Assets {
     by_name: HashMap<String, Vec<String>>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum BlockLookup<'a> {
+    Block(&'a Block),
+    Null,
+    Missing,
+}
+
+impl<'a> BlockLookup<'a> {
+    pub fn block(self) -> Option<&'a Block> {
+        match self {
+            BlockLookup::Block(block) => Some(block),
+            BlockLookup::Null | BlockLookup::Missing => None,
+        }
+    }
+}
+
 pub fn block_name(path: &str) -> &str {
     let f = path.rsplit(['\\', '/']).next().unwrap_or(path);
     f.split('.').next().unwrap_or(f)
@@ -232,33 +248,35 @@ impl Assets {
         self.index.errors.extend(cat.index.errors);
     }
 
-    pub fn block(&self, name: &str) -> Option<&Block> {
-        self.block_in(name, "Stadium")
-    }
-
-    pub fn block_in(&self, name: &str, env: &str) -> Option<&Block> {
-        if let Some((_, block)) =
-            self.index.custom_blocks.iter().find(|(key, _)| key.eq_ignore_ascii_case(name))
-        {
-            return block.as_ref();
+    pub fn block_in(&self, name: &str, env: &str) -> BlockLookup<'_> {
+        let name = name.to_ascii_lowercase();
+        if let Some(block) = self.index.custom_blocks.get(&name) {
+            return block.as_ref().map_or(BlockLookup::Null, BlockLookup::Block);
         }
-        let paths = self.by_name.get(&name.to_ascii_lowercase())?;
         let own = format!("{env}\\");
-        let p = paths
-            .iter()
-            .filter(|p| p.starts_with(&own) || p.starts_with("Stadium\\") || p.starts_with("Stadium256\\"))
-            .min_by_key(|p| {
-                (p.contains("\\Deprecated\\"), !p.starts_with(&own), !p.starts_with("Stadium\\"), p.as_str())
-            })?;
-        self.index.blocks.get(p)
+        self.by_name
+            .get(&name)
+            .and_then(|paths| {
+                paths
+                    .iter()
+                    .filter(|p| {
+                        p.starts_with(&own) || p.starts_with("Stadium\\") || p.starts_with("Stadium256\\")
+                    })
+                    .min_by_key(|p| {
+                        (
+                            p.contains("\\Deprecated\\"),
+                            !p.starts_with(&own),
+                            !p.starts_with("Stadium\\"),
+                            p.as_str(),
+                        )
+                    })
+            })
+            .and_then(|p| self.index.blocks.get(p))
+            .map_or(BlockLookup::Missing, BlockLookup::Block)
     }
 
     pub fn block_names(&self) -> impl Iterator<Item = &str> {
         self.by_name.keys().map(String::as_str)
-    }
-
-    pub fn block_is_null(&self, name: &str) -> bool {
-        self.index.custom_blocks.iter().any(|(key, block)| key.eq_ignore_ascii_case(name) && block.is_none())
     }
 
     pub fn block_paths(&self, name: &str) -> &[String] {
@@ -277,7 +295,7 @@ impl Assets {
         group: usize,
         mobil: usize,
     ) -> Result<Vec<PlacedSurface<'_>>> {
-        let b = self.block(name).with_context(|| format!("unknown block {name}"))?;
+        let b = self.block_in(name, "Stadium").block().with_context(|| format!("unknown block {name}"))?;
         let v = b.variants.iter().find(|v| v.ground == ground && v.index == variant).with_context(|| {
             format!("{name}: no {} variant {variant}", if ground { "ground" } else { "air" })
         })?;

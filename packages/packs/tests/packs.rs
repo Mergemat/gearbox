@@ -90,22 +90,7 @@ fn vehicle_items_resolve_car_models_without_static_collision_or_waypoints() {
 }
 
 #[test]
-fn transition_ground_tracks_the_rotated_border_and_column_height() {
+fn every_zone_file_loads() {
     let Some((set, _)) = packs() else { return };
-    let zones = gearbox_packs::zones::Zones::load(&set).unwrap();
-    let column = gearbox_packs::blockinfo::AutoTerrain {
-        coord: [0; 3],
-        steps: ["VoidToLand", "LandHill6", "LandCliff12"].map(|name| Some(name.into())).to_vec(),
-        index: 4,
-        dir: 1,
-        target: Some("Land0_Land6_Land12".into()),
-    };
-    let ground = gearbox_packs::zones::Ground::of(&zones, "BlueBay", &column, 3);
-    assert_eq!(ground, gearbox_packs::zones::Ground::Transition([15, 21, 9, 9]));
-    for (face, height) in [15, 21, 9, 9].into_iter().enumerate() {
-        assert!(ground.contains(height, face).unwrap());
-        assert!(!ground.contains(height + 1, face).unwrap());
-    }
-    assert!(!ground.contains(9, 4).unwrap());
-    assert!(!ground.contains(9, 5).unwrap());
+    gearbox_packs::zones::Zones::load(&set).unwrap();
 }

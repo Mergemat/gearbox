@@ -178,6 +178,14 @@ fn norm(p: &str) -> String {
     p.replace('/', "\\").to_lowercase()
 }
 
+pub fn custom_block_name(model: &str) -> String {
+    format!("{model}_CustomBlock").to_ascii_lowercase()
+}
+
+pub fn names_custom_block(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with("_customblock")
+}
+
 pub trait Source {
     fn read_path(&self, path: &str) -> Result<Vec<u8>>;
     fn class_of(&self, path: &str) -> Option<u32>;
@@ -199,6 +207,7 @@ struct Crawler<'a> {
     seen: std::collections::HashSet<String>,
     shape_files: BTreeMap<String, Option<usize>>,
     static_files: BTreeMap<String, EntModel>,
+    shared_statics: BTreeMap<(String, u32), EntModel>,
     id_base: usize,
 }
 
@@ -210,23 +219,39 @@ impl Crawler<'_> {
         known: &Index,
         items: &[(String, String)],
     ) -> Result<bool> {
-        let name = format!("{key}_CustomBlock");
+        let name = custom_block_name(key);
         if self.cat.index.custom_blocks.contains_key(&name) {
             return Ok(true);
         }
         let (buf, l) = self.read(path)?;
         let Some(n) = l.nodes.iter().find(|n| n.class_id == 0x2e025000) else { return Ok(false) };
-        anyhow::ensure!(self.seen.insert(format!("block:{}", norm(key))), "cyclic custom block {key}");
-        let ctx = Ctx { buf: &buf, layout: &l, path };
-        let item = crate::custom_block::read(&ctx, n.start)?;
+        let guard = format!("block:{}", norm(key));
+        anyhow::ensure!(self.seen.insert(guard.clone()), "cyclic custom block {key}");
+        let block = self.custom_block_model(path, &buf, &l, n.start, known, items);
+        self.seen.remove(&guard);
+        self.cat.index.custom_blocks.insert(name, block?);
+        Ok(true)
+    }
+
+    fn custom_block_model(
+        &mut self,
+        path: &str,
+        buf: &[u8],
+        l: &crate::nodes::Layout,
+        start: usize,
+        known: &Index,
+        items: &[(String, String)],
+    ) -> Result<Option<Block>> {
+        let ctx = Ctx { buf, layout: l, path };
+        let item = crate::custom_block::read(&ctx, start)?;
         let collection = item.collection.to_string();
         let env = crate::packs::environment(Some(&collection))
             .with_context(|| format!("custom block collection {}", item.collection))?;
         let own = format!("{env}\\");
-        if let Some((parent, path)) =
-            items.iter().find(|(key, _)| format!("{key}_CustomBlock").eq_ignore_ascii_case(&item.archetype))
-        {
-            self.custom_block(parent, path, known, items)?;
+        let parent = item.archetype.to_ascii_lowercase();
+        if let Some((key, path)) = items.iter().find(|(key, _)| custom_block_name(key) == parent) {
+            self.custom_block(key, path, known, items)
+                .with_context(|| format!("custom block archetype {}", item.archetype))?;
         }
         let archetype = known
             .blocks
@@ -240,19 +265,20 @@ impl Crawler<'_> {
                     && p.starts_with(&own)
             })
             .min_by_key(|(p, _)| (p.contains("\\Deprecated\\"), *p))
-            .map(|(_, block)| block)
+            .map(|(_, block)| Some(block))
             .or_else(|| {
                 self.cat
                     .index
                     .custom_blocks
-                    .iter()
-                    .chain(&known.custom_blocks)
-                    .find(|(key, _)| key.eq_ignore_ascii_case(&item.archetype))
-                    .and_then(|(_, block)| block.as_ref())
+                    .get(&parent)
+                    .or_else(|| known.custom_blocks.get(&parent))
+                    .map(Option::as_ref)
             });
-        let Some(archetype) = archetype else {
-            self.cat.index.custom_blocks.insert(name, None);
-            return Ok(true);
+        let archetype = match archetype {
+            Some(Some(archetype)) => archetype,
+            Some(None) => return Ok(None),
+            None if names_custom_block(&parent) => return Ok(None),
+            None => bail!("custom block archetype {} not extracted", item.archetype),
         };
         let mut block = archetype.clone();
         let (archetype_buf, archetype_layout) = self.read(&archetype.path)?;
@@ -277,20 +303,7 @@ impl Crawler<'_> {
                     }
                     NodeLink::External(p) => self.static_file(&p),
                     NodeLink::Earlier(index) => {
-                        let node = l
-                            .nodes
-                            .iter()
-                            .find(|node| node.index == index)
-                            .context("custom mobil static node missing")?;
-                        anyhow::ensure!(
-                            node.class_id == 0x09159000,
-                            "custom mobil static class {:#x}",
-                            node.class_id
-                        );
-                        let mut r = gearbox_gbx::reader::Reader::new(&buf);
-                        r.skip(node.start)?;
-                        let object = ctx.static_object(&mut r)?;
-                        self.static_object(object, path, &l.head, format!("{path}#mobil{}", mobil.id))
+                        self.inline_static_object(path, index, format!("{path}#mobil{}", mobil.id))?
                     }
                 })
             } else if let Some(start) = mobil.crystal.filter(|_| !item.compiled) {
@@ -373,8 +386,7 @@ impl Crawler<'_> {
                 v.waypoint_trigger = None;
             }
         }
-        self.cat.index.custom_blocks.insert(name, Some(block));
-        Ok(true)
+        Ok(Some(block))
     }
     fn read(&self, path: &str) -> Result<(Vec<u8>, crate::nodes::Layout)> {
         let buf = self.set.read_path(path)?;
@@ -468,6 +480,27 @@ impl Crawler<'_> {
         let mut r = gearbox_gbx::reader::Reader::new(&buf);
         r.skip(n.start)?;
         ctx.surface(&mut r)
+    }
+
+    fn inline_static_object(&mut self, path: &str, index: u32, source: String) -> Result<EntModel> {
+        let key = (norm(path), index);
+        if let Some(model) = self.shared_statics.get(&key) {
+            return Ok(model.clone());
+        }
+        let (buf, l) = self.read(path)?;
+        let n = l
+            .nodes
+            .iter()
+            .find(|n| n.index == index)
+            .ok_or_else(|| anyhow::anyhow!("missing static object node {index}"))?;
+        anyhow::ensure!(n.class_id == 0x09159000, "shared static object class {:#x}", n.class_id);
+        let ctx = Ctx { buf: &buf, layout: &l, path };
+        let mut r = gearbox_gbx::reader::Reader::new(&buf);
+        r.skip(n.start)?;
+        let object = ctx.static_object(&mut r)?;
+        let model = self.static_object(object, path, &l.head, source);
+        self.shared_statics.insert(key, model.clone());
+        Ok(model)
     }
 
     fn mesh_collision(&mut self, owner: &str, mesh: NodeLink<usize>) -> Result<Surface> {
@@ -962,6 +995,7 @@ pub fn crawl(set: &PackSet, paks: &[&str]) -> Result<Catalog> {
         seen: Default::default(),
         shape_files: Default::default(),
         static_files: Default::default(),
+        shared_statics: Default::default(),
         id_base: 0,
     };
     let mut block_files = Vec::new();
@@ -1125,6 +1159,7 @@ pub fn crawl_embedded(
             .map(|(i, s)| (norm(&s.source), Some(i)))
             .collect(),
         static_files: Default::default(),
+        shared_statics: Default::default(),
         id_base,
     };
     for p in known.prefabs.values() {
@@ -1141,7 +1176,7 @@ pub fn crawl_embedded(
             Ok(true) => continue,
             Ok(false) => {}
             Err(e) => {
-                c.cat.index.errors.push(format!("{path}: {e}"));
+                c.cat.index.errors.push(format!("{path}: {e:#}"));
                 continue;
             }
         }

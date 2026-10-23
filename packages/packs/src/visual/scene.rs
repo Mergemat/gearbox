@@ -1,5 +1,5 @@
 use super::*;
-use crate::assets::{Assets, Loc};
+use crate::assets::{Assets, BlockLookup, Loc};
 use crate::surface::Surf;
 use anyhow::{Context, ensure};
 use placement::{Iso, VariantOffset};
@@ -40,7 +40,7 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
         if b.free.is_some() || !b.is_ground() {
             continue;
         }
-        if let Ok((_, v, _, _)) = selection(assets, b, env) {
+        if let Ok(Some((_, v, _, _))) = selection(assets, b, env) {
             let size = size(&v.units);
             for &u in &v.units {
                 ground.insert(unit(b.coord, u, b.dir, size));
@@ -52,7 +52,7 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
         if b.free.is_some() {
             continue;
         }
-        if let Ok((info, v, _, _)) = selection(assets, b, env) {
+        if let Ok(Some((info, v, _, _))) = selection(assets, b, env) {
             if crate::blockinfo::is_clip(info.class_id) {
                 continue;
             }
@@ -68,6 +68,7 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
             && ground.contains(&b.coord)
             && assets
                 .block_in(&b.name, env)
+                .block()
                 .is_some_and(|b| matches!(b.class_id, 0x0304f000 | 0x03050000 | 0x0314c000))
         {
             continue;
@@ -85,9 +86,14 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
                     .find(|n| n.class_id == 0x2e025000)
                     .context("custom block archive absent")?;
                 let custom = crate::custom_block::read(&ctx, n.start)?;
+                if crate::catalog::names_custom_block(&custom.archetype)
+                    && !cache.embedded_models.contains_key(&norm(&custom.archetype))
+                {
+                    return Ok(());
+                }
                 let mut archetype = b.clone();
                 archetype.name = custom.archetype;
-                let (info, v, m, offset) = selection(assets, &archetype, env)?;
+                let Some((info, v, m, offset)) = selection(assets, &archetype, env)? else { return Ok(()) };
                 let overridden = custom
                     .mobils
                     .iter()
@@ -103,7 +109,8 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
                     .is_some_and(|m| m.object.is_some() || (!custom.compiled && m.crystal.is_some()));
                 (info, v, m, if overridden { Default::default() } else { offset })
             } else {
-                selection(assets, b, env)?
+                let Some(selected) = selection(assets, b, env)? else { return Ok(()) };
+                selected
             };
             let iso = if let Some((p, a)) = b.free {
                 placement::free_iso_variant(p, a, offset)
@@ -210,7 +217,8 @@ pub fn visual_scene(map: &gearbox_gbx::Map, assets: &Assets, cache: &mut VisualC
                 let map_size = d.map_size.context("decoration without map dimensions")?;
                 for b in &deco.blocks {
                     let result = (|| -> Result<_> {
-                        let (_, v, m, offset) = selection(assets, b, env)?;
+                        let (_, v, m, offset) =
+                            selection(assets, b, env)?.context("decoration block has no model")?;
                         let parts = match &m.prefab {
                             Some(p) => cache.file_parts(p, 0, 0)?,
                             None => Vec::new(),
@@ -267,13 +275,19 @@ fn unit(coord: [i32; 3], u: [i32; 3], dir: u8, size: [u32; 3]) -> [i32; 3] {
 fn size(units: &[[i32; 3]]) -> [u32; 3] {
     std::array::from_fn(|k| units.iter().map(|u| (u[k] as u32).wrapping_add(1)).fold(1, u32::max))
 }
+type Selection<'a> =
+    (&'a crate::catalog::Block, &'a crate::catalog::Variant, &'a crate::catalog::Mobil, VariantOffset);
+
 fn selection<'a>(
     assets: &'a Assets,
     b: &gearbox_gbx::map::Block,
     env: &str,
-) -> Result<(&'a crate::catalog::Block, &'a crate::catalog::Variant, &'a crate::catalog::Mobil, VariantOffset)>
-{
-    let info = assets.block_in(&b.name, env).with_context(|| format!("block {} absent", b.name))?;
+) -> Result<Option<Selection<'a>>> {
+    let info = match assets.block_in(&b.name, env) {
+        BlockLookup::Block(info) => info,
+        BlockLookup::Null => return Ok(None),
+        BlockLookup::Missing => anyhow::bail!("block {} absent", b.name),
+    };
     let v = info
         .variants
         .iter()
@@ -289,7 +303,7 @@ fn selection<'a>(
             deg: m.geom_rotation.unwrap_or_default(),
         }
     };
-    Ok((info, v, m, offset))
+    Ok(Some((info, v, m, offset)))
 }
 pub(super) fn loc_iso(l: Loc) -> Iso {
     let [x, y, z, w] = l.rotation;
@@ -461,7 +475,7 @@ fn block_modifiers(
             let coord = std::array::from_fn(|k| b.coord[k] + delta[k]);
             if let Some(parent) =
                 grid.get(&coord).and_then(|cell| cell.iter().find(|b| b.flags & 0x10000000 == 0))
-                && let Some(info) = assets.block_in(&parent.name, env)
+                && let Some(info) = assets.block_in(&parent.name, env).block()
             {
                 inherited = block_modifiers(map, assets, env, parent, info, grid, cache, depth + 1)?;
             }
