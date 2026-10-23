@@ -5,12 +5,6 @@ use gearbox_gbx::reader::Reader;
 #[path = "crystal_voxel_cases.rs"]
 mod cases;
 
-struct Case {
-    points: &'static [[f32; 3]],
-    links: [i8; 6],
-    faces: [i8; 3],
-}
-
 struct Voxel {
     material: i32,
     index: usize,
@@ -24,7 +18,7 @@ pub(crate) struct Voxels {
     cells: Vec<Voxel>,
     pub visible: bool,
     pub collidable: bool,
-    pub groups: usize,
+    groups: usize,
 }
 
 fn index(p: [usize; 3], size: [usize; 3]) -> usize {
@@ -58,10 +52,13 @@ impl Voxels {
         let groups = r.len()?;
         let mut out = Self { size, width, origin, cells, visible, collidable, groups };
         let lookup = out.lookup();
+        let mut visited = vec![false; lookup.len()];
         for group in 0..groups {
-            let start = r.u32()? as usize;
-            if start != u32::MAX as usize {
-                for cell in out.component(start, &lookup) {
+            let start = r.u32()?;
+            if start != u32::MAX {
+                let start = start as usize;
+                ensure!(start < lookup.len(), "crystal voxel group start {start}");
+                for cell in out.component(start, &lookup, &mut visited) {
                     out.cells[cell].group = group;
                 }
             }
@@ -69,7 +66,7 @@ impl Voxels {
         if out.groups == 0 && !out.cells.is_empty() {
             for i in 0..out.cells.len() {
                 if out.cells[i].group == usize::MAX {
-                    for cell in out.component(out.cells[i].index, &lookup) {
+                    for cell in out.component(out.cells[i].index, &lookup, &mut visited) {
                         out.cells[cell].group = out.groups;
                     }
                     out.groups += 1;
@@ -87,11 +84,10 @@ impl Voxels {
         lookup
     }
 
-    fn component(&self, start: usize, lookup: &[usize]) -> Vec<usize> {
-        if start >= lookup.len() || lookup[start] == usize::MAX {
+    fn component(&self, start: usize, lookup: &[usize], visited: &mut [bool]) -> Vec<usize> {
+        if lookup[start] == usize::MAX {
             return Vec::new();
         }
-        let mut visited = vec![false; lookup.len()];
         let mut queue = vec![start];
         visited[start] = true;
         let mut at = 0;
@@ -114,6 +110,9 @@ impl Voxels {
                 }
             }
             at += 1;
+        }
+        for &i in &queue {
+            visited[i] = false;
         }
         queue.into_iter().map(|i| lookup[i]).collect()
     }
@@ -164,12 +163,7 @@ impl Voxels {
                             y as f32 * self.width,
                             (z as f32 - self.size[2] as f32 * 0.5) * self.width,
                         ];
-                        let world = [
-                            ((local[1] * 0.0 + local[0] * 1.0) + local[2] * 0.0) + 0.0 + self.origin[0],
-                            ((local[1] * 1.0 + local[0] * 0.0) + local[2] * 0.0) + 0.0 + self.origin[1],
-                            ((local[1] * 0.0 + local[0] * 0.0) + local[2] * 1.0) + 0.0 + self.origin[2],
-                        ];
-                        positions.push(world);
+                        positions.push(std::array::from_fn(|a| local[a] + self.origin[a]));
                         adjacent.push(Vec::new());
                         lattice[cell].push((id, label));
                     }
@@ -274,6 +268,22 @@ impl Voxels {
                 }
             }
         }
+        let mut used = vec![false; self.groups.max(1)];
+        for &group in &face_groups {
+            used[group] = true;
+        }
+        let mut live = 0;
+        let renumbered: Vec<usize> = used
+            .iter()
+            .map(|&u| {
+                let n = live;
+                live += usize::from(u);
+                n
+            })
+            .collect();
+        for group in &mut face_groups {
+            *group = renumbered[*group];
+        }
         positions.reverse();
         faces.reverse();
         face_groups.reverse();
@@ -294,7 +304,7 @@ impl Voxels {
             face_uvs,
             face_groups,
             normals,
-            group_parents: vec![u32::MAX; self.groups],
+            group_parents: vec![u32::MAX; live],
             edges,
             ages: Vec::new(),
             archive_version: 37,

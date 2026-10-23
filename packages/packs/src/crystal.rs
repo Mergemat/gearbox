@@ -420,7 +420,7 @@ fn read_layers(
                                             .sum::<u32>();
                                         layers.push((
                                             layer_id.clone(),
-                                            (first..first + voxels.groups as u32).collect(),
+                                            (first..first + g.group_parents.len() as u32).collect(),
                                             false,
                                             geometry.len(),
                                         ));

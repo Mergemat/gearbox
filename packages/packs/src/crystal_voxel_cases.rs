@@ -1,4 +1,8 @@
-use super::Case;
+pub(super) struct Case {
+    pub(super) points: &'static [[f32; 3]],
+    pub(super) links: [i8; 6],
+    pub(super) faces: [i8; 3],
+}
 
 pub(super) const CASES: [Case; 256] = [
     Case { points: &[], links: [-1, -1, -1, -1, -1, -1], faces: [0, 0, 0] },
