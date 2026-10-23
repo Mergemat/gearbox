@@ -125,18 +125,16 @@ pub fn item_waypoint_tags(
         .iter()
         .map(|item| {
             let name = item.model.as_deref().context("item has no model")?;
-            let nadeo = item.author.as_deref() == Some("Nadeo");
-            if let Some(tag) = models.get(&(nadeo, name)) {
+            if let Some(tag) = models.get(name) {
                 return Ok(Option::clone(tag));
             }
-            let file = if nadeo {
-                files.read_path(&nadeo_item_path(assets, files, name)?)?
-            } else {
-                map.embedded.item_file(name)?.data.clone()
+            let file = match map.embedded.item_file(name) {
+                Ok(embedded) => embedded.data.clone(),
+                Err(_) => files.read_path(&nadeo_item_path(assets, files, name)?)?,
             };
             let tag =
                 gearbox_packs::spawn::item_waypoint_tag(&file).with_context(|| format!("item {name}"))?;
-            models.insert((nadeo, name), tag.clone());
+            models.insert(name, tag.clone());
             Ok(tag)
         })
         .collect()
