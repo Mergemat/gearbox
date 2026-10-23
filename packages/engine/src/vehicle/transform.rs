@@ -4,75 +4,77 @@ use crate::{Iso, Mat3, Quat, Vec3, dyna::BodyHandle, session::Session};
 impl Session {
     pub(crate) fn transform_car(&mut self, now: u32) {
         for choice in std::mem::take(&mut self.vehicle.pending_car_changes) {
-            if choice == self.vehicle.model_choice {
-                continue;
-            }
-            let model = self.config.model(choice);
-            let previous_model = self.config.model(self.vehicle.model_choice);
-            let tuning = &model.assets.tuning;
-            let old_tuning = &previous_model.assets.tuning;
-            let height = (tuning.transform_suspension_length - tuning.transform_height_offset)
-                - (old_tuning.transform_suspension_length - old_tuning.transform_height_offset);
-            let rotation = Mat3::from_quat(self.vehicle.quat);
-            let pose = Iso::new(
-                rotation,
-                self.vehicle.pos + rotation.transform_y_first(Vec3::new(0.0, height, 0.0)),
-            );
-            let previous = std::mem::take(&mut self.vehicle);
-            let shape = previous.shape.expect("vehicle collision shape");
-            let compound = shape.compound().expect("vehicle collision compound");
-            self.state.compound_instance[compound.index()] = model.collision.clone();
-            let mut vehicle = spawn::constructed(previous.key);
-            vehicle.body = previous.body;
-            vehicle.body_enabled = 1;
-            vehicle.item = previous.item;
-            vehicle.shape = Some(shape);
-            vehicle.wheel_count = 4;
-            vehicle.model_choice = choice;
-            vehicle.tag = previous.tag;
-            let handle = BodyHandle(vehicle.body);
-            {
-                let body = self.dyna.body_mut(handle);
-                body.model = model.body.clone();
-                body.inertia.diagonal = body.model.inverse_inertia();
-            }
-            let mut visuals = vis::Refresh {
-                config: vis::Config {
-                    tuning,
-                    geometry: &model.assets.geometry,
-                    tick: now,
-                    recent_event_duration: self.config.recent_event_duration,
-                },
-            };
-            spawn::respawn(
-                &mut vehicle,
-                &model.spawn,
-                &mut self.dyna,
-                pose,
-                spawn::Reset::FULL,
-                &mut spawn::Services {
-                    world: &self.world,
-                    state: &mut self.state,
-                    visuals: &mut visuals,
-                    ring: &mut self.effects,
-                    events: None,
-                },
-            );
-            vehicle.transfer_motion(&previous);
-            vehicle.pos = pose.pos;
-            vehicle.quat = Quat::from_mat3(&pose.rot);
-            vehicle.control_flags &= !15;
-            vehicle.pivot_state = 0;
-            vehicle.fixed_wheel_spin = 0;
-            for wheel in &mut vehicle.wheels {
-                wheel.suspension_length = tuning.transform_suspension_length;
-            }
-            if vehicle.surface_effect == 0 {
-                vehicle.surface_effect = choice + 20;
-            }
-            vis::vehicle_vis(&mut vehicle, &self.dyna, &visuals.config, 1);
-            self.vehicle = vehicle;
+            self.change_car(choice, now);
         }
+    }
+
+    pub(crate) fn change_car(&mut self, choice: u8, now: u32) {
+        if choice == self.vehicle.model_choice {
+            return;
+        }
+        let model = self.config.model(choice);
+        let previous_model = self.config.model(self.vehicle.model_choice);
+        let tuning = &model.assets.tuning;
+        let old_tuning = &previous_model.assets.tuning;
+        let height = (tuning.transform_suspension_length - tuning.transform_height_offset)
+            - (old_tuning.transform_suspension_length - old_tuning.transform_height_offset);
+        let rotation = Mat3::from_quat(self.vehicle.quat);
+        let pose =
+            Iso::new(rotation, self.vehicle.pos + rotation.transform_y_first(Vec3::new(0.0, height, 0.0)));
+        let previous = std::mem::take(&mut self.vehicle);
+        let shape = previous.shape.expect("vehicle collision shape");
+        let compound = shape.compound().expect("vehicle collision compound");
+        self.state.compound_instance[compound.index()] = model.collision.clone();
+        let mut vehicle = spawn::constructed(previous.key);
+        vehicle.body = previous.body;
+        vehicle.body_enabled = previous.body_enabled;
+        vehicle.item = previous.item;
+        vehicle.shape = Some(shape);
+        vehicle.wheel_count = 4;
+        vehicle.model_choice = choice;
+        vehicle.tag = previous.tag;
+        if vehicle.body != u32::MAX {
+            let handle = BodyHandle(vehicle.body);
+            let body = self.dyna.body_mut(handle);
+            body.model = model.body.clone();
+            body.inertia.diagonal = body.model.inverse_inertia();
+        }
+        let mut visuals = vis::Refresh {
+            config: vis::Config {
+                tuning,
+                geometry: &model.assets.geometry,
+                tick: now,
+                recent_event_duration: self.config.recent_event_duration,
+            },
+        };
+        spawn::respawn(
+            &mut vehicle,
+            &model.spawn,
+            &mut self.dyna,
+            pose,
+            spawn::Reset::FULL,
+            &mut spawn::Services {
+                world: &self.world,
+                state: &mut self.state,
+                visuals: &mut visuals,
+                ring: &mut self.effects,
+                events: None,
+            },
+        );
+        vehicle.transfer_motion(&previous);
+        vehicle.pos = pose.pos;
+        vehicle.quat = Quat::from_mat3(&pose.rot);
+        vehicle.control_flags &= !15;
+        vehicle.pivot_state = 0;
+        vehicle.fixed_wheel_spin = 0;
+        for wheel in &mut vehicle.wheels {
+            wheel.suspension_length = tuning.transform_suspension_length;
+        }
+        if vehicle.surface_effect == 0 {
+            vehicle.surface_effect = choice + 20;
+        }
+        vis::vehicle_vis(&mut vehicle, &self.dyna, &visuals.config, 1);
+        self.vehicle = vehicle;
     }
 }
 

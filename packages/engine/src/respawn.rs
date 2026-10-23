@@ -117,6 +117,7 @@ impl Session {
     fn respawn_at_start(&mut self) -> bool {
         let now = self.clock.now;
         let Some(landmark) = self.start_landmark() else { return false };
+        self.change_car(0, now);
         self.respawn_at(now, landmark, Reset::FULL);
         self.vehicle.frozen_until = now;
         true
@@ -124,6 +125,9 @@ impl Session {
 
     fn respawn_standing(&mut self, landmark: u32, saved: Option<&Checkpoint>, pending: Option<u32>) -> bool {
         let now = self.clock.now;
+        if let Some(saved) = saved {
+            self.change_car(saved.state.model_choice, now);
+        }
         let key = self.vehicle.key;
         if let Some(controller) = self
             .race
@@ -157,6 +161,7 @@ impl Session {
 
     fn respawn_at_checkpoint(&mut self, checkpoint: &Checkpoint) -> bool {
         let at = self.clock.now + DELAY_MS;
+        self.change_car(checkpoint.state.model_choice, self.clock.now);
         let vehicle = &mut self.vehicle;
         let sequence = vehicle.respawn_sequence;
         restore(vehicle, &checkpoint.state);
