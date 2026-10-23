@@ -20,7 +20,11 @@ impl Built {
     }
 }
 
-pub fn static_items(map: &gearbox_gbx::Map, src: &mut PackSource<'_>) -> Result<Built> {
+pub fn static_items(
+    map: &gearbox_gbx::Map,
+    src: &mut PackSource<'_>,
+    packs: &gearbox_packs::packs::PackSet,
+) -> Result<Built> {
     let mut out = Built::default();
     let blocks: Vec<&gearbox_gbx::map::Block> = map.blocks.iter().chain(&map.baked_blocks).collect();
     let mut next_waypoint = 0u32;
@@ -42,7 +46,9 @@ pub fn static_items(map: &gearbox_gbx::Map, src: &mut PackSource<'_>) -> Result<
         }
     }
     for (item, result) in map.items.iter().zip(crate::statics::anchored::items(map, src)) {
-        let waypoint = item.waypoint.is_some().then(|| {
+        let has_waypoint =
+            item.waypoint.is_some() && crate::statics::item_is_waypoint(map, item, src.assets, packs)?;
+        let waypoint = has_waypoint.then(|| {
             let id = next_waypoint;
             next_waypoint += 1;
             id

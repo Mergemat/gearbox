@@ -31,7 +31,7 @@ pub struct Built {
 pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Built> {
     let mut source =
         statics::packs::PackSource::for_map(&assets.assets, map, assets.packs).map_err(anyhow::Error::msg)?;
-    let built = statics::build::static_items(map, &mut source)?;
+    let built = statics::build::static_items(map, &mut source, assets.packs)?;
     ensure!(built.gaps.is_empty(), "map objects incomplete: {}", built.gaps.join("; "));
     let mut decoder = decode::Decoder::new(map, assets.packs);
     decoder.traverse(map, &mut source, &built.items).context("map_animations::models")?;

@@ -87,7 +87,7 @@ impl GateIds {
 pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, selection: &Selection) -> Result<StaticWorld> {
     let mut source =
         packs::PackSource::for_map(&assets.assets, map, assets.packs).map_err(anyhow::Error::msg)?;
-    let built = build::static_items(map, &mut source)?;
+    let built = build::static_items(map, &mut source, assets.packs)?;
     ensure!(built.gaps.is_empty(), "static world incomplete: {}", built.gaps.join("; "));
     finish(map, source, built, selection)
 }
