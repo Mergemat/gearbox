@@ -7,7 +7,7 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use gearbox_gbx::reader::Reader;
 
-fn solid_surface(ctx: &Ctx<'_>, start: usize) -> Result<Surface> {
+pub(crate) fn solid_surface(ctx: &Ctx<'_>, start: usize) -> Result<Surface> {
     let solid = ctx.layout.nodes.iter().find(|n| n.start == start).context("trigger solid span")?;
     let end = solid.end.context("trigger solid without end")?;
     let nodes: Vec<_> = ctx.layout.nodes.iter().filter(|n| n.start > start && n.start < end).collect();

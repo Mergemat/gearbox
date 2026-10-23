@@ -133,8 +133,8 @@ pub fn collision(
     for _ in 0..r.len()? {
         let visual = r.u32()?;
         let material = r.u32()?;
-        let flags = r.u32()?;
         r.u32()?;
+        let flags = r.u32()?;
         if version >= 32 {
             r.u32()?;
         }

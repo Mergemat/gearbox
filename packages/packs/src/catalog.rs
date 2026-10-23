@@ -207,7 +207,7 @@ struct Crawler<'a> {
     prefab_queue: VecDeque<String>,
     seen: std::collections::HashSet<String>,
     shape_files: BTreeMap<String, Option<usize>>,
-    static_files: BTreeMap<String, EntModel>,
+    static_files: BTreeMap<(String, bool), EntModel>,
     shared_statics: BTreeMap<(String, u32), EntModel>,
     id_base: usize,
 }
@@ -282,8 +282,31 @@ impl Crawler<'_> {
             None => bail!("custom block archetype {} not extracted", item.archetype),
         };
         let mut block = archetype.clone();
+        let archetype_path = block.path.clone();
         let (archetype_buf, archetype_layout) = self.read(&archetype.path)?;
         let original = crate::blockinfo::read_block_info(&archetype_buf, &archetype_layout, &archetype.path)?;
+        let archetype_ctx = Ctx { buf: &archetype_buf, layout: &archetype_layout, path: &archetype_path };
+        for variant in &mut block.variants {
+            if variant.waypoint_trigger.is_some() || variant.waypoint_trigger_surface.is_some() {
+                continue;
+            }
+            let Some(start) = original
+                .variants
+                .iter()
+                .find(|v| (v.kind == VariantKind::Ground) == variant.ground && v.index == variant.index)
+                .and_then(|v| v.legacy_waypoint_trigger)
+            else {
+                continue;
+            };
+            let surface = crate::block_triggers::solid_surface(&archetype_ctx, start)?;
+            variant.waypoint_trigger_surface = Some(self.add_surface(
+                surface,
+                format!("{path}#inherited-trigger-{start:x}"),
+                &archetype_layout.head,
+                &archetype_path,
+            ));
+        }
+        let mut replaced_triggers = std::collections::HashSet::new();
         let customized: std::collections::HashSet<_> =
             item.mobils.iter().filter(|m| m.crystal.is_some()).map(|m| m.id).collect();
         for mobil in item.mobils {
@@ -300,9 +323,9 @@ impl Crawler<'_> {
                 Some(match object {
                     NodeLink::Null => EntModel::None,
                     NodeLink::Inline(so) => {
-                        self.static_object(so, path, &l.head, format!("{path}#mobil{}", mobil.id))
+                        self.static_object(so, path, &l.head, format!("{path}#mobil{}", mobil.id), true)
                     }
-                    NodeLink::External(p) => self.static_file(&p),
+                    NodeLink::External(p) => self.static_file(&p, true),
                     NodeLink::Earlier(index) => {
                         self.inline_static_object(path, index, format!("{path}#mobil{}", mobil.id))?
                     }
@@ -382,7 +405,10 @@ impl Crawler<'_> {
                     }
                 }
             }
-            if (v.waypoint_trigger.is_some() || v.waypoint_trigger_surface.is_some()) && replace_trigger {
+            if (v.waypoint_trigger.is_some() || v.waypoint_trigger_surface.is_some())
+                && replace_trigger
+                && replaced_triggers.insert((ground, index))
+            {
                 v.waypoint_trigger_surface = trigger;
                 v.waypoint_trigger = None;
             }
@@ -441,6 +467,7 @@ impl Crawler<'_> {
         owner: &str,
         head: &crate::unpack::GbxHead,
         source: String,
+        compile_mesh: bool,
     ) -> EntModel {
         let shape = match so.shape {
             NodeLink::Inline(s) => Some(self.add_surface(s, source, head, owner)),
@@ -456,7 +483,8 @@ impl Crawler<'_> {
                 }
             }
             NodeLink::Null if so.mesh_collidable && so.mesh == NodeLink::Null => return EntModel::None,
-            NodeLink::Null if so.mesh_collidable => match self.mesh_collision(owner, so.mesh) {
+            NodeLink::Null if so.mesh_collidable && compile_mesh => match self.mesh_collision(owner, so.mesh)
+            {
                 Ok(s) if s.surf.is_some() => Some(self.add_surface(s, source, head, owner)),
                 Ok(_) => return EntModel::None,
                 Err(e) => {
@@ -499,7 +527,7 @@ impl Crawler<'_> {
         let mut r = gearbox_gbx::reader::Reader::new(&buf);
         r.skip(n.start)?;
         let object = ctx.static_object(&mut r)?;
-        let model = self.static_object(object, path, &l.head, source);
+        let model = self.static_object(object, path, &l.head, source, true);
         self.shared_statics.insert(key, model.clone());
         Ok(model)
     }
@@ -564,8 +592,9 @@ impl Crawler<'_> {
         }
     }
 
-    fn static_file(&mut self, path: &str) -> EntModel {
-        if let Some(model) = self.static_files.get(&norm(path)) {
+    fn static_file(&mut self, path: &str, compile_mesh: bool) -> EntModel {
+        let key = (norm(path), compile_mesh);
+        if let Some(model) = self.static_files.get(&key) {
             return model.clone();
         }
         let r = (|| -> Result<(StaticObject, crate::unpack::GbxHead)> {
@@ -579,7 +608,7 @@ impl Crawler<'_> {
             Ok((ctx.static_object(&mut rd)?, l.head))
         })();
         let mut model = match r {
-            Ok((so, head)) => self.static_object(so, path, &head, format!("{path}#shape")),
+            Ok((so, head)) => self.static_object(so, path, &head, format!("{path}#shape"), compile_mesh),
             Err(e) => {
                 self.cat.index.errors.push(format!("{path}: {e}"));
                 EntModel::Other { class_id: Some(0x09159000), path: Some(path.to_string()) }
@@ -588,7 +617,7 @@ impl Crawler<'_> {
         if let EntModel::Static { source, .. } = &mut model {
             *source = Some(path.to_string());
         }
-        self.static_files.insert(norm(path), model.clone());
+        self.static_files.insert(key, model.clone());
         model
     }
 
@@ -645,7 +674,7 @@ impl Crawler<'_> {
                     self.store_prefab(&nested, *p, owner, head)
                 }
                 NodeLink::Inline(Model::StaticObject(so)) => {
-                    self.static_object(so, path, head, format!("{name}#ent{k}"))
+                    self.static_object(so, path, head, format!("{name}#ent{k}"), false)
                 }
                 NodeLink::Inline(Model::Surface(s)) => {
                     EntModel::Surface(self.add_surface(s, format!("{name}#ent{k}"), head, path))
@@ -743,9 +772,13 @@ impl Crawler<'_> {
                 let model = match m {
                     NodeLink::Null => EntModel::None,
                     NodeLink::External(x) => self.external_model(&x),
-                    NodeLink::Inline(Model::StaticObject(so)) => {
-                        self.static_object(so, path, &l.head, format!("{path}#variant{}", variants.len()))
-                    }
+                    NodeLink::Inline(Model::StaticObject(so)) => self.static_object(
+                        so,
+                        path,
+                        &l.head,
+                        format!("{path}#variant{}", variants.len()),
+                        false,
+                    ),
                     NodeLink::Inline(Model::Surface(s)) => EntModel::Surface(self.add_surface(
                         s,
                         format!("{path}#variant{}", variants.len()),
@@ -778,10 +811,10 @@ impl Crawler<'_> {
             })?;
             match so {
                 NodeLink::Inline(so) => {
-                    let m = self.static_object(so, path, &l.head, format!("{path}#entity"));
+                    let m = self.static_object(so, path, &l.head, format!("{path}#entity"), true);
                     models.push(m);
                 }
-                NodeLink::External(x) => models.push(self.static_file(&x)),
+                NodeLink::External(x) => models.push(self.static_file(&x, true)),
                 _ => {}
             }
             let trigger = ctx.noderef(&mut r, |c, r, class| {
@@ -827,7 +860,7 @@ impl Crawler<'_> {
                 self.enqueue(&x);
                 models.push(EntModel::Prefab(x));
             } else if lx.ends_with(".staticobject.gbx") {
-                models.push(self.static_file(&x));
+                models.push(self.static_file(&x, false));
             } else if lx.ends_with(".dynaobject.gbx") || self.is_dyna_file(&x) {
                 models.push(self.dyna_file(&x));
             } else if lx.ends_with(".shape.gbx") {
@@ -852,7 +885,7 @@ impl Crawler<'_> {
         } else if self.set.class_of(path) == Some(0x2f086000) {
             self.veget_file(path)
         } else if lower.ends_with(".staticobject.gbx") {
-            self.static_file(path)
+            self.static_file(path, false)
         } else if lower.ends_with(".dynaobject.gbx") || self.is_dyna_file(path) {
             self.dyna_file(path)
         } else if lower.ends_with(".shape.gbx") {
@@ -1168,7 +1201,7 @@ pub fn crawl_embedded(
     for p in known.prefabs.values() {
         for e in &p.ents {
             if let EntModel::Static { source: Some(s), .. } = &e.model {
-                c.static_files.insert(norm(s), e.model.clone());
+                c.static_files.insert((norm(s), false), e.model.clone());
             }
         }
     }

@@ -63,7 +63,7 @@ impl<'a> Decoder<'a> {
             .with_context(|| format!("physics prefab absent: {path}"))?
             .clone();
         let has_physics = prefab.ents.iter().any(|entity| {
-            matches!(&entity.model, EntModel::Dyna { dyna_shape: Some(id), is_static: false, .. }
+            matches!(&entity.model, EntModel::Dyna { dyna_shape: Some(id), .. }
                 if source.assets.place(*id, Role::DynaShape, &[], &[]).surface.surf.is_some())
         });
         let raw = has_physics.then(|| self.archives.prefab(path)).transpose()?;
@@ -73,13 +73,8 @@ impl<'a> Decoder<'a> {
             let nested = Placement { chain, ..*placement };
             if let EntModel::Prefab(child) = &entity.model {
                 self.prefab(source, child, &nested, specs, depth + 1, dynamic_index)?;
-            } else if let EntModel::Dyna {
-                dyna_shape: Some(id),
-                is_static: false,
-                static_shape,
-                source: asset_path,
-                ..
-            } = &entity.model
+            } else if let EntModel::Dyna { dyna_shape: Some(id), static_shape, source: asset_path, .. } =
+                &entity.model
             {
                 let modifiers: Vec<_> = placement
                     .modifier
@@ -110,16 +105,6 @@ impl<'a> Decoder<'a> {
     }
 
     fn active(&mut self, path: &str, entity: &gearbox_packs::prefab::Ent) -> Result<bool> {
-        let params = entity.params.as_ref().context("dynamic instance params absent")?;
-        ensure!(params.0 == 0x2f0b_6000, "dynamic params class {:x}: {path}", params.0);
-        let mut reader = gearbox_gbx::reader::Reader::new(&params.1);
-        ensure!(reader.u32()? == 2, "dynamic instance version: {path}");
-        let period = reader.f32()?;
-        reader.u32()?;
-        let kinematic = reader.u32()? != 0;
-        let period_max = reader.f32()?;
-        let phase = reader.f32()?;
-        let phase_max = reader.f32()?;
         if !self.assets.contains_key(path) {
             let object = match &entity.model {
                 gearbox_packs::prefab::NodeLink::Inline(gearbox_packs::prefab::Model::DynaObject(object)) => {
@@ -130,6 +115,19 @@ impl<'a> Decoder<'a> {
             self.assets.insert(path.to_owned(), object);
         }
         let asset = &self.assets[path].physics;
+        let Some(params) = entity.params.as_ref() else {
+            ensure!(!asset.dynamize_on_spawn, "non-kinematic dynamic item: {path}");
+            return Ok(false);
+        };
+        ensure!(params.0 == 0x2f0b_6000, "dynamic params class {:x}: {path}", params.0);
+        let mut reader = gearbox_gbx::reader::Reader::new(&params.1);
+        ensure!(reader.u32()? == 2, "dynamic instance version: {path}");
+        let period = reader.f32()?;
+        reader.u32()?;
+        let kinematic = reader.u32()? != 0;
+        let period_max = reader.f32()?;
+        let phase = reader.f32()?;
+        let phase_max = reader.f32()?;
         if !kinematic && !asset.dynamize_on_spawn {
             return Ok(false);
         }
@@ -138,7 +136,10 @@ impl<'a> Decoder<'a> {
             period == 1.0 && period_max < 0.0 && phase < 0.0 && phase_max < 0.0,
             "random or overridden animation timing: {path}"
         );
-        ensure!(!asset.physical_animation, "legacy physical location animation: {path}");
+        ensure!(
+            asset.animation.is_none() || !asset.physical_animation,
+            "legacy physical location animation: {path}"
+        );
         Ok(true)
     }
 
