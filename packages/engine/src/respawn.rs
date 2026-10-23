@@ -4,7 +4,9 @@ use crate::vehicle::spawn::Reset;
 
 #[derive(Clone, Debug, Default)]
 pub struct Respawns {
-    checkpoint: Option<Checkpoint>,
+    passed: Option<u32>,
+    respawn_point: Option<u32>,
+    saved: Vec<Checkpoint>,
     respawn_at: Option<u32>,
 }
 
@@ -88,34 +90,40 @@ impl Session {
 
     pub fn respawn(&mut self, standing: bool) -> bool {
         let Some(respawns) = self.respawns.as_ref() else { return false };
+        let Some(passed) = respawns.passed else { return self.respawn_at_start() };
+        let Some(respawn_point) = respawns.respawn_point.or_else(|| self.start_landmark()) else { return false };
         let now = self.clock.now;
         let pending = respawns.respawn_at.filter(|&at| now < at && at < now + DELAY_MS);
-        match respawns.checkpoint.clone() {
-            None => self.respawn_at_start(),
-            Some(checkpoint) if standing || pending.is_some() => self.respawn_standing(&checkpoint, pending),
-            Some(checkpoint) => self.respawn_at_checkpoint(&checkpoint),
+        let mut target = if standing || pending.is_some() { respawn_point } else { passed };
+        let saved = respawns.saved.iter().find(|checkpoint| checkpoint.waypoint == target).cloned();
+        if saved.is_none() && !self.race.rules.waypoints[target as usize].respawn {
+            target = respawn_point;
+        }
+        match saved {
+            Some(checkpoint) if !standing && pending.is_none() => self.respawn_at_checkpoint(&checkpoint),
+            saved => self.respawn_standing(target, saved.as_ref(), pending),
         }
     }
 
-    fn respawn_at_start(&mut self) -> bool {
-        let now = self.clock.now;
+    fn start_landmark(&self) -> Option<u32> {
         let key = self.vehicle.key;
-        let Some(landmark) = self
-            .race
+        self.race
             .players
             .iter()
             .find(|racer| racer.has_entity(key))
             .map(|racer| racer.player.landmark)
             .filter(|&landmark| landmark != u32::MAX)
-        else {
-            return false;
-        };
+    }
+
+    fn respawn_at_start(&mut self) -> bool {
+        let now = self.clock.now;
+        let Some(landmark) = self.start_landmark() else { return false };
         self.respawn_at(now, landmark, Reset::FULL);
         self.vehicle.frozen_until = now;
         true
     }
 
-    fn respawn_standing(&mut self, checkpoint: &Checkpoint, pending: Option<u32>) -> bool {
+    fn respawn_standing(&mut self, landmark: u32, saved: Option<&Checkpoint>, pending: Option<u32>) -> bool {
         let now = self.clock.now;
         let key = self.vehicle.key;
         if let Some(controller) = self
@@ -131,12 +139,14 @@ impl Session {
             }
         }
         self.vehicle.control_flags = self.vehicle.control_flags & !0xd | 2;
-        self.respawn_at(now, checkpoint.waypoint, Reset { keep_effects: true, ..Reset::FULL });
+        self.respawn_at(now, landmark, Reset { keep_effects: true, ..Reset::FULL });
         let vehicle = &mut self.vehicle;
-        copy_fields! { vehicle, checkpoint.state, [
-            wheel_meter_enabled, wheel_meter, wheel_meter_sum, wheel_meter_count, water_reentry_until,
-            water_exit_until, immersion,
-        ] }
+        if let Some(saved) = saved {
+            copy_fields! { vehicle, saved.state, [
+                wheel_meter_enabled, wheel_meter, wheel_meter_sum, wheel_meter_count, water_reentry_until,
+                water_exit_until, immersion,
+            ] }
+        }
         let at = pending.unwrap_or(now + DELAY_MS);
         vehicle.control_flags &= !0xf;
         vehicle.frozen_until = at;
@@ -169,15 +179,20 @@ impl Session {
     pub(crate) fn remember_for_respawn(&mut self, now: u32, crossed_before: usize) {
         let crossings = self.crossing_waypoints();
         let finished = self.race().is_some_and(|r| r.finish.is_some());
-        let Some(respawns) = self.respawns.as_mut() else { return };
+        let respawn_point = |waypoint: u32| self.race.rules.waypoints[waypoint as usize].respawn;
         let Some(&waypoint) = crossings.last() else { return };
         if crossings.len() == crossed_before || finished {
             return;
         }
-        if respawns.checkpoint.as_ref().is_some_and(|c| c.waypoint == waypoint) {
-            return;
+        let is_respawn_point = respawn_point(waypoint);
+        let Some(respawns) = self.respawns.as_mut() else { return };
+        respawns.passed = Some(waypoint);
+        if is_respawn_point {
+            respawns.respawn_point = Some(waypoint);
         }
         let taken_at = now.wrapping_add(SNAPSHOT_DELAY_MS);
-        respawns.checkpoint = Some(Checkpoint { waypoint, taken_at, state: Box::new(self.vehicle.clone()) });
+        let state = Box::new(self.vehicle.clone());
+        respawns.saved.retain(|checkpoint| checkpoint.waypoint != waypoint);
+        respawns.saved.push(Checkpoint { waypoint, taken_at, state });
     }
 }

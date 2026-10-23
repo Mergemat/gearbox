@@ -27,13 +27,14 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, start: u32, now: u3
     for block in &map.blocks {
         let Some(kind) = block_waypoint(block, &assets.assets, environment) else { continue };
         let pose = crate::statics::block_pose(map, block, &assets.assets, assets.packs, &catalog)?;
-        landmarks.push(landmark(&kind, block.waypoint.as_ref(), pose)?);
+        let respawn = !assets.assets.block_in(&block.name, environment).is_some_and(|info| info.no_respawn);
+        landmarks.push(landmark(&kind, block.waypoint.as_ref(), pose, respawn)?);
     }
     let item_waypoints = crate::statics::item_waypoint_tags(map, &assets.assets, assets.packs)?;
     for (item, kind) in map.items.iter().zip(item_waypoints) {
         let Some(kind) = kind else { continue };
         let pose = crate::statics::item_pose(map, item, &assets.assets, assets.packs)?;
-        landmarks.push(landmark(&kind, item.waypoint.as_ref(), pose)?);
+        landmarks.push(landmark(&kind, item.waypoint.as_ref(), pose, true)?);
     }
     let spawn = select_spawn(&landmarks)?;
     let (waypoints, checkpoints_per_lap) = groups(landmarks);
@@ -78,6 +79,7 @@ fn landmark(
     kind: &str,
     placed: Option<&gearbox_gbx::map::Waypoint>,
     pose: [u32; 12],
+    respawn: bool,
 ) -> Result<(RaceWaypoint, bool)> {
     let flags = match kind {
         "Spawn" => WaypointFlags::SPAWN,
@@ -95,7 +97,7 @@ fn landmark(
             order: placed.map_or(0, |waypoint| waypoint.order as u32),
             pose: Iso::from_array(pose.map(f32::from_bits)),
             linked: flags.counts(),
-            respawn: flags.contains(WaypointFlags::SPAWN) || flags.contains(WaypointFlags::GOAL),
+            respawn,
         },
         linked,
     ))
