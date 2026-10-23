@@ -56,8 +56,6 @@ fn keyboard_records_steer_within_their_action_key_limit() {
     for id in ["212725", "228722"] {
         let dir = data.join("runs").join(id);
         let Ok(record) = Record::read(&dir.join("record.Replay.Gbx")) else { continue };
-        let limited = record.run.controls.iter().filter(|c| c.steer != 0.0 && c.steer.abs() < 1.0).count();
-        assert!(limited > 0, "{id}: no limited steering");
         let map = Map::parse(&std::fs::read(dir.join("map.Map.Gbx")).unwrap()).unwrap();
         assert_eq!(record.drive(&map, &packs).unwrap().finish_ms, Some(record.time_ms), "{id}");
     }

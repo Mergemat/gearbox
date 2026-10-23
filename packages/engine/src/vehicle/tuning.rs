@@ -379,6 +379,8 @@ pub struct Tuning {
     pub special_contact_depth_enabled: u32,
     pub fragility_minimum: f32,
     pub collision_scale: f32,
+    pub action_key_steer_limits: u32,
+    pub steer_limit_clamps: u32,
     pub fragility_delay_ms: u32,
     pub impact_thrust_limit_ms: u32,
     pub impact_yaw_enabled: u32,

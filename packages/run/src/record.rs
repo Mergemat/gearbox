@@ -11,7 +11,6 @@ use crate::Run;
 
 const COUNTDOWN_MS: i32 = -1500;
 const OVERRUN_TICKS: usize = 100;
-const STEER_LIMIT_KEYS: [(u32, f32); 5] = [(15, 0.2), (17, 0.4), (19, 0.6), (21, 0.8), (23, 1.0)];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
@@ -21,7 +20,6 @@ pub struct Record {
     pub checkpoints_ms: Vec<i32>,
     pub player: Option<String>,
     pub build: Option<String>,
-    steer_limits: Vec<f32>,
     input_states: Vec<InputState>,
 }
 
@@ -75,18 +73,11 @@ impl Record {
         let t0 = if inputs.start_offset_ms >= 0 { COUNTDOWN_MS } else { inputs.start_offset_ms };
         let countdown = usize::try_from((inputs.start_offset_ms - t0) / 10)?;
         let respawns = respawns.into_iter().map(|r| Respawn { tick: r.tick + countdown, ..r }).collect();
-        let keyboard = inputs.ticks.iter().all(|tick| tick.steer == 0 || tick.steer.unsigned_abs() == 127);
-        let limits = steer_limits(&inputs.state_words, inputs.ticks.len(), inputs.start_offset_ms);
-        let steer_limits = if keyboard {
-            Vec::new()
-        } else {
-            std::iter::repeat_n(1.0, countdown).chain(limits.iter().copied()).collect()
-        };
         let input_states = input_states(&inputs, countdown);
-        let driven = inputs.ticks.iter().zip(limits).map(|(t, limit)| Controls {
+        let driven = inputs.ticks.iter().map(|t| Controls {
             gas: f32::from(u8::from(t.gas)),
             brake: f32::from(u8::from(t.brake)),
-            steer: f32::from(t.steer) / 127.0 * if keyboard { limit } else { 1.0 },
+            steer: f32::from(t.steer) / 127.0,
         });
         Ok(Self {
             run: Run {
@@ -99,7 +90,6 @@ impl Record {
             checkpoints_ms: ghost.checkpoints_ms.iter().flatten().copied().collect(),
             player: ghost.nickname.clone().or_else(|| ghost.login.clone()),
             build: ghost.exe_version.clone(),
-            steer_limits,
             input_states,
         })
     }
@@ -116,6 +106,20 @@ impl Record {
 
     pub fn drive(&self, map: &Map, packs: &PackSet) -> Result<Driven> {
         Ok(self.drive_from(self.open(map, packs)?))
+    }
+
+    pub fn applied(&self, map: &Map, packs: &PackSet) -> Result<Run> {
+        let mut session = self.open(map, packs)?;
+        session.seed = self.run.seed;
+        if !self.respawns.is_empty() {
+            session.track_respawns();
+        }
+        let mut controls = Vec::with_capacity(self.run.controls.len());
+        for tick in 0..self.run.controls.len() {
+            ensure!(self.step(&mut session, tick), "respawn at tick {tick} without a spawn");
+            controls.push(session.applied);
+        }
+        Ok(Run { t0: self.run.t0, seed: self.run.seed, controls })
     }
 
     pub fn drive_from(&self, mut session: Session) -> Driven {
@@ -139,9 +143,6 @@ impl Record {
 
     pub fn step(&self, session: &mut Session, tick: usize) -> bool {
         session.seed = self.run.seed;
-        if let Some(&limit) = self.steer_limits.get(tick) {
-            session.steer_limit = limit;
-        }
         for respawn in self.respawns.iter().filter(|r| r.tick == tick) {
             if !session.respawn(respawn.standing) {
                 return false;
@@ -179,26 +180,6 @@ fn input_states(inputs: &DecodedInputs, countdown: usize) -> Vec<InputState> {
     states
 }
 
-fn steer_limits(words: &[(usize, u64)], ticks: usize, start_ms: i32) -> Vec<f32> {
-    let mut limit = 1.0;
-    let mut held = 0;
-    let mut words = words.iter().peekable();
-    (0..ticks)
-        .map(|tick| {
-            let started = start_ms + tick as i32 * 10 >= 0;
-            while let Some(&(_, w)) = words.next_if(|(t, _)| *t <= tick) {
-                for (bit, cap) in STEER_LIMIT_KEYS {
-                    if started && (w & !held) >> bit & 1 != 0 {
-                        limit = if limit == cap { 1.0 } else { cap };
-                    }
-                }
-                held = w;
-            }
-            limit
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,42 +192,8 @@ mod tests {
             checkpoints_ms: vec![],
             player: None,
             build: Some(build.into()),
-            steer_limits: Vec::new(),
             input_states: Vec::new(),
         }
-    }
-
-    #[test]
-    fn action_keys_set_switch_and_toggle_the_steer_limit() {
-        let key = |bit: u32| 2 | 1u64 << bit;
-        let words = [
-            (0, 2),
-            (2, key(19)),
-            (3, 2),
-            (5, key(15)),
-            (6, 2),
-            (8, key(15)),
-            (9, 2),
-            (10, key(21)),
-            (12, 2),
-        ];
-        let limits = steer_limits(&words, 14, 0);
-        assert_eq!(limits, [1.0, 1.0, 0.6, 0.6, 0.6, 0.2, 0.2, 0.2, 1.0, 1.0, 0.8, 0.8, 0.8, 0.8]);
-    }
-
-    #[test]
-    fn action_keys_before_the_start_do_nothing() {
-        let key = 2 | 1u64 << 17;
-        assert_eq!(steer_limits(&[(0, 2), (1, key), (2, 2), (3, key)], 5, -20), [1.0, 1.0, 1.0, 0.4, 0.4]);
-    }
-
-    #[test]
-    fn holding_an_action_key_counts_once() {
-        let held = 2 | 1u64 << 17;
-        assert_eq!(
-            steer_limits(&[(0, 2), (1, held), (2, held | 1 << 6), (3, held)], 5, 0),
-            [1.0, 0.4, 0.4, 0.4, 0.4]
-        );
     }
 
     #[test]

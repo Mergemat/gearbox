@@ -2,6 +2,7 @@ use crate::{
     Iso, State, World, arena,
     collision::ByteGrid,
     dyna::{BodyHandle, BodyState, Dyna},
+    math::maxss,
     race::{
         self, Race, RaceState,
         replay::{InputBits, InputState},
@@ -95,12 +96,16 @@ pub struct Session {
     pub rng: u32,
     pub clock: Clock,
     pub seed: Option<u32>,
-    pub steer_limit: f32,
+    pub input: InputState,
+    pub applied: Controls,
     pub respawns: Option<Box<crate::respawn::Respawns>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Savestate(Session);
+
+const STEER_LIMIT_KEYS: [(u32, f32); 4] = [(10, 0.2), (12, 0.4), (14, 0.6), (16, 0.8)];
+const STEER_LIMIT_EPSILON: f32 = 0.00001;
 
 impl Session {
     pub fn step(&mut self, controls: Controls) {
@@ -113,11 +118,29 @@ impl Session {
     }
 
     pub fn step_with_input(&mut self, mut controls: Controls, input: InputState) {
-        if self.config.model(self.vehicle.model_choice).assets.tuning.car_model_kind().uses_legacy_gearbox() {
-            controls.steer *= self.steer_limit;
-        } else {
-            controls.steer = controls.steer.clamp(-self.steer_limit, self.steer_limit);
+        let previous = std::mem::replace(&mut self.input, input);
+        let tuning = &self.config.model(self.vehicle.model_choice).assets.tuning;
+        if tuning.action_key_steer_limits != 0 {
+            let limit = &mut self.vehicle.steer_limit;
+            if self.clock.race_ms >= 0 {
+                let pressed = input.buttons & !previous.buttons;
+                for (bit, cap) in STEER_LIMIT_KEYS {
+                    if pressed >> bit & 1 != 0 {
+                        let scale = maxss(1.0, maxss(limit.abs(), cap));
+                        *limit = if (*limit - cap).abs() <= scale * STEER_LIMIT_EPSILON { 1.0 } else { cap };
+                    }
+                }
+                if input.buttons >> 18 & 1 != 0 {
+                    *limit = 1.0;
+                }
+            }
+            if tuning.steer_limit_clamps == 0 {
+                controls.steer *= *limit;
+            } else {
+                controls.steer = controls.steer.clamp(-*limit, *limit);
+            }
         }
+        self.applied = controls;
         self.tick(self.clock.now, controls, self.seed, input);
         self.clock.now += 10;
         self.clock.race_ms += 10;

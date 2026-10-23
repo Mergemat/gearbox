@@ -54,7 +54,8 @@ pub fn open(map: &gearbox_gbx::Map, packs: &PackSet, options: OpenOptions) -> Re
         effects,
         clock,
         seed: options.seed,
-        steer_limit: 1.0,
+        input: Default::default(),
+        applied: Default::default(),
         respawns: None,
     })
 }

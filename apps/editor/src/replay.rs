@@ -19,8 +19,10 @@ pub fn driven_ghost(replay: &Replay) -> Result<&Ghost> {
         .context("no finished ghost with inputs")
 }
 
-pub fn inputs(replay: &Replay) -> Result<InputFile> {
-    let run = gearbox_run::Record::from_replay(replay)?.run;
+pub fn inputs(replay: &Replay, map: &Path, packs: &Path) -> Result<InputFile> {
+    let record = gearbox_run::Record::from_replay(replay)?;
+    let map = gearbox_gbx::Map::parse(&std::fs::read(map).with_context(|| format!("reading {}", map.display()))?)?;
+    let run = record.applied(&map, &gearbox_packs::packs::PackSet::open(packs)?)?;
     Ok(InputFile { t0: run.t0, seed: run.seed, controls: run.controls })
 }
 
@@ -219,12 +221,14 @@ mod tests {
             return;
         };
         let replay = data.join("tmx/effects/1993_228726.Replay.Gbx");
+        let map = data.join("tmx/effects/1993_Training_-_09.Map.Gbx");
         let expected = data.join("inputs/xeff1993s.txt.in");
-        if !replay.exists() || !expected.exists() {
+        let Ok(game) = gearbox_packs::install::Game::locate(None) else { return };
+        if !replay.exists() || !expected.exists() || !map.exists() {
             eprintln!("skipped: no {}", replay.display());
             return;
         }
-        let got = inputs(&load(&replay).unwrap()).unwrap();
+        let got = inputs(&load(&replay).unwrap(), &map, &game.packs).unwrap();
         let rig = InputFile::read(&expected).unwrap();
         assert_eq!((got.t0, got.seed, got.controls.len()), (rig.t0, rig.seed, rig.controls.len()));
         for (i, (g, r)) in got.controls.iter().zip(&rig.controls).enumerate() {

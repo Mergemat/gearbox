@@ -346,6 +346,7 @@ pub struct Vehicle {
     pub idle_position_y: f32,
     pub idle_position_z: f32,
     pub suspension_requires_all_contacts: u32,
+    pub steer_limit: f32,
     pub wear: [f32; 9],
     pub thrust_scale: f32,
     pub steering_scale: f32,

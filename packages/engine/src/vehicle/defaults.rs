@@ -260,6 +260,7 @@ pub fn reset_full_state(v: &mut Vehicle) {
     v.idle_position_y = 0.0;
     v.idle_position_z = 0.0;
     v.suspension_requires_all_contacts = 0;
+    v.steer_limit = 1.0;
     v.wear = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
     v.thrust_scale = 1.0;
     v.steering_scale = 1.0;
@@ -547,6 +548,7 @@ pub fn reset_state(v: &mut Vehicle) {
     v.idle_position_y = 0.0;
     v.idle_position_z = 0.0;
     v.suspension_requires_all_contacts = 0;
+    v.steer_limit = 1.0;
     v.wear = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 }
 

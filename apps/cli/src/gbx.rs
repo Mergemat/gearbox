@@ -12,7 +12,7 @@ pub const USAGE: &str = "usage:
   gearbox map <file.Map.Gbx|file.Replay.Gbx>    blocks, items and waypoints of a map
   gearbox map-json <file> <out>                 the map as JSON
   gearbox input-states <file.Replay.Gbx>        full input state words (debug)
-  gearbox replay-inputs <file.Replay.Gbx> <out>    first ghost's inputs as an inputs file
+  gearbox replay-inputs <file.Replay.Gbx> <out> [map]   first ghost's applied controls as an inputs file
   gearbox body <file.Gbx> <out>                 write the decompressed body";
 
 pub fn main(args: Vec<String>) -> Result<()> {
@@ -52,8 +52,8 @@ pub fn main(args: Vec<String>) -> Result<()> {
             }
             Ok(())
         }
-        Some("replay-inputs") if args.len() == 3 => {
-            replay_inputs(args[1].clone().into(), args[2].clone().into())
+        Some("replay-inputs") if args.len() == 3 || args.len() == 4 => {
+            replay_inputs(args[1].clone().into(), args[2].clone().into(), args.get(3).map(PathBuf::from))
         }
         Some("body") if args.len() == 3 => {
             let bytes = std::fs::read(&args[1])?;
@@ -199,10 +199,17 @@ fn summary(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn replay_inputs(path: PathBuf, out: PathBuf) -> Result<()> {
-    let record = gearbox_run::Record::read(&path)?;
-    record.run.write(&out)?;
-    let run = &record.run;
+fn replay_inputs(path: PathBuf, out: PathBuf, map: Option<PathBuf>) -> Result<()> {
+    let replay = load(&path)?;
+    let record = gearbox_run::Record::from_replay(&replay)?;
+    let map = match (map, replay.map_gbx.as_deref()) {
+        (Some(map), _) => Map::parse(&std::fs::read(&map)?)?,
+        (None, Some(embedded)) => Map::parse(embedded)?,
+        (None, None) => bail!("{} has no embedded map; pass the map", path.display()),
+    };
+    let packs = crate::game()?.open()?;
+    let run = record.applied(&map, &packs)?;
+    run.write(&out)?;
     println!("wrote {} ticks from {} ms, start seed {:?}", run.controls.len(), run.t0, run.seed);
     Ok(())
 }

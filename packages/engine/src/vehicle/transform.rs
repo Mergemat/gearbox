@@ -112,7 +112,7 @@ impl Vehicle {
             drivetrain_flags, drivetrain_state, model_visual_0, model_visual_1, model_visual_2,
             model_visual_3, spin_up_duration, spin_up_torque, spin_up_begin, last_roof_contact,
             engine_meter, front_spin, rear_spin, idle_position_x, idle_position_y, idle_position_z,
-            suspension_requires_all_contacts, wear, thrust_scale, steering_scale, gravity_scale,
+            suspension_requires_all_contacts, steer_limit, wear, thrust_scale, steering_scale, gravity_scale,
             signed_speed_control, grip_scale, fragility_offset, forced_speed_integer,
             pedal_speed_limit, forced_effect_flags, previous_level_power, previous_drift_direction,
             slow_start_forward_threshold,

@@ -991,12 +991,12 @@ impl Archive<'_> {
                 self.tunings[t].special_material_enabled = self.word()?;
                 self.tunings[t].boost_drag_by_speed = self.curve()?;
                 self.tunings[t].boost_drag_by_time = self.curve()?;
-                self.skip()?;
+                self.tunings[t].action_key_steer_limits = self.word()?;
                 self.tunings[t].material_visual_steering = self.word()?;
                 self.tunings[t].air_angular_drag = self.curve()?;
                 self.skip()?;
                 self.tunings[t].collision_scale = self.float()?;
-                self.skip()?;
+                self.tunings[t].steer_limit_clamps = self.word()?;
             }
             0x090ed0a5 => {
                 self.version(2)?;
@@ -1389,6 +1389,8 @@ fn constructed() -> (Tuning, FluidTuning) {
         fixed_spin_minimum_speed: 10.0,
         fixed_spin_maximum_speed: 80.0,
         collision_scale: 1.0,
+        action_key_steer_limits: 0,
+        steer_limit_clamps: 1,
         roll_stabilization_enabled: 0,
         roll_stabilization_ms: 1000,
         model_kind: 6,

@@ -2436,7 +2436,8 @@ impl Editor {
     }
 
     pub fn import_replay(&mut self, path: &Path, cx: &mut Context<Self>) {
-        let f = match crate::replay::load(path).and_then(|r| crate::replay::inputs(&r)) {
+        let map = self.map.clone().unwrap();
+        let f = match crate::replay::load(path).and_then(|r| crate::replay::inputs(&r, &map, &self.game.packs)) {
             Ok(f) => f,
             Err(e) => return self.error("io", format!("import {}: {e:#}", path.display())),
         };
@@ -2453,7 +2454,6 @@ impl Editor {
             d.run_origin = Origin::Replay(name.clone());
             let end = (f.end_ms() - start_ms.unwrap_or(f.t0)) / 10;
             d.len = d.len.max(end.max(0) as usize + 100);
-            let map = self.map.clone().unwrap();
             self.info("sim", "rebuilding the session for the replay's countdown");
             self.open_map(&map, InputSel::Memory(f, name), Some(d), cx);
             return;
