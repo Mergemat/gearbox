@@ -11,6 +11,8 @@ use crate::Run;
 
 const COUNTDOWN_MS: i32 = -1500;
 const OVERRUN_TICKS: usize = 100;
+const STEER_LIMIT_KEYS: u64 = 1 << 15 | 1 << 17 | 1 << 19 | 1 << 21 | 1 << 23;
+const STEER_LIMITS: [f32; 5] = [0.2, 0.4, 0.6, 0.8, 1.0];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
@@ -21,6 +23,7 @@ pub struct Record {
     pub player: Option<String>,
     pub build: Option<String>,
     input_states: Vec<InputState>,
+    starting_steer_limit: Option<(usize, f32)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,6 +77,7 @@ impl Record {
         let countdown = usize::try_from((inputs.start_offset_ms - t0) / 10)?;
         let respawns = respawns.into_iter().map(|r| Respawn { tick: r.tick + countdown, ..r }).collect();
         let input_states = input_states(&inputs, countdown);
+        let starting_steer_limit = starting_steer_limit(ghost, &inputs).map(|limit| (countdown, limit));
         let driven = inputs.ticks.iter().map(|t| Controls {
             gas: f32::from(u8::from(t.gas)),
             brake: f32::from(u8::from(t.brake)),
@@ -91,6 +95,7 @@ impl Record {
             player: ghost.nickname.clone().or_else(|| ghost.login.clone()),
             build: ghost.exe_version.clone(),
             input_states,
+            starting_steer_limit,
         })
     }
 
@@ -144,6 +149,11 @@ impl Record {
 
     pub fn step(&self, session: &mut Session, tick: usize) -> bool {
         session.seed = self.run.seed;
+        if let Some((start, limit)) = self.starting_steer_limit
+            && tick == start
+        {
+            session.vehicle.steer_limit = limit;
+        }
         for respawn in self.respawns.iter().filter(|r| r.tick == tick) {
             if !session.respawn(respawn.standing) {
                 return false;
@@ -154,6 +164,35 @@ impl Record {
         session.step_with_input(controls, input);
         true
     }
+}
+
+fn starting_steer_limit(ghost: &Ghost, inputs: &DecodedInputs) -> Option<f32> {
+    if inputs.start_offset_ms < 0 {
+        return None;
+    }
+    let mut held = 0;
+    let first_press = inputs
+        .state_words
+        .iter()
+        .find(|&&(tick, word)| {
+            let pressed = word & !held & STEER_LIMIT_KEYS;
+            held = word;
+            tick > 0 && pressed != 0
+        })
+        .map_or(usize::MAX, |&(tick, _)| tick);
+    ghost
+        .record
+        .iter()
+        .flat_map(|record| &record.entities)
+        .filter(|entity| entity.class_id == gearbox_gbx::record::CLASS_VEHICLE_VIS)
+        .flat_map(|entity| &entity.samples)
+        .filter_map(|sample| {
+            let tick = usize::try_from((sample.time_ms - inputs.start_offset_ms) / 10).ok()?;
+            let full_lock = tick < first_press && inputs.ticks.get(tick)?.steer.unsigned_abs() == 127;
+            full_lock.then_some(sample.vehicle.as_ref()?.steer.abs())
+        })
+        .find(|&applied| applied > 0.05)
+        .and_then(|applied| STEER_LIMITS.into_iter().find(|limit| (limit - applied).abs() < 0.02))
 }
 
 fn input_states(inputs: &DecodedInputs, countdown: usize) -> Vec<InputState> {
