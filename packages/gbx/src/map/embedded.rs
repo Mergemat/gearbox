@@ -55,16 +55,21 @@ impl EmbeddedFile {
 impl EmbeddedData {
     pub fn item_file(&self, model: &str) -> Result<&EmbeddedFile> {
         let name = model.replace('/', "\\");
-        let mut matches = self.files.iter().filter(|f| {
-            f.model_path().is_some_and(|p| p.eq_ignore_ascii_case(&name))
-                || f.item_model
-                    .as_ref()
-                    .and_then(|m| m.ident[0].as_deref())
-                    .is_some_and(|p| p.eq_ignore_ascii_case(&name))
-        });
-        let file = matches.next().with_context(|| format!("missing embedded item {model}"))?;
-        ensure!(matches.next().is_none(), "ambiguous embedded item {model}");
-        Ok(file)
+        let named = |same: &dyn Fn(&str) -> bool| -> Vec<&EmbeddedFile> {
+            self.files
+                .iter()
+                .filter(|f| {
+                    let ident = f.item_model.as_ref().and_then(|m| m.ident[0].clone());
+                    [f.model_path(), ident].into_iter().flatten().any(|key| same(&key))
+                })
+                .collect()
+        };
+        let mut candidates = named(&|key| key == name);
+        if candidates.is_empty() {
+            candidates = named(&|key| key.eq_ignore_ascii_case(&name));
+        }
+        ensure!(candidates.len() <= 1, "ambiguous embedded item {model}");
+        candidates.first().copied().with_context(|| format!("missing embedded item {model}"))
     }
 }
 
