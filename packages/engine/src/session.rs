@@ -123,8 +123,7 @@ impl Session {
         let tuning = &self.config.model(self.vehicle.model_choice).assets.tuning;
         if tuning.action_key_steer_limits != 0 {
             let limit = &mut self.vehicle.steer_limit;
-            let driving = |state: &InputState| state.bits.0 & 0xf == InputBits::REPLAY.0;
-            if self.clock.race_ms >= 0 && driving(&input) && driving(&previous) {
+            if self.clock.race_ms >= 0 {
                 let pressed = input.buttons & !previous.buttons;
                 for (bit, cap) in STEER_LIMIT_KEYS {
                     if pressed >> bit & 1 != 0 {
