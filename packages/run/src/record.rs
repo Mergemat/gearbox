@@ -110,10 +110,7 @@ impl Record {
 
     pub fn applied(&self, map: &Map, packs: &PackSet) -> Result<Run> {
         let mut session = self.open(map, packs)?;
-        session.seed = self.run.seed;
-        if !self.respawns.is_empty() {
-            session.track_respawns();
-        }
+        self.prepare(&mut session);
         let mut controls = Vec::with_capacity(self.run.controls.len());
         for tick in 0..self.run.controls.len() {
             ensure!(self.step(&mut session, tick), "respawn at tick {tick} without a spawn");
@@ -122,11 +119,15 @@ impl Record {
         Ok(Run { t0: self.run.t0, seed: self.run.seed, controls })
     }
 
-    pub fn drive_from(&self, mut session: Session) -> Driven {
+    fn prepare(&self, session: &mut Session) {
         session.seed = self.run.seed;
         if !self.respawns.is_empty() {
             session.track_respawns();
         }
+    }
+
+    pub fn drive_from(&self, mut session: Session) -> Driven {
+        self.prepare(&mut session);
         let finish = |s: &Session| s.race().and_then(|r| r.finish).map(|t| t as i32);
         let ticks = ((self.time_ms - self.run.t0).max(0) as usize).div_ceil(10);
         for tick in 0..ticks.max(self.run.controls.len()) + OVERRUN_TICKS {

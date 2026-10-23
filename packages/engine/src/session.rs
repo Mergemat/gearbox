@@ -105,6 +105,7 @@ pub struct Session {
 pub struct Savestate(Session);
 
 const STEER_LIMIT_KEYS: [(u32, f32); 4] = [(10, 0.2), (12, 0.4), (14, 0.6), (16, 0.8)];
+const FULL_STEER_KEY: u32 = 18;
 const STEER_LIMIT_EPSILON: f32 = 0.00001;
 
 impl Session {
@@ -130,7 +131,7 @@ impl Session {
                         *limit = if (*limit - cap).abs() <= scale * STEER_LIMIT_EPSILON { 1.0 } else { cap };
                     }
                 }
-                if input.buttons >> 18 & 1 != 0 {
+                if input.buttons >> FULL_STEER_KEY & 1 != 0 {
                     *limit = 1.0;
                 }
             }

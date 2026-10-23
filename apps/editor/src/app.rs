@@ -2436,7 +2436,9 @@ impl Editor {
     }
 
     pub fn import_replay(&mut self, path: &Path, cx: &mut Context<Self>) {
-        let map = self.map.clone().unwrap();
+        let Some(map) = self.map.clone() else {
+            return self.error("io", format!("open a map before importing {}", path.display()));
+        };
         let f = match crate::replay::load(path).and_then(|r| crate::replay::inputs(&r, &map, &self.game.packs)) {
             Ok(f) => f,
             Err(e) => return self.error("io", format!("import {}: {e:#}", path.display())),

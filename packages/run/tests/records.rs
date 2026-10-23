@@ -50,7 +50,7 @@ fn a_record_with_its_own_countdown_keeps_its_start() {
 }
 
 #[test]
-fn keyboard_records_steer_within_their_action_key_limit() {
+fn keyboard_records_with_action_keys_drive_to_their_finish() {
     let Some(data) = std::env::var_os("GBX_TEST_DATA").map(PathBuf::from) else { return };
     let packs = PackSet::open(&Game::locate(None).unwrap().packs).unwrap();
     for id in ["212725", "228722"] {
