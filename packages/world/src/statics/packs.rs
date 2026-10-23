@@ -160,6 +160,14 @@ fn iso_of(l: &gearbox_packs::assets::Loc) -> Iso {
     Iso { q: [w, x, y, z], p: l.position }
 }
 
+fn gameplay_effect(placed: &PlacedSurface<'_>) -> Option<u8> {
+    placed
+        .materials
+        .first()
+        .and_then(|material| material.as_ref().map(|(_, ids)| ids.gameplay))
+        .or_else(|| placed.surface.material_ids.first().map(|id| (id >> 8) as u8))
+}
+
 fn game_triangle(triangle: &gearbox_packs::surface::MeshTri, placed: &PlacedSurface<'_>) -> [u8; 16] {
     let mut bytes = [0u8; 16];
     for k in 0..3 {
@@ -245,12 +253,7 @@ impl<'a> PackSource<'a> {
                 *vertex *= scale;
             }
         }
-        let gameplay = placed
-            .materials
-            .first()
-            .and_then(|material| material.as_ref().map(|(_, ids)| ids.gameplay))
-            .or_else(|| placed.surface.material_ids.first().map(|id| (id >> 8) as u8));
-        if let Some(effect) = gameplay {
+        if let Some(effect) = gameplay_effect(placed) {
             self.gameplay.insert(shape, effect);
         }
         self.shape_cache.insert(key, shape);
@@ -389,6 +392,12 @@ impl<'a> PackSource<'a> {
         let mut parts = Vec::new();
         let mut trees = Vec::new();
         for mut placed in self.surfaces(key, mods)? {
+            if placed.role == Role::BlockTrigger(None)
+                && ((placed.surface.materials.is_empty() && placed.surface.material_ids.is_empty())
+                    || gameplay_effect(&placed) == Some(0))
+            {
+                continue;
+            }
             if placed.role == Role::SpecialTrigger {
                 placed.role = Role::BlockSpecialTrigger;
             }
