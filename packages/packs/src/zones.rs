@@ -87,25 +87,51 @@ impl Zone {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct Zones(HashMap<(String, String), Zone>);
+pub struct Zones {
+    zones: HashMap<(String, String), Zone>,
+    blocks: HashMap<(String, String), String>,
+    replacements: HashMap<String, Vec<(String, String)>>,
+}
 
 impl Zones {
     pub fn load(set: &PackSet) -> Result<Self> {
-        let mut zones = HashMap::new();
+        let mut out = Self::default();
         for (r, f) in set.files() {
-            if !matches!(f.class_id, CLASS_FLAT | CLASS_FRONTIER | CLASS_TRANSITION) {
+            if !matches!(f.class_id, CLASS_FLAT | CLASS_FRONTIER | CLASS_TRANSITION | 0x03033000) {
                 continue;
             }
             let path = set.paks[r.pak].file_path(r.file);
             let Some((env, _)) = path.split_once('\\') else { continue };
-            let (name, zone) = read(&set.read(r)?).map_err(|e| e.context(path.clone()))?;
-            zones.insert((env.to_ascii_lowercase(), name.to_ascii_lowercase()), zone);
+            let buf = set.read(r)?;
+            if f.class_id == 0x03033000 {
+                out.replacements
+                    .insert(crate::assets::block_name(&path).to_ascii_lowercase(), replacements(&buf)?);
+                continue;
+            }
+            let (name, zone) = read(&buf).map_err(|e| e.context(path.clone()))?;
+            let head = crate::unpack::parse_head(&buf).ok_or_else(|| anyhow::anyhow!("truncated zone {path}"))??;
+            let block_class = match f.class_id {
+                CLASS_FLAT => "gamectnblockinfoflat",
+                CLASS_FRONTIER => "gamectnblockinfofrontier",
+                _ => "gamectnblockinfotransition",
+            };
+            let block = head
+                .ref_files
+                .keys()
+                .filter_map(|&id| head.ref_path(&path, id))
+                .find(|path| path.to_ascii_lowercase().contains(block_class))
+                .ok_or_else(|| anyhow::anyhow!("zone without block info: {path}"))?;
+            out.blocks.insert(
+                (env.to_ascii_lowercase(), crate::assets::block_name(&block).to_ascii_lowercase()),
+                name.clone(),
+            );
+            out.zones.insert((env.to_ascii_lowercase(), name.to_ascii_lowercase()), zone);
         }
-        Ok(Self(zones))
+        Ok(out)
     }
 
     pub fn get(&self, env: &str, name: &str) -> Option<Zone> {
-        if let Some(zone) = self.0.get(&(env.to_ascii_lowercase(), name.to_ascii_lowercase())) {
+        if let Some(zone) = self.zones.get(&(env.to_ascii_lowercase(), name.to_ascii_lowercase())) {
             return Some(zone.clone());
         }
         let to = name.strip_prefix("VoidTo")?;
@@ -123,6 +149,49 @@ impl Zones {
             .ok_or_else(|| anyhow::anyhow!("unknown zone {name:?}"))
     }
 
+    fn block_zone(&self, env: &str, block: &str) -> Result<(&str, Zone)> {
+        let name = self
+            .blocks
+            .get(&(env.to_ascii_lowercase(), block.to_ascii_lowercase()))
+            .ok_or_else(|| anyhow::anyhow!("terrain block without zone: {env}/{block}"))?;
+        let zone = self.get(env, name).ok_or_else(|| anyhow::anyhow!("unknown terrain zone {name}"))?;
+        Ok((name, zone))
+    }
+
+    pub fn terrain_matches(
+        &self,
+        env: &str,
+        column: &crate::blockinfo::AutoTerrain,
+        rotation: u32,
+        block: &str,
+        index: u32,
+        direction: u32,
+    ) -> Result<bool> {
+        let (name, zone) = self.block_zone(env, block)?;
+        let target =
+            column.target.as_deref().ok_or_else(|| anyhow::anyhow!("terrain column without target"))?;
+        if name.eq_ignore_ascii_case(target) {
+            if matches!(zone, Zone::Flat) {
+                return Ok(true);
+            }
+            if index == column.index {
+                let rotated = (column.dir + rotation) & 3;
+                if direction == rotated
+                    || matches!(zone, Zone::Frontier { .. })
+                        && (matches!(index, 4 | 13)
+                            || matches!(index, 2 | 11) && direction == (rotated + 2) & 3)
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(self.replacements.get(&env.to_ascii_lowercase()).is_some_and(|pairs| {
+            pairs.iter().any(|(base, replacement)| {
+                base.eq_ignore_ascii_case(target) && replacement.eq_ignore_ascii_case(name)
+            })
+        }))
+    }
+
     fn transition_heights(
         &self,
         env: &str,
@@ -130,7 +199,7 @@ impl Zones {
         index: u32,
         depth: usize,
     ) -> Result<[i32; 4]> {
-        ensure!(depth <= self.0.len(), "cyclic transition genealogy");
+        ensure!(depth <= self.zones.len(), "cyclic transition genealogy");
         let borders = transition.borders(self, env, index)?;
         let mut heights = [0; 4];
         for (i, border) in borders.iter().enumerate() {
@@ -200,6 +269,26 @@ fn skippable(r: &mut Reader, id: u32) -> Result<()> {
     ensure!(r.u32()? == u32::from_le_bytes(*b"PIKS"), "zone chunk {id:08x} is not skippable");
     let size = r.u32()? as usize;
     r.skip(size)
+}
+
+fn replacements(buf: &[u8]) -> Result<Vec<(String, String)>> {
+    let head = crate::unpack::parse_head(buf).ok_or_else(|| anyhow::anyhow!("truncated collection"))??;
+    let Some(at) = buf[head.body_start..].windows(4).position(|w| w == 0x0303301du32.to_le_bytes()) else {
+        return Ok(Vec::new());
+    };
+    let ids = crate::blockinfo::DefinedIds::scan(buf, head.body_start);
+    let mut r = Reader::new(buf);
+    r.skip(head.body_start + at + 4)?;
+    let count = r.u32()?;
+    ensure!(count < 65536, "zone replacement count {count}");
+    (0..count)
+        .map(|_| {
+            let base = ids.read(&mut r)?.ok_or_else(|| anyhow::anyhow!("zone replacement without base"))?;
+            let replacement =
+                ids.read(&mut r)?.ok_or_else(|| anyhow::anyhow!("zone replacement without target"))?;
+            Ok((base, replacement))
+        })
+        .collect()
 }
 
 fn read(buf: &[u8]) -> Result<(String, Zone)> {

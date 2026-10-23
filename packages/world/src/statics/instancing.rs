@@ -16,33 +16,41 @@ pub fn unit_coord(coord: [i32; 3], unit: [i32; 3], dir: u8, size: [u32; 3]) -> R
 }
 
 pub fn hidden_terrain(map: &gearbox_gbx::Map, src: &dyn ModelSource) -> Result<[Vec<bool>; 2]> {
-    let mut covered_by_block = std::collections::HashMap::new();
+    let mut columns = std::collections::HashMap::<_, Vec<_>>::new();
     for block in &map.blocks {
         if block.free.is_some() || !block.is_ground() {
             continue;
         }
         let Some(geometry) = src.block_geometry(&BlockKey::of(block)) else { continue };
-        let replaces_terrain = |unit: &[i32; 3]| {
-            !block.is_ghost()
-                || unit[1] == geometry.ground_offset
-                    && geometry.ground.iter().any(|(cell, _)| *cell == [unit[0], unit[2]])
-        };
-        for &unit in geometry.units.iter().filter(|unit| replaces_terrain(unit)) {
+        for &unit in &geometry.units {
             let coord = unit_coord(block.coord, unit, block.dir, geometry.size)?;
-            *covered_by_block.entry(coord).or_insert(false) |= !geometry.terrain();
+            if (0..3).any(|axis| coord[axis] < 0 || coord[axis] >= map.size[axis]) {
+                continue;
+            }
+            columns.entry(coord).or_default().push((block, unit, geometry.terrain()));
         }
     }
-    let hidden = |blocks: &[gearbox_gbx::map::Block], by_terrain: bool| -> Vec<bool> {
+    let hidden = |blocks: &[gearbox_gbx::map::Block], by_terrain: bool| -> Result<Vec<bool>> {
         blocks
             .iter()
             .map(|block| {
-                block.free.is_none()
-                    && src.block_geometry(&BlockKey::of(block)).is_some_and(|geometry| geometry.terrain())
-                    && covered_by_block.get(&block.coord).is_some_and(|&by_block| by_block || by_terrain)
+                if block.free.is_some()
+                    || !src.block_geometry(&BlockKey::of(block)).is_some_and(|geometry| geometry.terrain())
+                {
+                    return Ok(false);
+                }
+                if let Some(covers) = columns.get(&block.coord) {
+                    for &(cover, unit, terrain) in covers {
+                        if (!terrain || by_terrain) && src.covers_terrain(cover, unit, block)? {
+                            return Ok(true);
+                        }
+                    }
+                }
+                Ok(false)
             })
             .collect()
     };
-    Ok([hidden(&map.blocks, false), hidden(&map.baked_blocks, true)])
+    Ok([hidden(&map.blocks, false)?, hidden(&map.baked_blocks, true)?])
 }
 
 pub fn neighbour(c: [i32; 3], dir: u32) -> [i32; 3] {

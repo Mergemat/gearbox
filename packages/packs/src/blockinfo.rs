@@ -150,10 +150,10 @@ fn ref_span(ctx: &Ctx, r: &mut Reader) -> Result<Option<(usize, u32)>> {
     )
 }
 
-struct DefinedIds(Vec<(usize, String)>);
+pub(crate) struct DefinedIds(Vec<(usize, String)>);
 
 impl DefinedIds {
-    fn scan(buf: &[u8], from: usize) -> Self {
+    pub(crate) fn scan(buf: &[u8], from: usize) -> Self {
         let mut ids = Vec::new();
         let mut p = from;
         while p < buf.len() {
@@ -168,7 +168,7 @@ impl DefinedIds {
         Self(ids)
     }
 
-    fn read(&self, r: &mut Reader) -> Result<Option<String>> {
+    pub(crate) fn read(&self, r: &mut Reader) -> Result<Option<String>> {
         let at = r.pos();
         let id = r.u32()?;
         if id == u32::MAX || id & 0xc000_0000 == 0 {
@@ -428,7 +428,8 @@ pub fn read_block_info(buf: &[u8], layout: &Layout, path: &str) -> Result<BlockI
         .and_then(|p| u32_at(buf, p + 4))
         .and_then(crate::spawn::waypoint_tag);
     let no_respawn =
-        find_all(buf, body, 0x0304e00f).into_iter().find(|&p| own(p)).and_then(|p| u32_at(buf, p + 4)) == Some(1);
+        find_all(buf, body, 0x0304e00f).into_iter().find(|&p| own(p)).and_then(|p| u32_at(buf, p + 4))
+            == Some(1);
     let container = gearbox_gbx::Container::parse(buf)?;
     let name = if let Some(chunk) = container.header_chunk(0x2e001003) {
         let mut r = Reader::new(chunk);

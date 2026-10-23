@@ -558,6 +558,15 @@ pub type Mods = [Option<(String, Option<String>, bool)>; 2];
 type ModsKey = (String, [i32; 3], u8, u32, Option<([u32; 3], [u32; 3])>);
 
 impl ModelSource for PackSource<'_> {
+    fn covers_terrain(
+        &self,
+        block: &gearbox_gbx::map::Block,
+        unit: [i32; 3],
+        terrain: &gearbox_gbx::map::Block,
+    ) -> anyhow::Result<bool> {
+        self.catalog.covers_terrain(block, unit, terrain)
+    }
+
     fn block_geometry(&self, key: &BlockKey) -> Option<Geometry> {
         self.catalog.geometry(key)
     }

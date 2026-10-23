@@ -49,6 +49,12 @@ pub trait ModelSource {
     fn block_geometry(&self, key: &BlockKey) -> Option<Geometry>;
     fn block_model(&mut self, key: &BlockKey) -> Option<BlockModel>;
     fn null_block(&self, block: &gearbox_gbx::map::Block) -> bool;
+    fn covers_terrain(
+        &self,
+        block: &gearbox_gbx::map::Block,
+        unit: [i32; 3],
+        terrain: &gearbox_gbx::map::Block,
+    ) -> anyhow::Result<bool>;
     fn block_model_at(
         &mut self,
         map: &gearbox_gbx::Map,

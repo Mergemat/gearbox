@@ -34,6 +34,8 @@ struct Variant {
     clip_faces: std::rc::Rc<Vec<gearbox_packs::blockinfo::UnitClips>>,
     ground: std::rc::Rc<Vec<([i32; 2], gearbox_packs::zones::Ground)>>,
     ground_offset: i32,
+    terrain: std::rc::Rc<Vec<gearbox_packs::blockinfo::AutoTerrain>>,
+    environment: String,
     size: [u32; 3],
     mobils: Vec<Vec<VariantOffset>>,
 }
@@ -41,11 +43,18 @@ struct Variant {
 pub struct Catalog {
     variants: HashMap<(String, bool, u8), (u32, GeometrySource, u32, Variant)>,
     pub cell: [f32; 3],
+    environment: String,
+    zones: gearbox_packs::zones::Zones,
 }
 
 impl Default for Catalog {
     fn default() -> Self {
-        Self { variants: HashMap::new(), cell: crate::statics::place::CELL }
+        Self {
+            variants: HashMap::new(),
+            cell: crate::statics::place::CELL,
+            environment: String::new(),
+            zones: Default::default(),
+        }
     }
 }
 
@@ -83,6 +92,8 @@ impl Catalog {
                     clip_faces: Default::default(),
                     ground: Default::default(),
                     ground_offset: 0,
+                    terrain: Default::default(),
+                    environment: block.path.split('\\').next().unwrap_or(env).to_string(),
                     units: variant.units.clone(),
                     size: size_of(&variant.units),
                     mobils,
@@ -95,7 +106,12 @@ impl Catalog {
                 ));
             }
         }
-        Self { variants, cell: crate::statics::place::CELL }
+        Self {
+            variants,
+            cell: crate::statics::place::CELL,
+            environment: env.to_string(),
+            zones: Default::default(),
+        }
     }
 
     pub fn load_placement_metadata(
@@ -106,7 +122,7 @@ impl Catalog {
         packs: &gearbox_packs::packs::PackSet,
     ) -> anyhow::Result<()> {
         let mut seen = std::collections::HashSet::new();
-        let mut zones = None;
+        self.zones = gearbox_packs::zones::Zones::load(packs)?;
         for block in map.blocks.iter().chain(&map.baked_blocks) {
             if block.free.is_none() && !block.is_ghost() {
                 continue;
@@ -142,10 +158,7 @@ impl Catalog {
                     metadata.ground = if columns.is_empty() {
                         Default::default()
                     } else {
-                        let zones = match zones {
-                            Some(ref zones) => zones,
-                            None => zones.insert(gearbox_packs::zones::Zones::load(packs)?),
-                        };
+                        let zones = &self.zones;
                         let env = info.path.split('\\').next().unwrap_or(env);
                         std::rc::Rc::new(
                             columns
@@ -158,10 +171,62 @@ impl Catalog {
                                 .collect(),
                         )
                     };
+                    metadata.terrain = std::rc::Rc::new(columns);
                 }
             }
         }
         Ok(())
+    }
+
+    pub fn covers_terrain(
+        &self,
+        block: &gearbox_gbx::map::Block,
+        unit: [i32; 3],
+        terrain: &gearbox_gbx::map::Block,
+    ) -> anyhow::Result<bool> {
+        let key = BlockKey::of(block);
+        let Some((_, _, _, variant)) = self.variants.get(&(
+            key.name.to_ascii_lowercase(),
+            key.flags & 0x1000 != 0,
+            ((key.flags >> 21) & 0x7f) as u8,
+        )) else {
+            return Ok(false);
+        };
+        let height = terrain.coord[1];
+        if block.coord[1] + unit[1] != height {
+            return Ok(false);
+        }
+        if !block.is_ghost() {
+            return Ok(true);
+        }
+        let Some(column) = variant.terrain.iter().find(|c| c.coord[0] == unit[0] && c.coord[2] == unit[2])
+        else {
+            return Ok(false);
+        };
+        let ground = gearbox_packs::zones::Ground::of(
+            &self.zones,
+            &variant.environment,
+            column,
+            variant.ground_offset,
+        );
+        let expected = match ground {
+            gearbox_packs::zones::Ground::None => return Ok(false),
+            gearbox_packs::zones::Ground::Level(height) => height,
+            gearbox_packs::zones::Ground::Frontier { side, .. } => side,
+            gearbox_packs::zones::Ground::Transition(heights) => *heights.iter().min().unwrap(),
+            gearbox_packs::zones::Ground::Unsupported(why) => anyhow::bail!("{why}"),
+        };
+        if block.coord[1] + expected != height {
+            return Ok(false);
+        }
+        self.zones.terrain_matches(
+            &self.environment,
+            column,
+            block.dir as u32,
+            &terrain.name,
+            terrain.variant as u32,
+            terrain.dir as u32,
+        )
     }
 
     pub fn geometry(&self, key: &BlockKey) -> Option<Geometry> {
