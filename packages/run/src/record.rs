@@ -206,19 +206,49 @@ fn starting_steer_limit(ghost: &Ghost, inputs: &DecodedInputs) -> Option<f32> {
             tick > 0 && pressed != 0
         })
         .map_or(usize::MAX, |&(tick, _)| tick);
+    let end = inputs
+        .events
+        .iter()
+        .filter_map(|event| match event.kind {
+            EventKind::Respawn | EventKind::SecondaryRespawn if event.tick > 0 => Some(event.tick),
+            _ => None,
+        })
+        .min()
+        .unwrap_or(usize::MAX)
+        .min(first_press);
     ghost
         .record
         .iter()
         .flat_map(|record| &record.entities)
         .filter(|entity| entity.class_id == gearbox_gbx::record::CLASS_VEHICLE_VIS)
-        .flat_map(|entity| &entity.samples)
-        .filter_map(|sample| {
-            let tick = usize::try_from((sample.time_ms - inputs.start_offset_ms) / 10).ok()?;
-            let full_lock = tick < first_press && inputs.ticks.get(tick)?.steer.unsigned_abs() == 127;
-            full_lock.then_some(sample.vehicle.as_ref()?.steer.abs())
+        .filter_map(|entity| {
+            let samples: Vec<_> = entity
+                .samples
+                .iter()
+                .filter_map(|sample| {
+                    let elapsed = sample.time_ms - inputs.start_offset_ms;
+                    let tick = usize::try_from(elapsed).ok()? / 10;
+                    let raw = inputs.ticks.get(tick)?;
+                    (tick < end).then_some((f32::from(raw.steer) / 127.0, sample.vehicle.as_ref()?.steer))
+                })
+                .collect();
+            sample_steer_limit(&samples).map(|limit| (samples.len(), limit))
         })
-        .find(|&applied| applied > 0.05)
-        .and_then(|applied| STEER_LIMITS.into_iter().find(|limit| (limit - applied).abs() < 0.02))
+        .max_by_key(|&(count, _)| count)
+        .map(|(_, limit)| limit)
+}
+
+fn sample_steer_limit(samples: &[(f32, f32)]) -> Option<f32> {
+    let mut limits = STEER_LIMITS.into_iter().filter(|&limit| {
+        [false, true].into_iter().any(|clamp| {
+            samples.iter().all(|&(raw, applied)| {
+                let expected = if clamp { raw.clamp(-limit, limit) } else { raw * limit };
+                (expected - applied).abs() < 0.012
+            })
+        })
+    });
+    let limit = limits.next()?;
+    limits.next().is_none().then_some(limit)
 }
 
 fn input_states(inputs: &DecodedInputs, countdown: usize) -> Vec<InputState> {
@@ -285,6 +315,19 @@ mod tests {
             record.respawns,
             vec![Respawn { tick: 151, standing: false }, Respawn { tick: 153, standing: true }]
         );
+    }
+
+    #[test]
+    fn initial_steering_requires_consistent_samples() {
+        assert_eq!(sample_steer_limit(&[(1.0, 0.4), (-1.0, 1.0)]), None);
+        assert_eq!(sample_steer_limit(&[(1.0, -0.4)]), None);
+        assert_eq!(sample_steer_limit(&[(0.0, 0.003921628)]), None);
+    }
+
+    #[test]
+    fn analog_samples_can_identify_a_carried_steering_limit() {
+        let samples = [(2.0 / 127.0, 0.003921628), (18.0 / 127.0, 0.05098045), (33.0 / 127.0, 0.09803927)];
+        assert_eq!(sample_steer_limit(&samples), Some(0.4));
     }
 
     #[test]
