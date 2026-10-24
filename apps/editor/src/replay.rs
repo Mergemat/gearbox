@@ -21,9 +21,9 @@ pub fn driven_ghost(replay: &Replay) -> Result<&Ghost> {
 
 pub fn inputs(replay: &Replay, map: &Path, packs: &Path) -> Result<InputFile> {
     let record = gearbox_run::Record::from_replay(replay)?;
-    let map = gearbox_gbx::Map::parse(&std::fs::read(map).with_context(|| format!("reading {}", map.display()))?)?;
-    let run = record.applied(&map, &gearbox_packs::packs::PackSet::open(packs)?)?;
-    Ok(InputFile { t0: run.t0, seed: run.seed, controls: run.controls })
+    let map =
+        gearbox_gbx::Map::parse(&std::fs::read(map).with_context(|| format!("reading {}", map.display()))?)?;
+    record.applied(&map, &gearbox_packs::packs::PackSet::open(packs)?)
 }
 
 pub fn replays_for_map(map: &Path) -> Vec<PathBuf> {

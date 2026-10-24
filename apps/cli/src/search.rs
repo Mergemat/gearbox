@@ -236,7 +236,12 @@ pub fn main(args: Vec<String>) -> Result<()> {
     let inputs = if fresh {
         let t0 = origin.native()?.race_ms();
         ensure!(until_ms > t0 && (until_ms - t0) % 10 == 0, "invalid fresh timeline end");
-        Timeline { t0, seed: None, controls: vec![Default::default(); ((until_ms - t0) / 10) as usize] }
+        Timeline {
+            actions: Vec::new(),
+            t0,
+            seed: None,
+            controls: vec![Default::default(); ((until_ms - t0) / 10) as usize],
+        }
     } else {
         recorded.expect("recorded inputs loaded")
     };

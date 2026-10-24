@@ -84,7 +84,7 @@ pub fn timeline(source: &str, ticks: usize) -> Result<Timeline, Error> {
         let replay = it.next().map(str::parse::<u32>).transpose().map_err(|e| format!("replay seed: {e}"))?;
         let t0 = -1500;
         let n = ((20 - start_ms(t0)) / 10) as usize + ticks;
-        return Ok(Timeline { t0, seed: replay, controls: random_controls(seed, n) });
+        return Ok(Timeline { t0, seed: replay, controls: random_controls(seed, n), actions: Vec::new() });
     }
     Err(format!("inputs source {source}: expected file:PATH or random:SEED").into())
 }

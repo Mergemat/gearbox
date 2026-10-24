@@ -8,11 +8,12 @@ pub struct Run {
     pub t0: i32,
     pub seed: Option<u32>,
     pub controls: Vec<Controls>,
+    pub actions: Vec<u32>,
 }
 
 impl Run {
     pub fn blank(t0: i32) -> Self {
-        Self { t0, seed: None, controls: Vec::new() }
+        Self { t0, seed: None, controls: Vec::new(), actions: Vec::new() }
     }
 
     pub fn read(path: &Path) -> Result<Self> {
@@ -27,6 +28,7 @@ impl Run {
         Ok(Self {
             t0: inputs.t0,
             seed: inputs.seed,
+            actions: inputs.actions,
             controls: inputs
                 .controls
                 .into_iter()
@@ -40,8 +42,13 @@ impl Run {
             Some(seed) => format!("T0 {} {seed}\n", self.t0),
             None => format!("T0 {}\n", self.t0),
         };
-        for c in &self.controls {
-            s.push_str(&format!("{} {} {}\n", c.gas, c.brake, c.steer));
+        for (i, c) in self.controls.iter().enumerate() {
+            let action = self.actions.get(i).copied().unwrap_or_default();
+            s.push_str(&format!("{} {} {}", c.gas, c.brake, c.steer));
+            if action != 0 {
+                s.push_str(&format!(" {action}"));
+            }
+            s.push('\n');
         }
         s
     }
@@ -75,6 +82,10 @@ impl Run {
         self.index(race_ms).and_then(|i| self.controls.get(i).copied()).unwrap_or_default()
     }
 
+    pub fn action_at(&self, race_ms: i32) -> u32 {
+        self.index(race_ms).and_then(|i| self.actions.get(i).copied()).unwrap_or_default()
+    }
+
     pub fn set(&mut self, race_ms: i32, c: Controls) {
         let Some(i) = self.index(race_ms) else { return };
         if self.controls.len() <= i {
@@ -88,19 +99,35 @@ impl Run {
         ensure!(gap >= 0 && gap % 10 == 0, "inputs at T0 {} cannot start at {t0}", self.t0);
         let mut controls = vec![Controls::default(); usize::try_from(gap / 10)?];
         controls.extend_from_slice(&self.controls);
-        Ok(Self { t0, seed: self.seed, controls })
+        let mut actions = vec![0; usize::try_from(gap / 10)?];
+        actions.extend((0..self.controls.len()).map(|i| self.actions.get(i).copied().unwrap_or_default()));
+        Ok(Self { t0, seed: self.seed, controls, actions })
     }
 
     pub fn trimmed(&self) -> Self {
-        let n = self.controls.iter().rposition(|c| *c != Controls::default()).map_or(0, |i| i + 1);
-        Self { t0: self.t0, seed: self.seed, controls: self.controls[..n].to_vec() }
+        let n = self
+            .controls
+            .iter()
+            .enumerate()
+            .rposition(|(i, c)| {
+                *c != Controls::default() || self.actions.get(i).copied().unwrap_or_default() != 0
+            })
+            .map_or(0, |i| i + 1);
+        Self {
+            t0: self.t0,
+            seed: self.seed,
+            controls: self.controls[..n].to_vec(),
+            actions: self.actions[..n.min(self.actions.len())].to_vec(),
+        }
     }
 
     pub fn covering(&self, t0: i32, end_ms: i32) -> Self {
         let front = if t0 < self.t0 && (self.t0 - t0) % 10 == 0 { ((self.t0 - t0) / 10) as usize } else { 0 };
         let mut controls = vec![Controls::default(); front];
         controls.extend_from_slice(&self.controls);
-        let mut run = Self { t0: self.t0 - 10 * front as i32, seed: self.seed, controls };
+        let mut actions = vec![0; front];
+        actions.extend((0..self.controls.len()).map(|i| self.actions.get(i).copied().unwrap_or_default()));
+        let mut run = Self { t0: self.t0 - 10 * front as i32, seed: self.seed, controls, actions };
         while run.end_ms() < end_ms {
             run.controls.push(Controls::default());
         }
@@ -119,6 +146,25 @@ mod tests {
         assert_eq!(run.seed, Some(123456));
         assert_eq!(run.controls[1].steer.to_bits(), (-0.9133858f32).to_bits());
         assert_eq!(run.to_text(), text);
+    }
+
+    #[test]
+    fn action_only_ticks_survive_trimming_and_padding() {
+        let run = Run::parse("T0 100 7\n0 0 0\n0 0 0 32\n0 0 0\n0 0 0 4096\n0 0 0\n").unwrap();
+        let trimmed = run.trimmed();
+        assert_eq!(trimmed.end_ms(), 140);
+        assert_eq!(trimmed.action_at(110), 32);
+        assert_eq!(trimmed.action_at(120), 0);
+        assert_eq!(trimmed.action_at(130), 4096);
+        for padded in [trimmed.starting_at(-20).unwrap(), trimmed.covering(-20, 200)] {
+            assert_eq!(padded.action_at(100), 0);
+            assert_eq!(padded.action_at(110), 32);
+            assert_eq!(padded.action_at(130), 4096);
+            assert_eq!(padded.action_at(140), 0);
+        }
+        for bits in ["-1", "32.5", "2", "4294967296", "32 64"] {
+            assert!(Run::parse(&format!("T0 0\n0 0 0 {bits}\n")).is_err(), "{bits}");
+        }
     }
 
     #[test]

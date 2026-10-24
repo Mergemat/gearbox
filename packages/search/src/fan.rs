@@ -63,6 +63,7 @@ fn inputs(
     let mut rng =
         StdRng::seed_from_u64(config.seed.wrapping_add((index as u64).wrapping_mul(0x9e3779b97f4a7c15)));
     let mut t = Timeline {
+        actions: Vec::new(),
         t0,
         seed,
         controls: vec![Controls { gas: 1.0, brake: 0.0, steer: 0.0 }; config.horizon_ticks],
@@ -213,6 +214,7 @@ pub fn snap<'a>(goal: &PoseGoal, fan: &'a Fan) -> Result<Option<Snap<'a>>> {
         pose: s.pose,
         tick: s.tick,
         inputs: Timeline {
+            actions: r.inputs.actions[..s.tick.min(r.inputs.actions.len())].to_vec(),
             t0: r.inputs.t0,
             seed: r.inputs.seed,
             controls: r.inputs.controls[..s.tick].to_vec(),

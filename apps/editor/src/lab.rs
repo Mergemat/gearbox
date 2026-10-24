@@ -111,6 +111,7 @@ impl Editor {
         let at = crate::background::reach(origin, &self.doc.inputs, from, start.as_ref()).ok()?;
         let mut n = at.fork();
         let mut line = gearbox_search::input::Timeline {
+            actions: self.doc.inputs.actions.clone(),
             t0: self.doc.inputs.t0,
             seed: self.doc.inputs.seed,
             controls: self.doc.inputs.controls.clone(),

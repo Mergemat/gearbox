@@ -25,7 +25,8 @@ fn malformed_inputs_and_uncovered_times_are_errors() {
 
 #[test]
 fn neutral_throttle_seeds_are_distinct() {
-    let neutral = Timeline { t0: 0, seed: None, controls: vec![Controls::default(); 100] };
+    let neutral =
+        Timeline { actions: Vec::new(), t0: 0, seed: None, controls: vec![Controls::default(); 100] };
     let mut seeds: Vec<Vec<Controls>> = Vec::new();
     for attempt in 0..16 {
         let mut inputs = neutral.clone();
@@ -127,7 +128,8 @@ fn polyline_projection_respects_turns_and_limits_jumps_at_crossings() {
 
 #[test]
 fn exploration_from_neutral_includes_acceleration_and_preserves_window() {
-    let mut inputs = Timeline { t0: -1500, seed: None, controls: vec![Controls::default(); 200] };
+    let mut inputs =
+        Timeline { actions: Vec::new(), t0: -1500, seed: None, controls: vec![Controls::default(); 200] };
     let mut rng = StdRng::seed_from_u64(42);
     Mutation::default().explore(&mut inputs, 40..100, &[], 20, 0, &mut rng);
     assert!(inputs.controls[40..100].iter().all(|c| c.gas == 1.0 && c.steer == 0.0));

@@ -10,8 +10,12 @@ fn the_cli_pads_inputs_that_start_after_the_session() {
     let packs = gearbox_packs::install::Game::locate(None).unwrap().packs;
     let dir = std::env::temp_dir().join(format!("tas-pad-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let late =
-        Timeline { t0: 0, seed: None, controls: vec![Controls { gas: 1.0, brake: 0.0, steer: 0.25 }; 100] };
+    let late = Timeline {
+        actions: Vec::new(),
+        t0: 0,
+        seed: None,
+        controls: vec![Controls { gas: 1.0, brake: 0.0, steer: 0.25 }; 100],
+    };
     late.write(&dir.join("late.in")).unwrap();
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_gearbox"))
         .arg("search")

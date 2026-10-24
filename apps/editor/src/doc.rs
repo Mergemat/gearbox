@@ -857,6 +857,7 @@ mod tests {
     fn a_spliced_section_keeps_the_old_inputs_after_it_moved_to_the_new_time() {
         let ms0 = -1550;
         let old = InputFile {
+            actions: Vec::new(),
             t0: ms0,
             seed: None,
             controls: (0..100).map(|k| Controls { gas: 1.0, brake: 0.0, steer: k as f32 }).collect(),

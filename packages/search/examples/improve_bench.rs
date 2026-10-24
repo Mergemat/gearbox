@@ -36,7 +36,12 @@ fn main() -> Result<()> {
     let start = s.save();
     let origin = start.clone();
     let mut n = start.native()?;
-    let wr = Timeline { t0: inputs.t0, seed: inputs.seed, controls: inputs.controls.clone() };
+    let wr = Timeline {
+        actions: inputs.actions.clone(),
+        t0: inputs.t0,
+        seed: inputs.seed,
+        controls: inputs.controls.clone(),
+    };
     let wr = if n.race_ms() < wr.t0 { wr.starting_at(n.race_ms())? } else { wr };
     n.seed = wr.seed;
     let k0 = wr.tick(0)?;

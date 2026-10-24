@@ -129,7 +129,12 @@ fn main() -> Result<()> {
         (config.cell_m, config.sectors, config.kmh) = (v[0], v[1] as u32, v[2]);
     }
     let start = s.save();
-    let wr = Timeline { t0: inputs.t0, seed: inputs.seed, controls: inputs.controls.clone() };
+    let wr = Timeline {
+        actions: inputs.actions.clone(),
+        t0: inputs.t0,
+        seed: inputs.seed,
+        controls: inputs.controls.clone(),
+    };
 
     let mut n = start.native()?;
     n.seed = wr.seed;

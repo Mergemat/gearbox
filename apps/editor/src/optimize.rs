@@ -823,8 +823,12 @@ fn run(
     };
     let range = at(ms(s.window.start))..at(ms(s.window.end));
     let until = at(req.until_ms).max(range.end);
-    let start =
-        gearbox_search::input::Timeline { t0, seed: req.inputs.seed, controls: req.inputs.controls.clone() };
+    let start = gearbox_search::input::Timeline {
+        actions: req.inputs.actions.clone(),
+        t0,
+        seed: req.inputs.seed,
+        controls: req.inputs.controls.clone(),
+    };
     let base = {
         let mut n = origin.fork();
         if let Some((_, p)) = &car {
@@ -879,6 +883,7 @@ fn run(
                 attempts: p.tries,
                 score: x.score.clone(),
                 inputs: Arc::new(InputFile {
+                    actions: x.inputs.actions.clone(),
                     t0: x.inputs.t0,
                     seed: x.inputs.seed,
                     controls: x.inputs.controls.clone(),

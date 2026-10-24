@@ -80,6 +80,7 @@ fn project_session_scrub_record_and_search_match_golden_typed_engine() {
         gearbox_trace::Trace::read(&root.join("tests/golden/pf-364816/rec-pf364816.trace.zst")).unwrap();
     assert!(trace.states.len() > TICKS);
     let inputs = InputFile {
+        actions: Vec::new(),
         t0: trace.case.start_ms,
         seed: trace.case.seed,
         controls: trace

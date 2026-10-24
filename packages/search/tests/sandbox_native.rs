@@ -143,7 +143,7 @@ fn ordered_mixed_goals_and_receding_prefix_progress_use_real_trajectories() {
         s.step(gas);
     }
     let target = Pose::from_body(Body::from(s.body()));
-    let base = Timeline { t0: 0, seed: None, controls: vec![gas; 80] };
+    let base = Timeline { actions: Vec::new(), t0: 0, seed: None, controls: vec![gas; 80] };
     let objective = Objective::Goals(Goals {
         ordered: vec![
             Goal::Point { point: initial.position, radius: 0.5 },
@@ -206,7 +206,8 @@ fn ordered_mixed_goals_and_receding_prefix_progress_use_real_trajectories() {
         s.step(gas);
     }
     let far = Pose::from_body(Body::from(s.body()));
-    let neutral = Timeline { t0: 0, seed: None, controls: vec![Controls::default(); 90] };
+    let neutral =
+        Timeline { actions: Vec::new(), t0: 0, seed: None, controls: vec![Controls::default(); 90] };
     let tight = Objective::Goals(Goals {
         ordered: vec![
             Goal::Point { point: initial.position, radius: 0.05 },
@@ -380,7 +381,7 @@ fn snapped_variant_refinement_reaches_landing_pose_earlier() {
     let snap = fan::snap(&target, &fan).unwrap().unwrap();
     let mut seed = snap.inputs;
     seed.controls.resize(100, Controls::default());
-    let blank = Timeline { t0: 0, seed: None, controls: vec![Controls::default(); 100] };
+    let blank = Timeline { actions: Vec::new(), t0: 0, seed: None, controls: vec![Controls::default(); 100] };
     let config = Config {
         window_start_ms: 0,
         window_end_ms: 1000,
@@ -439,6 +440,7 @@ fn full_rollouts_stop_counting_signatures_at_the_crossing() {
     pose.position[1] += 2.0;
     place(&mut s, &Placement { pose, angular_velocity: [0.0; 3], reset_contacts: true }).unwrap();
     let gas = Timeline {
+        actions: Vec::new(),
         t0: s.race_ms(),
         seed: inputs.seed,
         controls: vec![Controls { gas: 1.0, ..Default::default() }; 150],
@@ -516,7 +518,7 @@ fn a_placed_origin_searches_like_a_saved_placed_start() {
         method: Method::Population { width: 8, curve_ticks: 10 },
         evaluation: EvalOptions::default(),
     };
-    let blank = Timeline { t0: 0, seed: None, controls: vec![Controls::default(); 100] };
+    let blank = Timeline { actions: Vec::new(), t0: 0, seed: None, controls: vec![Controls::default(); 100] };
     let via_placement = search_from(&placed_origin, blank.clone(), &config, |_| {}).unwrap();
     let via_save = search_from(&saved, blank, &config, |_| {}).unwrap();
     assert_eq!(via_placement.after, via_save.after);
@@ -545,7 +547,7 @@ fn a_try_keeps_its_range_then_follows_the_trail_with_the_gas_held() {
     let origin = start.clone();
     let k0 = (-s.race_ms() / 10) as usize;
     let gas = Controls { gas: 1.0, brake: 0.0, steer: 0.0 };
-    let run = Timeline { t0: s.race_ms(), seed: None, controls: vec![gas; k0 + 400] };
+    let run = Timeline { actions: Vec::new(), t0: s.race_ms(), seed: None, controls: vec![gas; k0 + 400] };
     let (from, to, until) = (k0 + 100, k0 + 150, k0 + 400);
     let trail = gearbox_search::tries::drive_on(&origin, &run, from, until, until, &[]).unwrap().trail;
     let mut line = run.clone();
@@ -580,6 +582,7 @@ fn the_general_aim_agrees_with_the_speed_objective_and_its_best_is_no_worse() {
     let origin = start.clone();
     let k0 = (-s.race_ms() / 10) as usize;
     let line = Timeline {
+        actions: Vec::new(),
         t0: s.race_ms(),
         seed: None,
         controls: vec![Controls { gas: 1.0, brake: 0.0, steer: 0.3 }; k0 + 300],

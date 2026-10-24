@@ -87,6 +87,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
         s.step(c);
     }
     let from_start = |t: &Timeline| Timeline {
+        actions: std::iter::repeat_n(0, prefix.len()).chain(t.actions.iter().copied()).collect(),
         t0: session_t0,
         seed: t.seed,
         controls: prefix.iter().chain(&t.controls).copied().collect(),
@@ -173,7 +174,12 @@ pub fn main(args: Vec<String>) -> Result<()> {
                         method: Method::Population { width: 8, curve_ticks: 10 },
                         evaluation: EvalOptions { full_rollout: true, ..Default::default() },
                     };
-                    let blank = Timeline { t0, seed: s.seed, controls: vec![Controls::default(); ticks] };
+                    let blank = Timeline {
+                        actions: Vec::new(),
+                        t0,
+                        seed: s.seed,
+                        controls: vec![Controls::default(); ticks],
+                    };
                     let mut snapped = snap.inputs.clone();
                     snapped.controls.resize(ticks, Controls::default());
                     let scratch = search_from(&origin, blank, &config, |_| {})?;

@@ -5,6 +5,7 @@ pub struct Timeline {
     pub t0: i32,
     pub seed: Option<u32>,
     pub controls: Vec<Controls>,
+    pub actions: Vec<u32>,
 }
 
 impl Timeline {
@@ -21,14 +22,27 @@ impl Timeline {
         if h.next().is_some() {
             return Err("unexpected header field".into());
         }
+        let mut actions = Vec::new();
         let controls = lines
             .enumerate()
             .map(|(i, line)| {
-                let v: Vec<f32> = line
-                    .split_whitespace()
+                let mut fields = line.split_whitespace();
+                let v: Vec<f32> = fields
+                    .by_ref()
+                    .take(3)
                     .map(str::parse)
                     .collect::<Result<_, _>>()
                     .map_err(|e| format!("line {}: {e}", i + 2))?;
+                let action = fields
+                    .next()
+                    .map(str::parse::<u32>)
+                    .transpose()
+                    .map_err(|e| format!("line {}: {e}", i + 2))?
+                    .unwrap_or_default();
+                if action & !0x1060 != 0 || fields.next().is_some() {
+                    return Err(format!("line {}: expected optional action bits within 0x1060", i + 2));
+                }
+                actions.push(action);
                 match v[..] {
                     [gas, brake, steer]
                         if (0.0..=1.0).contains(&gas)
@@ -43,7 +57,7 @@ impl Timeline {
                 }
             })
             .collect::<Result<_, String>>()?;
-        Ok(Self { t0, seed, controls })
+        Ok(Self { t0, seed, controls, actions })
     }
 
     pub fn at(&self, ms: i32) -> Controls {

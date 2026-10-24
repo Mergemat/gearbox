@@ -76,6 +76,18 @@ impl Record {
         let t0 = if inputs.start_offset_ms >= 0 { COUNTDOWN_MS } else { inputs.start_offset_ms };
         let countdown = usize::try_from((inputs.start_offset_ms - t0) / 10)?;
         let respawns = respawns.into_iter().map(|r| Respawn { tick: r.tick + countdown, ..r }).collect();
+        let mut actions = vec![0; countdown + inputs.ticks.len()];
+        for event in &inputs.events {
+            if event.tick != 0
+                && let Some(action) = actions.get_mut(countdown + event.tick)
+            {
+                *action |= match event.kind {
+                    EventKind::Respawn => 0x20,
+                    EventKind::SecondaryRespawn => 0x1000,
+                    EventKind::Horn(_) => 0,
+                };
+            }
+        }
         let input_states = input_states(&inputs, countdown);
         let starting_steer_limit = starting_steer_limit(ghost, &inputs).map(|limit| (countdown, limit));
         let driven = inputs.ticks.iter().map(|t| Controls {
@@ -86,6 +98,7 @@ impl Record {
         Ok(Self {
             run: Run {
                 t0,
+                actions,
                 seed: ghost.validation_seed.map(|s| s as u32).filter(|&s| s != 0),
                 controls: std::iter::repeat_n(Controls::default(), countdown).chain(driven).collect(),
             },
@@ -121,7 +134,7 @@ impl Record {
             ensure!(self.step(&mut session, tick), "respawn at tick {tick} without a spawn");
             controls.push(session.applied);
         }
-        Ok(Run { t0: self.run.t0, seed: self.run.seed, controls })
+        Ok(Run { t0: self.run.t0, seed: self.run.seed, controls, actions: self.run.actions.clone() })
     }
 
     fn prepare(&self, session: &mut Session) {
@@ -226,7 +239,7 @@ mod tests {
 
     fn record(build: &str) -> Record {
         Record {
-            run: Run { t0: COUNTDOWN_MS, seed: None, controls: vec![] },
+            run: Run { t0: COUNTDOWN_MS, seed: None, controls: vec![], actions: vec![] },
             respawns: vec![],
             time_ms: 0,
             checkpoints_ms: vec![],
@@ -235,6 +248,30 @@ mod tests {
             input_states: Vec::new(),
             starting_steer_limit: None,
         }
+    }
+
+    #[test]
+    fn action_presses_do_not_repeat_on_unchanged_input_ticks() {
+        let ghost = Ghost {
+            race_time_ms: Some(60),
+            inputs: vec![gearbox_gbx::inputs::PlayerInputs {
+                version: 12,
+                start_offset_ms: Some(0),
+                ticks: 6,
+                data: vec![8, 0, 0, 0, 48, 2, 0, 0, 128, 172, 35, 0, 0, 0, 224, 8, 0, 0, 0, 240, 1],
+            }],
+            ..Default::default()
+        };
+        let record = Record::from_ghost(&ghost).unwrap();
+        assert_eq!(record.run.action_at(10), 32);
+        assert_eq!(record.run.action_at(20), 0);
+        assert_eq!(record.run.action_at(30), 4096);
+        assert_eq!(record.run.action_at(40), 0);
+        assert_eq!(record.run.action_at(50), 0);
+        assert_eq!(
+            record.respawns,
+            vec![Respawn { tick: 151, standing: false }, Respawn { tick: 153, standing: true }]
+        );
     }
 
     #[test]

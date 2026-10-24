@@ -68,7 +68,12 @@ fn main() -> Result<()> {
     }
     let velocity = (!args.no_velocity).then_some(args.vtol);
     let start = s.save();
-    let run = Timeline { t0: inputs.t0, seed: inputs.seed, controls: inputs.controls.clone() };
+    let run = Timeline {
+        actions: inputs.actions.clone(),
+        t0: inputs.t0,
+        seed: inputs.seed,
+        controls: inputs.controls.clone(),
+    };
     let mut n = start.native()?;
     n.seed = run.seed;
     let run = if n.race_ms() < run.t0 { run.starting_at(n.race_ms())? } else { run };
