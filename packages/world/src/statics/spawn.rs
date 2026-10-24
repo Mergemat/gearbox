@@ -169,9 +169,18 @@ pub fn item_poses(
     };
     let local = pose_transform(local);
     let frame = item_location(item);
+    let pose = pose_bits(place::compose_iso(local, frame))?;
+    let environment = super::packs::environment(map).map_err(anyhow::Error::msg)?;
+    let path = assets
+        .find_anchored_item(item, environment)
+        .with_context(|| format!("waypoint item {name} absent from assets"))?;
+    let models = assets.index.items[path].models(0);
+    if !models.iter().any(|model| matches!(model, EntModel::Prefab(_))) {
+        return Ok((pose, pose));
+    }
     let rotation = gearbox_engine::Mat3::from_array(frame.0);
     let respawn_frame = (gearbox_engine::Quat::from_mat3(&rotation).to_mat3().to_array(), frame.1);
-    Ok((pose_bits(place::compose_iso(local, frame))?, pose_bits(place::compose_iso(local, respawn_frame))?))
+    Ok((pose, pose_bits(place::compose_iso(local, respawn_frame))?))
 }
 
 fn pose_transform(bits: [u32; 12]) -> Transform {
