@@ -1,7 +1,7 @@
 pub(crate) mod anchored;
 pub(crate) mod build;
 pub(crate) mod decoration;
-mod instancing;
+pub(crate) mod instancing;
 pub(crate) mod items;
 mod mapworld;
 pub(crate) mod model;

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use gearbox_engine::world_water::Column;
 
@@ -8,16 +10,29 @@ pub fn terrain_columns(
     packs: &PackSet,
     cell: [f32; 3],
     environment: &str,
+    ground_water: &HashMap<[i32; 3], bool>,
 ) -> Result<Vec<Column>> {
     let water = gearbox_packs::water::terrain(packs, environment)?;
     let empty = Column { surface: 0.0, bottom: 1.0, material: u32::MAX };
     let mut columns = vec![empty; map.size[0] as usize * map.size[2] as usize];
     for block in map.blocks.iter().chain(&map.baked_blocks) {
-        if block.free.is_some() || !block.is_ground() || !water.blocks.contains(&block.name) {
+        if block.free.is_some()
+            || block.is_ghost()
+            || !block.is_ground()
+            || !water.blocks.contains(&block.name)
+        {
             continue;
         }
         let [x, y, z] = block.coord;
         if x < 0 || z < 0 || x >= map.size[0] || z >= map.size[2] {
+            continue;
+        }
+        if ground_water
+            .get(&[x, y.max(0), z])
+            .or_else(|| ground_water.get(&[x, 0, z]))
+            .copied()
+            .unwrap_or(false)
+        {
             continue;
         }
         let height = y as f32 * cell[1] + cell[2];

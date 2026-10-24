@@ -36,6 +36,23 @@ pub struct Ghost {
     pub inputs: Vec<PlayerInputs>,
     #[serde(skip)]
     pub record: Option<RecordData>,
+    pub record_entity_indices: Vec<u32>,
+}
+
+impl Ghost {
+    pub fn record_entities(&self) -> impl Iterator<Item = &crate::record::Entity> {
+        self.record.iter().flat_map(move |record| {
+            let count = if self.record_entity_indices.is_empty() {
+                record.entities.len()
+            } else {
+                self.record_entity_indices.len()
+            };
+            (0..count).filter_map(move |index| {
+                let index = self.record_entity_indices.get(index).map_or(index, |&index| index as usize);
+                record.entities.get(index)
+            })
+        })
+    }
 }
 
 impl Replay {
@@ -152,7 +169,7 @@ pub(crate) fn ghost(r: &mut Reader) -> Result<Ghost> {
                         g.record = Some(rec);
                     }
                     let n = r.len()?;
-                    r.skip(n * 4)?;
+                    g.record_entity_indices = (0..n).map(|_| r.u32()).collect::<Result<_>>()?;
                 }
                 return Ok(true);
             }

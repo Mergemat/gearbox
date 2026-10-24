@@ -12,10 +12,10 @@ pub fn build(map: &Map) -> Result<Playback> {
     if !map.clones_enabled || map.author_clones.is_empty() {
         return Ok(playback);
     }
-    let Some(record) = map.author_ghost.as_ref().and_then(|ghost| ghost.record.as_ref()) else {
+    let Some(ghost) = map.author_ghost.as_ref() else {
         return Ok(playback);
     };
-    let Some(entity) = record.entities.iter().find(|entity| entity.class_id == CLASS_VEHICLE_VIS) else {
+    let Some(entity) = ghost.record_entities().find(|entity| entity.class_id == CLASS_VEHICLE_VIS) else {
         return Ok(playback);
     };
     playback.start_ms = entity.start_ms;

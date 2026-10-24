@@ -96,6 +96,7 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
     let mut water = Water::default();
     let mut cache = HashMap::new();
     let mut boxes = Vec::new();
+    let mut ground_water = HashMap::new();
     for block in map.blocks.iter().chain(&map.baked_blocks) {
         let asset = match assets.assets.block_in(&block.name, env) {
             BlockLookup::Block(asset) => asset,
@@ -119,6 +120,18 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
             cache.insert(cache_key.clone(), models);
         }
         let geometry = catalog.geometry(&key).context("water block geometry missing")?;
+        if block.free.is_none() && !block.is_ghost() && !geometry.terrain() {
+            for &unit in &geometry.units {
+                ground_water
+                    .entry(crate::statics::instancing::unit_coord(
+                        block.coord,
+                        unit,
+                        block.dir,
+                        geometry.size,
+                    )?)
+                    .or_insert(block.is_ground() && !cache[&cache_key].is_empty());
+            }
+        }
         let parent = crate::statics::model::block_iso_with(block, &geometry);
         for &(model, local) in &cache[&cache_key] {
             let transform = place::transform(place::compose(parent, local));
@@ -134,7 +147,7 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
     let size = [map.size[0] as u32, map.size[2] as u32];
     let cells = size[0] as usize * size[1] as usize;
     let default_column = Column { surface: 0.0, bottom: 1.0, material: EMPTY };
-    let columns = terrain_columns(map, assets.packs, catalog.cell, env)?;
+    let columns = terrain_columns(map, assets.packs, catalog.cell, env, &ground_water)?;
     if boxes.is_empty() && columns.iter().all(|column| column.surface <= column.bottom) {
         return Ok(water);
     }

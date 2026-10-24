@@ -216,26 +216,19 @@ fn starting_steer_limit(ghost: &Ghost, inputs: &DecodedInputs) -> Option<f32> {
         .min()
         .unwrap_or(usize::MAX)
         .min(first_press);
-    ghost
-        .record
+    let entity =
+        ghost.record_entities().find(|entity| entity.class_id == gearbox_gbx::record::CLASS_VEHICLE_VIS)?;
+    let samples: Vec<_> = entity
+        .samples
         .iter()
-        .flat_map(|record| &record.entities)
-        .filter(|entity| entity.class_id == gearbox_gbx::record::CLASS_VEHICLE_VIS)
-        .filter_map(|entity| {
-            let samples: Vec<_> = entity
-                .samples
-                .iter()
-                .filter_map(|sample| {
-                    let elapsed = sample.time_ms - inputs.start_offset_ms;
-                    let tick = usize::try_from(elapsed).ok()? / 10;
-                    let raw = inputs.ticks.get(tick)?;
-                    (tick < end).then_some((f32::from(raw.steer) / 127.0, sample.vehicle.as_ref()?.steer))
-                })
-                .collect();
-            sample_steer_limit(&samples).map(|limit| (samples.len(), limit))
+        .filter_map(|sample| {
+            let elapsed = sample.time_ms - inputs.start_offset_ms;
+            let tick = usize::try_from(elapsed).ok()? / 10;
+            let raw = inputs.ticks.get(tick)?;
+            (tick < end).then_some((f32::from(raw.steer) / 127.0, sample.vehicle.as_ref()?.steer))
         })
-        .max_by_key(|&(count, _)| count)
-        .map(|(_, limit)| limit)
+        .collect();
+    sample_steer_limit(&samples)
 }
 
 fn sample_steer_limit(samples: &[(f32, f32)]) -> Option<f32> {
