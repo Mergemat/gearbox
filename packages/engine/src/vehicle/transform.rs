@@ -3,7 +3,8 @@ use crate::{Iso, Mat3, Quat, Vec3, dyna::BodyHandle, session::Session};
 
 impl Session {
     pub(crate) fn transform_car(&mut self, now: u32) {
-        for choice in std::mem::take(&mut self.vehicle.pending_car_changes) {
+        let pending = std::mem::take(&mut self.vehicle.pending_car_changes);
+        if let Some(choice) = pending.into_iter().find(|&choice| choice != self.vehicle.model_choice) {
             self.change_car(choice, now);
         }
     }
@@ -45,14 +46,11 @@ impl Session {
         let rotation = Mat3::from_quat(self.vehicle.quat);
         let pose =
             Iso::new(rotation, self.vehicle.pos + rotation.transform_y_first(Vec3::new(0.0, height, 0.0)));
-        let body_state = (self.vehicle.body != u32::MAX)
-            .then(|| (BodyHandle(self.vehicle.body), self.dyna.state(BodyHandle(self.vehicle.body)).clone()));
         self.select_car(choice);
         let model = self.config.model(choice);
         let tuning = &model.assets.tuning;
         let previous = std::mem::take(&mut self.vehicle);
         let mut vehicle = spawn::constructed(previous.key);
-        vehicle.body = previous.body;
         vehicle.body_enabled = previous.body_enabled;
         vehicle.item = previous.item;
         vehicle.shape = previous.shape;
@@ -81,9 +79,7 @@ impl Session {
                 events: None,
             },
         );
-        if let Some((body, state)) = body_state {
-            self.dyna.set_state(body, state);
-        }
+        vehicle.body = previous.body;
         vehicle.transfer_motion(&previous);
         vehicle.pos = pose.pos;
         vehicle.quat = Quat::from_mat3(&pose.rot);
