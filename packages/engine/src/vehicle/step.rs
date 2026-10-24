@@ -195,6 +195,7 @@ pub fn collision_step(ctx: &mut StepCtx<'_>, now: i64, dt: f32, clip: f32) -> Co
         DynaCollision { world: ctx.world, state: ctx.state, manager: ctx.manager }
             .set_placement(vehicle_item, pose);
         let item = &ctx.state.dynamic_item[vehicle_item.index()];
+        let mut pool = ContactList::default();
         for (lists, layers) in [
             (Lists::SURFACES, crate::collision::layers::MASKS[item.layer as usize]),
             (Lists::DISCRETE, 1048576),
@@ -210,6 +211,7 @@ pub fn collision_step(ctx: &mut StepCtx<'_>, now: i64, dt: f32, clip: f32) -> Co
                 Geometry::new(ctx.world, ctx.state),
                 vehicle_item,
                 filter,
+                &mut pool,
                 &mut list,
             );
         }

@@ -202,14 +202,15 @@ impl CollisionWorld {
         source: EntryId,
         shape: &Surface,
         candidates: &QueryResults,
+        pool: &mut ContactList,
         out: &mut ContactList,
     ) {
         if self.post_filter != 0 {
             todo!("narrowphase post-filter");
         }
-        let mut pool = ContactList::default();
+        pool.clear();
         {
-            let mut sink = ContactPool::new(&mut pool, &mut out.overflow);
+            let mut sink = ContactPool::new(pool, &mut out.overflow);
             for other in candidates.iter() {
                 let b = geometry.entry(other);
                 super::narrow::contacts(geometry, source, shape, other, &b, &mut sink);
@@ -245,7 +246,8 @@ impl CollisionWorld {
         capacity: usize,
     ) -> ContactList {
         let mut out = ContactList::new(capacity);
-        self.append_contacts_for_item(geometry, item, filter, &mut out);
+        let mut pool = ContactList::default();
+        self.append_contacts_for_item(geometry, item, filter, &mut pool, &mut out);
         out
     }
 
@@ -254,13 +256,14 @@ impl CollisionWorld {
         geometry: Geometry<'_>,
         item: DynamicItemId,
         filter: QueryFilter,
+        pool: &mut ContactList,
         out: &mut ContactList,
     ) {
         let item = &geometry.state.dynamic_item[item.index()];
         let first =
             if item.entry_count == 0 { 0 } else { self.shape_entries.start + item.entry_start as u32 };
         let entries = geometry.placed_entries(first..first + item.entry_count as u32);
-        self.append_contacts_from_entries(geometry, entries, filter, out);
+        self.append_contacts_from_entries(geometry, entries, filter, pool, out);
     }
 
     fn contacts_from_entries<'a>(
@@ -271,7 +274,8 @@ impl CollisionWorld {
         capacity: usize,
     ) -> ContactList {
         let mut out = ContactList::new(capacity);
-        self.append_contacts_from_entries(geometry, entries, filter, &mut out);
+        let mut pool = ContactList::default();
+        self.append_contacts_from_entries(geometry, entries, filter, &mut pool, &mut out);
         out
     }
 
@@ -280,6 +284,7 @@ impl CollisionWorld {
         geometry: Geometry<'_>,
         entries: impl Iterator<Item = (EntryId, &'a ShapeEntry)>,
         filter: QueryFilter,
+        pool: &mut ContactList,
         out: &mut ContactList,
     ) {
         let before = out.len();
@@ -291,7 +296,7 @@ impl CollisionWorld {
         });
         for (source, entry) in entries {
             let surface = Surface { shape: entry.shape, iso: entry.iso, item: entry.item, tag: entry.tag };
-            self.shape_contacts(geometry, source, &surface, &candidates, out);
+            self.shape_contacts(geometry, source, &surface, &candidates, pool, out);
         }
         if out.len() != before && out.len() < CLOSE_MERGE_LIMIT {
             out.merge_close(geometry, CLOSE_MERGE_MIN_DOT, CLOSE_MERGE_DISTANCE);
