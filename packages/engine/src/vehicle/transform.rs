@@ -45,6 +45,8 @@ impl Session {
         let rotation = Mat3::from_quat(self.vehicle.quat);
         let pose =
             Iso::new(rotation, self.vehicle.pos + rotation.transform_y_first(Vec3::new(0.0, height, 0.0)));
+        let body_state = (self.vehicle.body != u32::MAX)
+            .then(|| (BodyHandle(self.vehicle.body), self.dyna.state(BodyHandle(self.vehicle.body)).clone()));
         self.select_car(choice);
         let model = self.config.model(choice);
         let tuning = &model.assets.tuning;
@@ -79,6 +81,9 @@ impl Session {
                 events: None,
             },
         );
+        if let Some((body, state)) = body_state {
+            self.dyna.set_state(body, state);
+        }
         vehicle.transfer_motion(&previous);
         vehicle.pos = pose.pos;
         vehicle.quat = Quat::from_mat3(&pose.rot);
