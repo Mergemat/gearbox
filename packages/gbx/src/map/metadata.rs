@@ -100,6 +100,10 @@ fn trait_value(
 
 pub(super) fn read(r: &mut Reader) -> Result<(bool, Vec<AuthorClone>)> {
     let mut r = r.encapsulated()?;
+    Ok(traits(&mut r).unwrap_or_default())
+}
+
+fn traits(r: &mut Reader) -> Result<(bool, Vec<AuthorClone>)> {
     let mut clones = Vec::new();
     let mut enabled = false;
     r.chunks("ScriptMetadata", |r, id, _| {
