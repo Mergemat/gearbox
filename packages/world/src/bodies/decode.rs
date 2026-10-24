@@ -158,7 +158,7 @@ impl<'a> Decoder<'a> {
         prefab: &gearbox_packs::catalog::Prefab,
         raw: &gearbox_packs::prefab::Prefab,
         ordinal: u32,
-    ) -> Result<(usize, String)> {
+    ) -> Result<Option<(usize, String)>> {
         for (index, entity) in prefab.ents.iter().enumerate() {
             let Some(params) = raw.ents.get(index).and_then(|entity| entity.params.as_ref()) else {
                 continue;
@@ -176,9 +176,9 @@ impl<'a> Decoder<'a> {
                 EntModel::Other { path: Some(path), .. } => path.clone(),
                 _ => String::new(),
             };
-            return Ok((index, path));
+            return Ok(Some((index, path)));
         }
-        anyhow::bail!("dynamic item has no world kinematic constraint")
+        Ok(None)
     }
 
     fn body(
@@ -201,13 +201,19 @@ impl<'a> Decoder<'a> {
         let ordinal = *dynamic_index;
         *dynamic_index += 1;
         let shape = source.shape(surface).map_err(anyhow::Error::msg)?;
-        let (constraint, animation_path) = Self::constraint(prefab, raw, ordinal)?;
-        let animation_path =
-            if animation_path.is_empty() { format!("{path}#constraint{constraint}") } else { animation_path };
         if let Some(modifier) = placement.modifier {
             self.modifier(source, modifier)?;
         }
-        let animation = self.animation(&animation_path, &raw.ents[constraint], placement.modifier)?;
+        let animation = Self::constraint(prefab, raw, ordinal)?
+            .map(|(constraint, animation_path)| {
+                let animation_path = if animation_path.is_empty() {
+                    format!("{path}#constraint{constraint}")
+                } else {
+                    animation_path
+                };
+                self.animation(&animation_path, &raw.ents[constraint], placement.modifier)
+            })
+            .transpose()?;
         let cloned = if let Some(modifier) = placement.modifier {
             let materials = self.archives.visual_materials(path, &self.assets[path].mesh)?;
             materials.iter().any(|path| self.skinned_materials[modifier].contains(&normalize(path)))
@@ -253,7 +259,7 @@ impl<'a> Decoder<'a> {
             shape,
             animation,
             phase: placement.phase,
-            placement: Iso::IDENTITY.inv_mul(&raw_base),
+            placement: if animation.is_some() { Iso::IDENTITY.inv_mul(&raw_base) } else { raw_base },
         });
         Ok(())
     }

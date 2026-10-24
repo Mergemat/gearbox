@@ -29,19 +29,25 @@ impl Built {
         for body in &self.instances {
             ensure!((body.shape as usize) < world.statics.shapes.len(), "missing kinematic shape");
             super::model::validate_bounds(&world.statics.shapes, body.shape)?;
-            ensure!((body.animation as usize) < self.animations.len(), "missing kinematic animation");
-            let key = (body.animation, body.phase.to_bits());
-            let animation = if let Some(index) = motions.iter().position(|&entry| entry == key) {
-                index as u32
-            } else {
-                let mut model = self.animations[body.animation as usize].clone();
-                let current = model.transform(0, body.phase);
-                let past = model.transform(-1_000_000, body.phase);
-                dyna.animations.push(Motion { model, phase: body.phase, current, past });
-                motions.push(key);
-                motions.len() as u32 - 1
-            };
-            let pose = body.placement * dyna.animations[animation as usize].current;
+            let animation = body
+                .animation
+                .map(|animation| {
+                    ensure!((animation as usize) < self.animations.len(), "missing kinematic animation");
+                    let key = (animation, body.phase.to_bits());
+                    if let Some(index) = motions.iter().position(|&entry| entry == key) {
+                        return Ok(index as u32);
+                    }
+                    let mut model = self.animations[animation as usize].clone();
+                    let current = model.transform(0, body.phase);
+                    let past = model.transform(-1_000_000, body.phase);
+                    dyna.animations.push(Motion { model, phase: body.phase, current, past });
+                    motions.push(key);
+                    Ok(motions.len() as u32 - 1)
+                })
+                .transpose()?;
+            let pose = animation.map_or(body.placement, |animation| {
+                body.placement * dyna.animations[animation as usize].current
+            });
             let item = create_item(world, state, body.shape, pose);
             let params = BodyParams {
                 model: body.model.clone(),
@@ -50,7 +56,13 @@ impl Built {
                 ..BodyParams::default()
             };
             let handle = dyna.register(params, pose, &mut DynaCollision { world, state, manager: 0 });
-            dyna.constraints.push(KinematicConstraint { body: handle, placement: body.placement, animation });
+            if let Some(animation) = animation {
+                dyna.constraints.push(KinematicConstraint {
+                    body: handle,
+                    placement: body.placement,
+                    animation,
+                });
+            }
             handles.push(handle);
         }
         Ok(handles)

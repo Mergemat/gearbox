@@ -15,7 +15,7 @@ use gearbox_engine::{
 pub struct Instance {
     pub model: DynaModel,
     pub shape: u32,
-    pub animation: u32,
+    pub animation: Option<u32>,
     pub phase: f32,
     pub placement: Iso,
 }
