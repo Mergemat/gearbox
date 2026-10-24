@@ -34,6 +34,40 @@ pub struct Sample {
     pub raw: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Motion {
+    pub sequence: u8,
+    pub position: [f32; 3],
+    pub angle: u16,
+    pub axis_heading: i16,
+    pub axis_pitch: i16,
+    pub speed: i16,
+    pub velocity_heading: i8,
+    pub velocity_pitch: i8,
+}
+
+impl Sample {
+    pub fn motion(&self) -> Option<Motion> {
+        motion(&self.raw)
+    }
+}
+
+fn motion(d: &[u8]) -> Option<Motion> {
+    let d = d.get(..69)?;
+    let f = |i: usize| f32::from_le_bytes([d[i], d[i + 1], d[i + 2], d[i + 3]]);
+    let i16_at = |i: usize| i16::from_le_bytes([d[i], d[i + 1]]);
+    Some(Motion {
+        sequence: d[43] >> 4,
+        position: [f(47), f(51), f(55)],
+        angle: u16::from_le_bytes([d[59], d[60]]),
+        axis_heading: i16_at(61),
+        axis_pitch: i16_at(63),
+        speed: i16_at(65),
+        velocity_heading: d[67] as i8,
+        velocity_pitch: d[68] as i8,
+    })
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct VehicleSample {
     pub position: [f32; 3],
@@ -117,8 +151,7 @@ fn parse_payload(buf: &[u8], version: u32) -> Result<RecordData> {
         let samples = raw
             .into_iter()
             .map(|(time_ms, raw)| {
-                let vehicle =
-                    (class_id == CLASS_VEHICLE_VIS && raw.len() >= 103).then(|| decode_vehicle(&raw));
+                let vehicle = (class_id == CLASS_VEHICLE_VIS).then(|| decode_vehicle(&raw)).flatten();
                 Sample { time_ms, vehicle, raw }
             })
             .collect();
@@ -168,20 +201,22 @@ fn read_columnar(r: &mut Reader) -> Result<Vec<(i32, Vec<u8>)>> {
     Ok(out)
 }
 
-fn decode_vehicle(d: &[u8]) -> VehicleSample {
+fn decode_vehicle(d: &[u8]) -> Option<VehicleSample> {
+    if d.len() < 103 {
+        return None;
+    }
+    let motion = motion(d)?;
     let u8_at = |i: usize| d[i];
-    let f = |i: usize| f32::from_le_bytes(d[i..i + 4].try_into().unwrap());
-    let i16_at = |i: usize| i16::from_le_bytes(d[i..i + 2].try_into().unwrap());
     let unit = |b: u8| b as f32 / 255.0;
     let signed = |b: u8| (b as f32 / 255.0 - 0.5) * 2.0;
 
-    let position = [f(47), f(51), f(55)];
-    let angle = u16::from_le_bytes([d[59], d[60]]) as f32 * PI / u16::MAX as f32;
-    let axis_heading = i16_at(61) as f32 * PI / i16::MAX as f32;
-    let axis_pitch = i16_at(63) as f32 / i16::MAX as f32 * PI / 2.0;
-    let speed = (i16_at(65) as f64 / 1000.0).exp() as f32;
-    let vel_heading = (d[67] as i8) as f32 / i8::MAX as f32 * PI;
-    let vel_pitch = (d[68] as i8) as f32 / i8::MAX as f32 * PI / 2.0;
+    let position = motion.position;
+    let angle = motion.angle as f32 * PI / u16::MAX as f32;
+    let axis_heading = motion.axis_heading as f32 * PI / i16::MAX as f32;
+    let axis_pitch = motion.axis_pitch as f32 / i16::MAX as f32 * PI / 2.0;
+    let speed = (motion.speed as f64 / 1000.0).exp() as f32;
+    let vel_heading = motion.velocity_heading as f32 / i8::MAX as f32 * PI;
+    let vel_pitch = motion.velocity_pitch as f32 / i8::MAX as f32 * PI / 2.0;
     let (sa, ca) = angle.sin_cos();
     let rotation = [
         sa * axis_pitch.cos() * axis_heading.cos(),
@@ -197,7 +232,7 @@ fn decode_vehicle(d: &[u8]) -> VehicleSample {
 
     let slip1 = u8_at(32);
     let slip2 = u8_at(33);
-    VehicleSample {
+    Some(VehicleSample {
         position,
         rotation,
         speed,
@@ -219,5 +254,5 @@ fn decode_vehicle(d: &[u8]) -> VehicleSample {
         wheel_dirt: [93, 95, 97, 99].map(|i| unit(u8_at(i))),
         reactor_flags: u8_at(89) & !0x1,
         sim_time_coef: unit(u8_at(102)),
-    }
+    })
 }

@@ -1,4 +1,4 @@
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result};
 use gearbox_engine::{
     Iso, Quat, Vec3,
     ghost::{CloneConfig, Playback, Sample},
@@ -22,29 +22,25 @@ pub fn build(map: &Map) -> Result<Playback> {
     playback.start_ms = entity.start_ms;
     playback.end_ms = entity.end_ms;
     for sample in &entity.samples {
-        let raw = &sample.raw;
-        ensure!(raw.len() >= 73, "author vehicle sample too short");
-        let short = |at| i16::from_le_bytes(raw[at..at + 2].try_into().unwrap());
-        let float = |at| f32::from_le_bytes(raw[at..at + 4].try_into().unwrap());
-        let heading = short(61) as f32 * PI / 32767.0;
-        let pitch = short(63) as f32 * FRAC_PI_2 / 32767.0;
-        let angle = u16::from_le_bytes(raw[59..61].try_into().unwrap()) as f32 * PI / 65535.0;
+        let motion = sample.motion().context("author vehicle sample too short")?;
+        let heading = motion.axis_heading as f32 * PI / 32767.0;
+        let pitch = motion.axis_pitch as f32 * FRAC_PI_2 / 32767.0;
+        let angle = motion.angle as f32 * PI / 65535.0;
         let (sh, ch) = sincos_precise(heading);
         let (sp, cp) = sincos_precise(pitch);
         let (sa, ca) = sincos_precise(angle);
         let rotation = Quat::new(ca, sa * (ch * cp), sa * (sh * cp), sa * sp).to_mat3();
-        let heading = raw[67] as i8 as f32 * PI / 127.0;
-        let pitch = raw[68] as i8 as f32 * FRAC_PI_2 / 127.0;
+        let heading = motion.velocity_heading as f32 * PI / 127.0;
+        let pitch = motion.velocity_pitch as f32 * FRAC_PI_2 / 127.0;
         let (sh, ch) = sincos_precise(heading);
         let (sp, cp) = sincos_precise(pitch);
-        let magnitude = short(65);
         let magnitude =
-            if magnitude == i16::MIN { 0.0 } else { ((magnitude as f32 / 1000.0) as f64).exp() as f32 };
+            if motion.speed == i16::MIN { 0.0 } else { ((motion.speed as f32 / 1000.0) as f64).exp() as f32 };
         playback.samples.push(Sample {
             time_ms: sample.time_ms,
-            sequence: raw[43] >> 4,
+            sequence: motion.sequence,
             contact: Contact {
-                pose: Iso::new(rotation, Vec3::new(float(47), float(51), float(55))),
+                pose: Iso::new(rotation, Vec3::from_array(motion.position)),
                 velocity: Vec3::new(magnitude * (ch * cp), magnitude * (sh * cp), magnitude * sp),
             },
         });
