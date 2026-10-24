@@ -88,19 +88,26 @@ impl Record {
                 };
             }
         }
-        let input_states = input_states(&inputs, countdown);
-        let starting_steer_limit = starting_steer_limit(ghost, &inputs).map(|limit| (countdown, limit));
+        let mut input_states = input_states(&inputs, countdown);
+        let first_tick = if inputs.start_offset_ms > 0 { (-COUNTDOWN_MS / 10) as usize } else { countdown };
+        let first = input_states[countdown];
+        input_states[first_tick..countdown].fill(first);
+        let starting_steer_limit = starting_steer_limit(ghost, &inputs).map(|limit| (first_tick, limit));
         let driven = inputs.ticks.iter().map(|t| Controls {
             gas: f32::from(u8::from(t.gas)),
             brake: f32::from(u8::from(t.brake)),
             steer: f32::from(t.steer) / 127.0,
         });
+        let mut controls: Vec<_> =
+            std::iter::repeat_n(Controls::default(), countdown).chain(driven).collect();
+        let first = controls[countdown];
+        controls[first_tick..countdown].fill(first);
         Ok(Self {
             run: Run {
                 t0,
                 actions,
                 seed: ghost.validation_seed.map(|s| s as u32).filter(|&s| s != 0),
-                controls: std::iter::repeat_n(Controls::default(), countdown).chain(driven).collect(),
+                controls,
             },
             respawns,
             time_ms,
