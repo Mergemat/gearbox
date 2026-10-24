@@ -63,13 +63,27 @@ impl<'a> Archives<'a> {
         }
         Ok(self.materials[&key].clone())
     }
-    fn store(&mut self, path: &str, prefab: Prefab) {
+    fn store(&mut self, path: &str, mut prefab: Prefab, ctx: &Ctx<'_>) -> Result<()> {
+        for entity in &mut prefab.ents {
+            if let NodeLink::Earlier(index) = entity.model {
+                let node = ctx
+                    .layout
+                    .nodes
+                    .iter()
+                    .find(|node| node.index == index)
+                    .with_context(|| format!("shared prefab model {index} absent: {path}"))?;
+                let mut reader = gearbox_gbx::reader::Reader::new(ctx.buf);
+                reader.skip(node.start)?;
+                entity.model = NodeLink::Inline(ctx.model(&mut reader, node.class_id)?);
+            }
+        }
         for (index, entity) in prefab.ents.iter().enumerate() {
             if let NodeLink::Inline(Model::Prefab(child)) = &entity.model {
-                self.store(&format!("{path}#ent{index}#prefab"), *child.clone());
+                self.store(&format!("{path}#ent{index}#prefab"), *child.clone(), ctx)?;
             }
         }
         self.prefabs.insert(path.to_owned(), prefab);
+        Ok(())
     }
     pub fn prefab(&mut self, path: &str) -> Result<Prefab> {
         if !self.prefabs.contains_key(path) {
@@ -78,11 +92,11 @@ impl<'a> Archives<'a> {
             let layout = gearbox_packs::nodes::layout(&buf)?;
             let ctx = Ctx { buf: &buf, layout: &layout, path: owner };
             if layout.head.class_id == 0x09145000 {
-                self.store(owner, gearbox_packs::prefab::read_prefab(&buf, &layout, owner)?);
+                self.store(owner, gearbox_packs::prefab::read_prefab(&buf, &layout, owner)?, &ctx)?;
             } else if let Some(node) = layout.nodes.iter().find(|n| n.class_id == 0x2f0bc000) {
                 for (index, model) in ctx.item_variants(node.start)?.into_iter().enumerate() {
                     if let NodeLink::Inline(Model::Prefab(prefab)) = model {
-                        self.store(&format!("{owner}#variant{index}"), *prefab);
+                        self.store(&format!("{owner}#variant{index}"), *prefab, &ctx)?;
                     }
                 }
             } else {
@@ -95,7 +109,7 @@ impl<'a> Archives<'a> {
                     r.skip(node.start)?;
                     let p = ctx.prefab(&mut r)?;
                     end = r.pos();
-                    self.store(&format!("{owner}#prefab{}", node.index), p);
+                    self.store(&format!("{owner}#prefab{}", node.index), p, &ctx)?;
                 }
             }
         }
@@ -105,4 +119,36 @@ impl<'a> Archives<'a> {
 
 fn archive_path(path: &str) -> &str {
     path.to_ascii_lowercase().find(".gbx#").map_or(path, |end| &path[..end + 4])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_dynamic_models_keep_each_entitys_parameters() {
+        let Some(root) = std::env::var_os("GBX_ITEM_MAPS") else { return };
+        let Some(game) = std::env::var_os("GBX_TEST_DATA") else { return };
+        let path = std::path::PathBuf::from(root).join("juxzJrfRESL1DHrYxULYVVjPKT2.Map.Gbx");
+        let map = gearbox_gbx::Map::parse(&std::fs::read(path).unwrap()).unwrap();
+        let packs = gearbox_packs::install::Game::locate(Some(&std::path::PathBuf::from(game).join("game")))
+            .unwrap()
+            .open()
+            .unwrap();
+        let file = map.embedded.files.iter().find(|f| f.path.contains("Firework200")).unwrap();
+        let buf = gearbox_packs::embedded::plain_gbx(&file.data).unwrap();
+        let layout = gearbox_packs::nodes::layout(&buf).unwrap();
+        let ctx = Ctx { buf: &buf, layout: &layout, path: &file.path };
+        let node = layout.nodes.iter().find(|node| node.class_id == 0x09145000).unwrap();
+        let mut reader = gearbox_gbx::reader::Reader::new(&buf);
+        reader.skip(node.start).unwrap();
+        let raw = ctx.prefab(&mut reader).unwrap();
+        let mut archives = Archives::new(&map, &packs);
+        let prefab = archives.prefab(&format!("{}#prefab1", file.path)).unwrap();
+        assert!(matches!(prefab.ents[6].model, NodeLink::Inline(Model::DynaObject(_))));
+        assert_eq!(prefab.ents[6].model, prefab.ents[4].model);
+        assert_eq!(prefab.ents[6].params, raw.ents[6].params);
+        assert_eq!(prefab.ents[6].rotation, raw.ents[6].rotation);
+        assert_eq!(prefab.ents[6].position, raw.ents[6].position);
+    }
 }

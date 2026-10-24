@@ -133,7 +133,11 @@ pub fn item_waypoint_tags(
             }
             let file = match map.embedded.item_file(name) {
                 Ok(embedded) => embedded.data.clone(),
-                Err(_) => files.read_path(&nadeo_item_path(assets, files, name)?)?,
+                Err(_) => {
+                    let env = gearbox_packs::packs::environment(item.collection.as_deref())
+                        .unwrap_or(super::packs::environment(map).map_err(anyhow::Error::msg)?);
+                    files.read_path(&nadeo_item_path(assets, files, name, env)?)?
+                }
             };
             let tag =
                 gearbox_packs::spawn::item_waypoint_tag(&file).with_context(|| format!("item {name}"))?;
@@ -143,9 +147,8 @@ pub fn item_waypoint_tags(
         .collect()
 }
 
-fn nadeo_item_path(assets: &Assets, files: &PackSet, name: &str) -> Result<String> {
-    let indexed =
-        assets.index.items.keys().find(|path| gearbox_packs::assets::block_name(path) == name).cloned();
+fn nadeo_item_path(assets: &Assets, files: &PackSet, name: &str, env: &str) -> Result<String> {
+    let indexed = assets.find_item(name, env).map(str::to_owned);
     let packed = || {
         files
             .files()
@@ -194,4 +197,24 @@ fn pose_bits((r, p): Transform) -> Result<[u32; 12]> {
 
 fn quat_matrix(q: [f32; 4]) -> [f32; 9] {
     gearbox_engine::Quat::from_array(q).to_mat3().to_array()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gearbox_packs::catalog::{Catalog, Index, Item};
+
+    #[test]
+    fn official_waypoints_ignore_embedded_items_with_the_same_basename() {
+        let Some(root) = std::env::var_os("GBX_TEST_DATA") else { return };
+        let game =
+            gearbox_packs::install::Game::locate(Some(&std::path::PathBuf::from(root).join("game"))).unwrap();
+        let packs = game.open().unwrap();
+        let mut index = Index::default();
+        let official = "Stadium\\Items\\Gate.Item.Gbx";
+        index.items.insert(official.into(), Item::default());
+        index.items.insert("Custom\\Gate.Item.Gbx".into(), Item::default());
+        let assets = Assets::from_catalog(Catalog { index, surfaces: Vec::new() });
+        assert_eq!(nadeo_item_path(&assets, &packs, "Gate", "Stadium").unwrap(), official);
+    }
 }
