@@ -154,6 +154,15 @@ impl Session {
         });
     }
 
+    pub(crate) fn respawn_at_pose(
+        &mut self,
+        now: u32,
+        pose: crate::Iso,
+        reset: crate::vehicle::spawn::Reset,
+    ) {
+        self.with_spawner(now, |spawner, vehicle, _| spawner.respawn_with(vehicle, pose, reset));
+    }
+
     fn with_spawner<R>(
         &mut self,
         now: u32,

@@ -19,7 +19,7 @@ use gearbox_engine::{
 pub use gearbox_packs::placement as place;
 use gearbox_packs::{assets::Assets, packs::PackSet};
 pub use model::{BlockKey, Catalog, Geometry as BlockGeometry};
-pub use spawn::{block_pose, item_pose, item_waypoint_tags};
+pub use spawn::{block_pose, item_poses, item_waypoint_tags};
 use std::collections::HashSet;
 
 #[derive(Clone, Debug, Default)]

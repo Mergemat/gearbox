@@ -155,19 +155,23 @@ fn nadeo_item_path(assets: &Assets, files: &PackSet, name: &str) -> Result<Strin
     indexed.or_else(packed).with_context(|| format!("item {name} absent from the packs"))
 }
 
-pub fn item_pose(
+pub fn item_poses(
     map: &gearbox_gbx::Map,
     item: &gearbox_gbx::map::Item,
     assets: &Assets,
     files: &PackSet,
-) -> Result<[u32; 12]> {
+) -> Result<([u32; 12], [u32; 12])> {
     let name = item.model.as_deref().context("waypoint item has no model")?;
     let local = if item.author.as_deref() == Some("Nadeo") {
         nadeo_item_spawn(assets, files, name)?
     } else {
         gearbox_packs::spawn::item_landmark(&map.embedded.item_file(name)?.data)?
     };
-    pose_bits(place::compose_iso(pose_transform(local), item_location(item)))
+    let local = pose_transform(local);
+    let frame = item_location(item);
+    let rotation = gearbox_engine::Mat3::from_array(frame.0);
+    let respawn_frame = (gearbox_engine::Quat::from_mat3(&rotation).to_mat3().to_array(), frame.1);
+    Ok((pose_bits(place::compose_iso(local, frame))?, pose_bits(place::compose_iso(local, respawn_frame))?))
 }
 
 fn pose_transform(bits: [u32; 12]) -> Transform {

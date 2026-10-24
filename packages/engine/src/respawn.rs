@@ -90,7 +90,9 @@ impl Session {
     pub fn respawn(&mut self, standing: bool) -> bool {
         let Some(respawns) = self.respawns.as_ref() else { return false };
         let Some(passed) = respawns.passed else { return self.respawn_at_start() };
-        let Some(respawn_point) = respawns.respawn_point.or_else(|| self.start_landmark()) else { return false };
+        let Some(respawn_point) = respawns.respawn_point.or_else(|| self.start_landmark()) else {
+            return false;
+        };
         let now = self.clock.now;
         let pending = respawns.respawn_at.filter(|&at| now < at && at < now + DELAY_MS);
         let mut target = if standing || pending.is_some() { respawn_point } else { passed };
@@ -142,7 +144,8 @@ impl Session {
             }
         }
         self.vehicle.control_flags = self.vehicle.control_flags & !0xd | 2;
-        self.respawn_at(now, landmark, Reset { keep_effects: true, ..Reset::FULL });
+        let pose = self.race.rules.waypoints[landmark as usize].respawn_pose;
+        self.respawn_at_pose(now, pose, Reset { keep_effects: true, ..Reset::FULL });
         let vehicle = &mut self.vehicle;
         if let Some(saved) = saved {
             copy_fields! { vehicle, saved.state, [

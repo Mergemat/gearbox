@@ -72,6 +72,7 @@ pub struct RaceWaypoint {
     pub group: u32,
     pub order: u32,
     pub pose: Iso,
+    pub respawn_pose: Iso,
     pub linked: bool,
     pub respawn: bool,
 }
