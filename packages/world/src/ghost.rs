@@ -1,8 +1,7 @@
 use anyhow::{Context, Result};
 use gearbox_engine::{
     Iso, Quat, Vec3,
-    ghost::{CloneConfig, Playback, Sample},
-    math::sincos_precise,
+    ghost::{CloneConfig, Playback, Sample, sin_cos},
     vehicle::ghost::Contact,
 };
 use gearbox_gbx::{Map, record::CLASS_VEHICLE_VIS};
@@ -26,14 +25,14 @@ pub fn build(map: &Map) -> Result<Playback> {
         let heading = motion.axis_heading as f32 * PI / 32767.0;
         let pitch = motion.axis_pitch as f32 * FRAC_PI_2 / 32767.0;
         let angle = motion.angle as f32 * PI / 65535.0;
-        let (sh, ch) = sincos_precise(heading);
-        let (sp, cp) = sincos_precise(pitch);
-        let (sa, ca) = sincos_precise(angle);
+        let (sh, ch) = sin_cos(heading);
+        let (sp, cp) = sin_cos(pitch);
+        let (sa, ca) = sin_cos(angle);
         let rotation = Quat::new(ca, sa * (ch * cp), sa * (sh * cp), sa * sp).to_mat3();
         let heading = motion.velocity_heading as f32 * PI / 127.0;
         let pitch = motion.velocity_pitch as f32 * FRAC_PI_2 / 127.0;
-        let (sh, ch) = sincos_precise(heading);
-        let (sp, cp) = sincos_precise(pitch);
+        let (sh, ch) = sin_cos(heading);
+        let (sp, cp) = sin_cos(pitch);
         let magnitude =
             if motion.speed == i16::MIN { 0.0 } else { ((motion.speed as f32 / 1000.0) as f64).exp() as f32 };
         playback.samples.push(Sample {

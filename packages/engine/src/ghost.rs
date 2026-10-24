@@ -1,4 +1,8 @@
-use crate::{Iso, Mat3, Quat, Vec3, math::sincos_precise, vehicle::ghost::Contact};
+mod trig;
+
+pub use trig::sin_cos;
+
+use crate::{Iso, Mat3, Quat, Vec3, vehicle::ghost::Contact};
 
 #[derive(Clone, Debug, Default)]
 pub struct Playback {
@@ -90,11 +94,11 @@ fn rotation(a: Mat3, b: Mat3, k: f32) -> Mat3 {
     let mut right = k;
     if 0.00001 < k.abs().max(left.abs()) * (1.0 - dot) {
         let angle = (dot as f64).acos() as f32;
-        let sin = sincos_precise(angle).0;
+        let sin = sin_cos(angle).0;
         if 0.00001 <= sin.abs() {
             let inv = 1.0 / sin;
-            left = sincos_precise(angle * left).0 * inv;
-            right = sincos_precise(angle * right).0 * inv;
+            left = sin_cos(angle * left).0 * inv;
+            right = sin_cos(angle * right).0 * inv;
         }
     }
     let q = std::array::from_fn(|i| right * qb[i] + left * qa[i]);
