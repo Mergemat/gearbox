@@ -93,10 +93,16 @@ impl Record {
         let first = input_states[countdown];
         input_states[first_tick..countdown].fill(first);
         let starting_steer_limit = starting_steer_limit(ghost, &inputs).map(|limit| (first_tick, limit));
-        let driven = inputs.ticks.iter().map(|t| Controls {
-            gas: f32::from(u8::from(t.gas)),
-            brake: f32::from(u8::from(t.brake)),
-            steer: f32::from(t.steer) / 127.0,
+        let driven = inputs.ticks.iter().enumerate().map(|(tick, t)| {
+            let index = countdown + tick;
+            if tick != 0 && input_states[index].bits.0 & 0xf != input_states[index - 1].bits.0 & 0xf {
+                return Controls::default();
+            }
+            Controls {
+                gas: f32::from(u8::from(t.gas)),
+                brake: f32::from(u8::from(t.brake)),
+                steer: f32::from(t.steer) / 127.0,
+            }
         });
         let mut controls: Vec<_> =
             std::iter::repeat_n(Controls::default(), countdown).chain(driven).collect();
