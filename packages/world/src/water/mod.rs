@@ -1,4 +1,5 @@
 mod terrain;
+pub use terrain::terrain_columns;
 
 use crate::statics::{BlockKey, MapAssets, place};
 use anyhow::{Context, Result, ensure};
@@ -133,7 +134,7 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Water> {
     let size = [map.size[0] as u32, map.size[2] as u32];
     let cells = size[0] as usize * size[1] as usize;
     let default_column = Column { surface: 0.0, bottom: 1.0, material: EMPTY };
-    let columns = terrain::columns(map, assets, &catalog, env, default_column)?;
+    let columns = terrain_columns(map, assets.packs, catalog.cell, env)?;
     if boxes.is_empty() && columns.iter().all(|column| column.surface <= column.bottom) {
         return Ok(water);
     }
