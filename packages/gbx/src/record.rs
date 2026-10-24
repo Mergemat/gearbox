@@ -20,6 +20,8 @@ pub struct RecordData {
 #[derive(Debug, Clone, Serialize)]
 pub struct Entity {
     pub class_id: u32,
+    pub start_ms: i32,
+    pub end_ms: i32,
     pub samples: Vec<Sample>,
 }
 
@@ -106,8 +108,8 @@ fn parse_payload(buf: &[u8], version: u32) -> Result<RecordData> {
         let ty = r.len()?;
         let class_id = *descs.get(ty).context("entity type out of range")?;
         r.i32()?;
-        r.i32()?;
-        r.i32()?;
+        let start_ms = r.i32()?;
+        let end_ms = r.i32()?;
         if version >= 6 {
             r.i32()?;
         }
@@ -120,7 +122,7 @@ fn parse_payload(buf: &[u8], version: u32) -> Result<RecordData> {
                 Sample { time_ms, vehicle, raw }
             })
             .collect();
-        entities.push(Entity { class_id, samples });
+        entities.push(Entity { class_id, start_ms, end_ms, samples });
 
         has_next = r.bool8()?;
         if version >= 2 {

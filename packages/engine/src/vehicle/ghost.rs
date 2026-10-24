@@ -49,8 +49,7 @@ fn overlap(bounds: Aabb, a: Iso, b: Iso) -> Option<(Vec3, f32)> {
         let p = (i + 1) % 3;
         let q = (i + 2) % 3;
         for j in 0..3 {
-            let u = (j + 1) % 3;
-            let v = (j + 2) % 3;
+            let [u, v] = [[1, 2], [0, 2], [0, 1]][j];
             let d = t[q] * r[p][j] - t[p] * r[q][j];
             let radius = h[p] * abs[q][j] + h[q] * abs[p][j] + h[u] * abs[i][v] + h[v] * abs[i][u];
             let separation = d.abs() - radius;
@@ -65,7 +64,11 @@ fn overlap(bounds: Aabb, a: Iso, b: Iso) -> Option<(Vec3, f32)> {
                 let separation = separation / length;
                 if best < separation * 1.05 {
                     axis = Vec3::new(axis.x / length, axis.y / length, axis.z / length);
-                    normal = a.rot.transform_y_first(axis);
+                    normal = Vec3::new(
+                        a.rot.rows[0].dot_yxz(axis),
+                        a.rot.rows[1].dot_yxz(axis),
+                        a.rot.rows[2].dot_yxz(axis),
+                    );
                     if d < 0.0 {
                         normal = -normal;
                     }
@@ -141,5 +144,46 @@ pub fn response(bounds: Aabb, body: &mut BodyState, contacts: &[Contact], remain
         true
     } else {
         maximum != 0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tilted_boxes_edge_contact() {
+        let bounds = Aabb::new(Vec3::new(0.0, 0.6, 0.1), Vec3::new(1.0, 0.6, 2.1));
+        let body = Iso::from_array([
+            -0.853163600,
+            -0.261091173,
+            0.451601535,
+            -0.344319761,
+            0.932203352,
+            -0.111538440,
+            -0.391862780,
+            -0.250655800,
+            -0.885220826,
+            752.428589,
+            29.2648754,
+            787.520264,
+        ]);
+        let other = Iso::from_array([
+            -0.869734108,
+            0.00307221711,
+            0.493511468,
+            -0.131082475,
+            0.962624729,
+            -0.237004206,
+            -0.475794464,
+            -0.270821303,
+            -0.836824894,
+            755.743652,
+            28.2769547,
+            785.662781,
+        ]);
+        let (normal, depth) = overlap(bounds, body, other).unwrap();
+        assert_eq!(normal, Vec3::new(0.8903426, 0.12066798, 0.43901017));
+        assert_eq!(depth, 0.04222954);
     }
 }

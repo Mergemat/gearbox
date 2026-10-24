@@ -11,6 +11,7 @@ pub struct Reader<'a> {
     id_version: Option<u32>,
     ids: Vec<String>,
     nodes: std::collections::HashSet<i32>,
+    encapsulated: bool,
 }
 
 pub enum NodeRef {
@@ -21,7 +22,14 @@ pub enum NodeRef {
 
 impl<'a> Reader<'a> {
     pub fn new(buf: &'a [u8]) -> Self {
-        Self { buf, pos: 0, id_version: None, ids: Vec::new(), nodes: Default::default() }
+        Self {
+            buf,
+            pos: 0,
+            id_version: None,
+            ids: Vec::new(),
+            nodes: Default::default(),
+            encapsulated: false,
+        }
     }
 
     pub fn buf(&self) -> &'a [u8] {
@@ -123,7 +131,9 @@ impl<'a> Reader<'a> {
 
     pub fn encapsulated(&mut self) -> Result<Reader<'a>> {
         ensure!(self.u32()? == 0, "unsupported encapsulation version");
-        Ok(Reader::new(self.data()?))
+        let mut r = Reader::new(self.data()?);
+        r.encapsulated = true;
+        Ok(r)
     }
 
     pub fn id(&mut self) -> Result<Option<String>> {
@@ -209,6 +219,9 @@ impl<'a> Reader<'a> {
         let index = self.i32()?;
         if index == -1 {
             return Ok(NodeRef::Null);
+        }
+        if self.encapsulated {
+            return Ok(NodeRef::New(index as u32));
         }
         if !self.nodes.insert(index) {
             return Ok(NodeRef::Shared(index));

@@ -8,6 +8,7 @@ mod embedded;
 pub use embedded::{EmbeddedData, EmbeddedFile, EmbeddedItemModel};
 mod items;
 pub(crate) mod media;
+mod metadata;
 
 pub const CLASS_MAP: u32 = 0x0304_3000;
 const CLASS_COLLECTOR_LIST: u32 = 0x0301_B000;
@@ -30,12 +31,22 @@ pub struct Map {
     pub flags: Option<u32>,
     pub size: [i32; 3],
     pub author_time_ms: Option<i32>,
+    #[serde(skip)]
+    pub author_ghost: Option<crate::replay::Ghost>,
+    pub author_clones: Vec<AuthorClone>,
+    pub clones_enabled: bool,
     pub lap_race: bool,
     pub laps: u32,
     pub blocks: Vec<Block>,
     pub baked_blocks: Vec<Block>,
     pub items: Vec<Item>,
     pub embedded: EmbeddedData,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct AuthorClone {
+    pub offset_ms: i32,
+    pub speed: f32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -116,7 +127,7 @@ impl Map {
                             Ok(true)
                         })
                     })?;
-                    node(r, CLASS_PARAMETERS, |r| parameters(r, &mut map.author_time_ms))?;
+                    node(r, CLASS_PARAMETERS, |r| parameters(r, &mut map))?;
                     r.i32()?;
                 }
                 0x0304_3018 => {
@@ -157,6 +168,7 @@ impl Map {
                     r.bool32()?;
                 }
                 0x0304_3040 => map.items = items::read(r, map.blocks.len())?,
+                0x0304_3044 => (map.clones_enabled, map.author_clones) = metadata::read(r)?,
                 0x0304_3048 => {
                     ensure!(r.u32()? == 0, "baked blocks version");
                     ensure!(r.u32()? == 6, "baked blocks block version");
@@ -211,7 +223,7 @@ fn node(r: &mut Reader, class: u32, body: impl FnOnce(&mut Reader) -> Result<()>
     }
 }
 
-fn parameters(r: &mut Reader, author_time: &mut Option<i32>) -> Result<()> {
+fn parameters(r: &mut Reader, map: &mut Map) -> Result<()> {
     r.chunks("CGameCtnChallengeParameters", |r, id, _| {
         match id {
             0x0305_B000 => r.skip(32)?,
@@ -224,7 +236,7 @@ fn parameters(r: &mut Reader, author_time: &mut Option<i32>) -> Result<()> {
             0x0305_B003 => r.skip(24)?,
             0x0305_B004 => {
                 r.skip(12)?;
-                *author_time = r.opt_i32()?;
+                map.author_time_ms = r.opt_i32()?;
                 r.u32()?;
             }
             0x0305_B005 => r.skip(12)?,
@@ -237,10 +249,24 @@ fn parameters(r: &mut Reader, author_time: &mut Option<i32>) -> Result<()> {
             0x0305_B00A => {
                 r.string()?;
                 r.skip(12)?;
-                *author_time = r.opt_i32()?;
+                map.author_time_ms = r.opt_i32()?;
                 r.skip(8)?;
             }
-            0x0305_B00D => media::node(r)?,
+            0x0305_B00D => match r.node_ref()? {
+                NodeRef::Null | NodeRef::Shared(_) => {}
+                NodeRef::New(class) => {
+                    ensure!(class == crate::replay::CLASS_GHOST, "unexpected author ghost class {class:#x}");
+                    map.author_ghost = Some(crate::replay::ghost(r)?);
+                }
+            },
+            0x0305_B00F => {
+                let mut e = r.encapsulated()?;
+                let class = e.u32()?;
+                if class != u32::MAX {
+                    ensure!(class == crate::replay::CLASS_GHOST, "unexpected author ghost class {class:#x}");
+                    map.author_ghost = Some(crate::replay::ghost(&mut e)?);
+                }
+            }
             _ => return Ok(false),
         }
         Ok(true)

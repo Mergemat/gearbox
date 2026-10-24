@@ -1,6 +1,7 @@
 pub mod bodies;
 pub mod car;
 pub mod gameplay;
+pub mod ghost;
 pub mod paths;
 pub mod session;
 pub mod statics;

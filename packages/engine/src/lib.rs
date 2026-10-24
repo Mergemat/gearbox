@@ -16,6 +16,7 @@ pub mod arrays;
 pub mod collision;
 pub mod consumer;
 pub mod dyna;
+pub mod ghost;
 pub mod race;
 pub mod respawn;
 pub mod session;

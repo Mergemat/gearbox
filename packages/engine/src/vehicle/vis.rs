@@ -300,7 +300,7 @@ pub fn vehicle_vis(vehicle: &mut Vehicle, dyna: &Dyna, config: &Config<'_>, inde
     let mut visual = vehicle.visual[index].clone();
     vis_state(vehicle, config, velocity, &mut visual);
     if super::race_flags::RaceFlags(vehicle.flags).contains(super::race_flags::RaceFlags::GHOST_RESPONSE) {
-        todo!("visual speed from quantised velocity");
+        visual.speed_kmh = crate::numeric::lroundf(visual.forward_speed * KMH) as u32;
     }
     let force = vehicle.pending_contact_force;
     let squared = (force.x * force.x + force.y * force.y) + force.z * force.z;

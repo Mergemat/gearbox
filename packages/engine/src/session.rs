@@ -76,6 +76,7 @@ pub struct SessionConfig {
     pub options: arena::ArenaOptions,
     pub grid: ByteGrid,
     pub initial_pose: Iso,
+    pub ghosts: crate::ghost::Playback,
 }
 
 impl SessionConfig {

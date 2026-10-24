@@ -42,7 +42,8 @@ pub fn open(map: &gearbox_gbx::Map, packs: &PackSet, options: OpenOptions) -> Re
         spawn_car(&car, &gameplay, clock.now, &mut world, &mut state, &mut dyna)?;
     let models = load_models(packs, car, assets, &mut world, &mut state)?;
     state.scene.push(gameplay.scene);
-    let config = session_config(models, &gameplay.settings, gameplay.initial_pose);
+    let mut config = session_config(models, &gameplay.settings, gameplay.initial_pose);
+    config.ghosts = crate::ghost::build(map)?;
     Ok(Session {
         world: Arc::new(world),
         state,
@@ -174,6 +175,7 @@ fn load_models(
 
 fn session_config(models: [Option<VehicleModel>; 4], rules: &RaceRules, initial_pose: Iso) -> SessionConfig {
     SessionConfig {
+        ghosts: Default::default(),
         models,
         manager: 0,
         scene: 0,

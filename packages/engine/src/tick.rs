@@ -97,7 +97,10 @@ impl Session {
     fn vehicle_substeps(&mut self, now: u32) -> Vec<step::CollisionFrame> {
         self.continuous();
         self.rebuild_entries();
-        step::substeps(&mut self.step_context(now))
+        let contacts = self.config.ghosts.contacts(self.clock.race_ms as f32 * 0.001);
+        let mut context = self.step_context(now);
+        context.ghost_contacts = &contacts;
+        step::substeps(&mut context)
     }
 
     fn dyna_step(&mut self, now: u32) {
