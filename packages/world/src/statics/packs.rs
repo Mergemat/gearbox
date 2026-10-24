@@ -525,7 +525,11 @@ impl<'a> PackSource<'a> {
             };
             out.push((placed.role, shape, gearbox_engine::Iso::from_array(transform.map(f32::from_bits))));
         }
-        crate::sort_by_key(&mut out, |p| matches!(p.0, Role::Waypoint(_)));
+        crate::sort_by_key(&mut out, |p| match p.0 {
+            Role::Waypoint(_) => 1,
+            Role::SpecialTrigger => 2,
+            _ => 0,
+        });
         let empty = models.iter().all(|m| matches!(m, gearbox_packs::catalog::EntModel::None));
         if out.is_empty() && !dynamic && !empty {
             return Err(format!(
