@@ -14,7 +14,9 @@ type Transform = ([f32; 9], [f32; 3]);
 
 pub fn item_location(item: &gearbox_gbx::map::Item) -> Transform {
     let frame = place::free_location_variant(item.position, item.yaw_pitch_roll, Default::default());
-    place::compose_iso(([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0], item.pivot), frame)
+    let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    let frame = place::compose_iso(frame, (identity, [0.0; 3]));
+    place::compose_iso((identity, item.pivot), frame)
 }
 
 fn prefab_spawns(

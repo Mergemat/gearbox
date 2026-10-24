@@ -533,6 +533,7 @@ impl<'a> PackSource<'a> {
                  (mesh-collidable Solid2Model or unsupported item model)",
             ));
         }
+        out.retain(|(role, ..)| !matches!(role, Role::Waypoint(0 | 3 | 5)));
         Ok(out)
     }
 

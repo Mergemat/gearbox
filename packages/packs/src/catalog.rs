@@ -825,7 +825,7 @@ impl Crawler<'_> {
                 if s.surf.is_some() {
                     let shape = self.add_surface(s, format!("{path}#trigger"), &l.head, path);
                     models.push(EntModel::Trigger {
-                        waypoint: Some(u32::MAX),
+                        waypoint: Some(crate::spawn::item_waypoint_type(&buf, &l)?),
                         shape: Some(shape),
                         mergeable: false,
                         loc: None,
@@ -906,7 +906,7 @@ impl Crawler<'_> {
                     *x = r.f32()?;
                 }
                 models.push(EntModel::Trigger {
-                    waypoint: Some(u32::MAX),
+                    waypoint: Some(crate::spawn::item_waypoint_type(&buf, &l)?),
                     shape: Some(shape),
                     mergeable: false,
                     loc: Some(loc),
