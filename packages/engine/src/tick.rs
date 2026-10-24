@@ -89,7 +89,7 @@ impl Session {
             assets: model.view(),
             tick: now,
             dt: DT,
-            ghost_contacts: 0,
+            ghost_contacts: &[],
             events: None,
         }
     }

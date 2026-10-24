@@ -62,6 +62,7 @@ pub struct ForceGeometry {
     pub mass: f32,
     pub center_of_mass: Vec3,
     pub water_box: Aabb,
+    pub contact_box: Aabb,
     pub wheels: Vec<WheelDefinition>,
     pub materials: Vec<SurfaceMaterial>,
     pub material14_alias: bool,

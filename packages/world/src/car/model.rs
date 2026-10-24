@@ -77,6 +77,7 @@ pub(super) fn prepare(
         center_of_mass: body.center(),
         reference_center: body.center(),
         water_box,
+        contact_box: shape.water_bounds,
         wheels,
         materials: auxiliary
             .material_slots

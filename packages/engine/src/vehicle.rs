@@ -5,6 +5,7 @@ pub mod contacts;
 pub mod effects;
 pub mod flags;
 pub mod forces;
+pub mod ghost;
 pub mod impacts;
 pub mod integrate;
 pub mod maintenance;

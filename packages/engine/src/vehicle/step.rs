@@ -51,7 +51,7 @@ pub struct StepCtx<'a> {
     pub assets: Assets<'a>,
     pub tick: u32,
     pub dt: f32,
-    pub ghost_contacts: usize,
+    pub ghost_contacts: &'a [super::ghost::Contact],
     pub events: Option<&'a mut Vec<Event>>,
 }
 
@@ -108,19 +108,16 @@ pub fn substeps(ctx: &mut StepCtx<'_>) -> Vec<CollisionFrame> {
     if ctx.vehicle.body == u32::MAX || !ctx.dyna.is_dynamic_body(BodyHandle(ctx.vehicle.body)) {
         return Vec::new();
     }
-    if ctx.ghost_contacts != 0 {
-        todo!("ghost contact response");
-    }
     let plan = schedule(ctx.vehicle, ctx.assets.tuning, ctx.dyna, ctx.dt);
     let mut remaining = plan.remaining;
     let mut now = ctx.tick as i64 * NS_PER_MS;
     let mut frames = Vec::with_capacity(plan.repeats as usize + 1);
     for _ in 0..plan.repeats {
         remaining -= plan.substep;
-        frames.push(substep(ctx, now, plan.substep));
+        frames.push(substep(ctx, now, plan.substep, remaining));
         now = now.wrapping_sub(plan.clock_step);
     }
-    frames.push(substep(ctx, now, remaining));
+    frames.push(substep(ctx, now, remaining, 0.0));
     let flags = contacts::ContactFlags(ctx.vehicle.flags);
     if flags.contains(contacts::ContactFlags::OPPOSING)
         && flags.contains(contacts::ContactFlags::SOLVED)
@@ -143,12 +140,20 @@ fn lock_vehicle(ctx: &mut StepCtx<'_>) {
     }
 }
 
-fn substep(ctx: &mut StepCtx<'_>, now: i64, dt: f32) -> CollisionFrame {
+fn substep(ctx: &mut StepCtx<'_>, now: i64, dt: f32, remaining: f32) -> CollisionFrame {
+    let handle = BodyHandle(ctx.vehicle.body);
+    if super::ghost::response(
+        ctx.assets.geometry.contact_box,
+        &mut ctx.dyna.body_mut(handle).state,
+        ctx.ghost_contacts,
+        remaining,
+    ) {
+        ctx.vehicle.flags |= 1 << 16;
+    }
     ctx.dyna.kinematic_update(
         now,
         &mut DynaCollision { world: ctx.world, state: ctx.state, manager: ctx.manager },
     );
-    let handle = BodyHandle(ctx.vehicle.body);
     ctx.dyna.clear_acc(handle);
     let scale = ctx.dyna.body(handle).record.coefficient * ctx.assets.geometry.mass;
     ctx.dyna.add_force(handle, scale * ctx.dyna.gravity);
