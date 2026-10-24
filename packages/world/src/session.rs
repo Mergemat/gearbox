@@ -8,6 +8,7 @@ use anyhow::Result;
 use gearbox_engine::{
     Iso, State, World, arena,
     dyna::Dyna,
+    ghost::Playback,
     race::RaceRules,
     session::{Clock, Session, SessionConfig, VehicleAssets, VehicleModel},
     vehicle::{Vehicle, spawn, vis},
@@ -42,8 +43,8 @@ pub fn open(map: &gearbox_gbx::Map, packs: &PackSet, options: OpenOptions) -> Re
         spawn_car(&car, &gameplay, clock.now, &mut world, &mut state, &mut dyna)?;
     let models = load_models(packs, car, assets, &mut world, &mut state)?;
     state.scene.push(gameplay.scene);
-    let mut config = session_config(models, &gameplay.settings, gameplay.initial_pose);
-    config.ghosts = crate::ghost::build(map)?;
+    let ghosts = crate::ghost::build(map)?;
+    let config = session_config(models, &gameplay.settings, gameplay.initial_pose, ghosts);
     Ok(Session {
         world: Arc::new(world),
         state,
@@ -173,9 +174,13 @@ fn load_models(
     Ok(models)
 }
 
-fn session_config(models: [Option<VehicleModel>; 4], rules: &RaceRules, initial_pose: Iso) -> SessionConfig {
+fn session_config(
+    models: [Option<VehicleModel>; 4],
+    rules: &RaceRules,
+    initial_pose: Iso,
+    ghosts: Playback,
+) -> SessionConfig {
     SessionConfig {
-        ghosts: Default::default(),
         models,
         manager: 0,
         scene: 0,
@@ -184,6 +189,7 @@ fn session_config(models: [Option<VehicleModel>; 4], rules: &RaceRules, initial_
         options: arena::ArenaOptions(rules.flags),
         grid: Default::default(),
         initial_pose,
+        ghosts,
     }
 }
 

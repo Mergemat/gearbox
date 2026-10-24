@@ -12,11 +12,12 @@ fn model_file(packs: &PackSet, path: &str) -> Result<Vec<u8>> {
 
 type Transform = ([f32; 9], [f32; 3]);
 
+const IDENTITY: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+
 pub fn item_location(item: &gearbox_gbx::map::Item) -> Transform {
     let frame = place::free_location_variant(item.position, item.yaw_pitch_roll, Default::default());
-    let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
-    let frame = place::compose_iso(frame, (identity, [0.0; 3]));
-    place::compose_iso((identity, item.pivot), frame)
+    let frame = place::compose_iso(frame, (IDENTITY, [0.0; 3]));
+    place::compose_iso((IDENTITY, item.pivot), frame)
 }
 
 fn prefab_spawns(
@@ -65,7 +66,7 @@ fn nadeo_item_spawn(assets: &Assets, files: &PackSet, name: &str) -> Result<[u32
             spawns.extend(prefab_spawns(assets, files, path, &mut Vec::new())?);
         }
     }
-    let (r, p) = spawns.first().copied().unwrap_or(([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0], [0.0; 3]));
+    let (r, p) = spawns.first().copied().unwrap_or((IDENTITY, [0.0; 3]));
     Ok(std::array::from_fn(|i| if i < 9 { r[i] } else { p[i - 9] }.to_bits()))
 }
 
