@@ -223,6 +223,14 @@ fn node(r: &mut Reader, class: u32, body: impl FnOnce(&mut Reader) -> Result<()>
     }
 }
 
+fn author_ghost(r: &mut Reader, ghost: &mut Option<crate::replay::Ghost>) -> Result<()> {
+    if let NodeRef::New(class) = r.node_ref()? {
+        ensure!(class == crate::replay::CLASS_GHOST, "unexpected author ghost class {class:#x}");
+        *ghost = Some(crate::replay::ghost(r)?);
+    }
+    Ok(())
+}
+
 fn parameters(r: &mut Reader, map: &mut Map) -> Result<()> {
     r.chunks("CGameCtnChallengeParameters", |r, id, _| {
         match id {
@@ -252,21 +260,8 @@ fn parameters(r: &mut Reader, map: &mut Map) -> Result<()> {
                 map.author_time_ms = r.opt_i32()?;
                 r.skip(8)?;
             }
-            0x0305_B00D => match r.node_ref()? {
-                NodeRef::Null | NodeRef::Shared(_) => {}
-                NodeRef::New(class) => {
-                    ensure!(class == crate::replay::CLASS_GHOST, "unexpected author ghost class {class:#x}");
-                    map.author_ghost = Some(crate::replay::ghost(r)?);
-                }
-            },
-            0x0305_B00F => {
-                let mut e = r.encapsulated()?;
-                let class = e.u32()?;
-                if class != u32::MAX {
-                    ensure!(class == crate::replay::CLASS_GHOST, "unexpected author ghost class {class:#x}");
-                    map.author_ghost = Some(crate::replay::ghost(&mut e)?);
-                }
-            }
+            0x0305_B00D => author_ghost(r, &mut map.author_ghost)?,
+            0x0305_B00F => author_ghost(&mut r.encapsulated()?, &mut map.author_ghost)?,
             _ => return Ok(false),
         }
         Ok(true)
