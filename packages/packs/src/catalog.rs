@@ -246,6 +246,7 @@ struct Crawler<'a> {
     shape_files: BTreeMap<String, Option<usize>>,
     static_files: BTreeMap<String, StaticFile>,
     shared_statics: BTreeMap<(String, u32), EntModel>,
+    shared_models: BTreeMap<(String, u32), EntModel>,
     id_base: usize,
 }
 
@@ -718,7 +719,7 @@ impl Crawler<'_> {
     fn prefab(&mut self, path: &str) -> Result<()> {
         let (buf, l) = self.read(path)?;
         let p = crate::prefab::read_prefab(&buf, &l, path)?;
-        self.store_prefab(path, p, path, &l.head);
+        self.store_prefab(path, p, path, &l.head)?;
         Ok(())
     }
 
@@ -728,45 +729,15 @@ impl Crawler<'_> {
         p: crate::prefab::Prefab,
         owner: &str,
         head: &crate::unpack::GbxHead,
-    ) -> EntModel {
-        let path = owner;
+    ) -> Result<EntModel> {
         let mut empty = true;
         let mut ents = Vec::with_capacity(p.ents.len());
         for (k, e) in p.ents.into_iter().enumerate() {
-            let shared = matches!(e.model, NodeLink::Earlier(_));
-            let model = match e.model {
-                NodeLink::Null | NodeLink::Earlier(_) => EntModel::None,
-                NodeLink::External(x) => self.external_model(&x),
-                NodeLink::Inline(Model::Prefab(p)) => {
-                    let nested = format!("{name}#ent{k}#prefab");
-                    self.store_prefab(&nested, *p, owner, head)
-                }
-                NodeLink::Inline(Model::StaticObject(so)) => {
-                    self.static_object(so, path, head, format!("{name}#ent{k}"), MeshCollision::Ignored)
-                }
-                NodeLink::Inline(Model::Surface(s)) => {
-                    EntModel::Surface(self.add_surface(s, format!("{name}#ent{k}"), head, path))
-                }
-                NodeLink::Inline(Model::DynaObject(d)) => {
-                    self.dyna(d, path, head, format!("{name}#ent{k}"), None)
-                }
-                NodeLink::Inline(Model::Trigger { waypoint, shape, mergeable }) => {
-                    let shape = match shape {
-                        NodeLink::Inline(s) => {
-                            Some(self.add_surface(s, format!("{name}#ent{k}#trigger"), head, path))
-                        }
-                        NodeLink::External(p) => self.shape_file(&p),
-                        _ => None,
-                    };
-                    EntModel::Trigger { waypoint, shape, mergeable, loc: None }
-                }
-                NodeLink::Inline(Model::Kinematic(_)) => {
-                    EntModel::Other { class_id: Some(0x2f0ca000), path: None }
-                }
-                NodeLink::Inline(Model::Other(0x0915c000 | 0x09160000)) => EntModel::None,
-                NodeLink::Inline(Model::Other(c)) => EntModel::Other { class_id: Some(c), path: None },
-            };
-            empty &= !shared && matches!(model, EntModel::None);
+            let model = self.store_model(e.model, &format!("{name}#ent{k}"), owner, head)?;
+            if e.model_index != u32::MAX {
+                self.shared_models.insert((norm(owner), e.model_index), model.clone());
+            }
+            empty &= matches!(model, EntModel::None);
             ents.push(Ent {
                 model,
                 rotation: e.rotation,
@@ -776,7 +747,67 @@ impl Crawler<'_> {
             });
         }
         self.cat.index.prefabs.insert(name.to_string(), Prefab { ents });
-        if empty { EntModel::None } else { EntModel::Prefab(name.to_string()) }
+        Ok(if empty { EntModel::None } else { EntModel::Prefab(name.to_string()) })
+    }
+
+    fn shared_model(&mut self, owner: &str, index: u32) -> Result<EntModel> {
+        let key = (norm(owner), index);
+        if let Some(model) = self.shared_models.get(&key) {
+            return Ok(model.clone());
+        }
+        let (buf, layout) = self.read(owner)?;
+        let node = layout
+            .nodes
+            .iter()
+            .find(|node| node.index == index)
+            .ok_or_else(|| anyhow::anyhow!("missing model node {index}"))?;
+        let ctx = Ctx { buf: &buf, layout: &layout, path: owner };
+        let mut reader = gearbox_gbx::reader::Reader::new(&buf);
+        reader.skip(node.start)?;
+        let model = ctx.model(&mut reader, node.class_id)?;
+        let model =
+            self.store_model(NodeLink::Inline(model), &format!("{owner}#node{index}"), owner, &layout.head)?;
+        self.shared_models.insert(key, model.clone());
+        Ok(model)
+    }
+
+    fn store_model(
+        &mut self,
+        link: NodeLink<Model>,
+        source: &str,
+        owner: &str,
+        head: &crate::unpack::GbxHead,
+    ) -> Result<EntModel> {
+        let path = owner;
+        Ok(match link {
+            NodeLink::Null => EntModel::None,
+            NodeLink::Earlier(index) => self.shared_model(owner, index)?,
+            NodeLink::External(x) => self.external_model(&x),
+            NodeLink::Inline(Model::Prefab(p)) => {
+                let nested = format!("{source}#prefab");
+                self.store_prefab(&nested, *p, owner, head)?
+            }
+            NodeLink::Inline(Model::StaticObject(so)) => {
+                self.static_object(so, path, head, source.to_string(), MeshCollision::Ignored)
+            }
+            NodeLink::Inline(Model::Surface(s)) => {
+                EntModel::Surface(self.add_surface(s, source.to_string(), head, path))
+            }
+            NodeLink::Inline(Model::DynaObject(d)) => self.dyna(d, path, head, source.to_string(), None),
+            NodeLink::Inline(Model::Trigger { waypoint, shape, mergeable }) => {
+                let shape = match shape {
+                    NodeLink::Inline(s) => Some(self.add_surface(s, format!("{source}#trigger"), head, path)),
+                    NodeLink::External(p) => self.shape_file(&p),
+                    _ => None,
+                };
+                EntModel::Trigger { waypoint, shape, mergeable, loc: None }
+            }
+            NodeLink::Inline(Model::Kinematic(_)) => {
+                EntModel::Other { class_id: Some(0x2f0ca000), path: None }
+            }
+            NodeLink::Inline(Model::Other(0x0915c000 | 0x09160000)) => EntModel::None,
+            NodeLink::Inline(Model::Other(c)) => EntModel::Other { class_id: Some(c), path: None },
+        })
     }
 
     fn item(&mut self, path: &str) -> Result<Item> {
@@ -855,7 +886,7 @@ impl Crawler<'_> {
                     )),
                     NodeLink::Inline(Model::Prefab(prefab)) => {
                         let name = format!("{path}#variant{}", variants.len());
-                        self.store_prefab(&name, *prefab, path, &l.head)
+                        self.store_prefab(&name, *prefab, path, &l.head)?
                     }
                     _ => bail!("unsupported inline item variant"),
                 };
@@ -923,7 +954,7 @@ impl Crawler<'_> {
             let p = ctx.prefab(&mut r)?;
             prefab_end = r.pos();
             let name = format!("{path}#prefab{}", n.index);
-            models.push(self.store_prefab(&name, p, path, &l.head));
+            models.push(self.store_prefab(&name, p, path, &l.head)?);
         }
         let mut refs: Vec<String> =
             l.head.ref_files.keys().filter_map(|&i| l.head.ref_path(path, i)).collect();
@@ -1106,6 +1137,7 @@ pub fn crawl(set: &PackSet, paks: &[&str]) -> Result<Catalog> {
         shape_files: Default::default(),
         static_files: Default::default(),
         shared_statics: Default::default(),
+        shared_models: Default::default(),
         id_base: 0,
     };
     let mut block_files = Vec::new();
@@ -1270,6 +1302,7 @@ pub fn crawl_embedded(
             .collect(),
         static_files: Default::default(),
         shared_statics: Default::default(),
+        shared_models: Default::default(),
         id_base,
     };
     for p in known.prefabs.values() {

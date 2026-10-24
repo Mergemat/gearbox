@@ -43,6 +43,7 @@ pub struct DynaObject {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ent {
+    pub model_index: u32,
     pub model: NodeLink<Model>,
     pub rotation: [f32; 4],
     pub position: [f32; 3],
@@ -237,6 +238,7 @@ impl Ctx<'_> {
         r.i32()?;
         let mut ents = Vec::with_capacity(n);
         for _ in 0..n {
+            let model_index = r.peek_u32().ok_or_else(|| anyhow::anyhow!("missing prefab model"))?;
             let model = self.noderef(r, |c, r, class| c.model(r, class))?;
             let rotation = [r.f32()?, r.f32()?, r.f32()?, r.f32()?];
             let position = r.vec3()?;
@@ -249,7 +251,7 @@ impl Ctx<'_> {
                 Some((pc, r.buf()[start..r.pos()].to_vec()))
             };
             let name = r.string()?;
-            ents.push(Ent { model, rotation, position, params, name });
+            ents.push(Ent { model_index, model, rotation, position, params, name });
         }
         Ok(Prefab { version, url, ents })
     }
