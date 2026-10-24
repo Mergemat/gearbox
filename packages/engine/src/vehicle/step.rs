@@ -148,7 +148,7 @@ fn substep(ctx: &mut StepCtx<'_>, now: i64, dt: f32, remaining: f32) -> Collisio
         ctx.ghost_contacts,
         remaining,
     ) {
-        ctx.vehicle.flags |= 1 << 16;
+        ctx.vehicle.flags |= super::race_flags::RaceFlags::GHOST_RESPONSE.0;
     }
     ctx.dyna.kinematic_update(
         now,
