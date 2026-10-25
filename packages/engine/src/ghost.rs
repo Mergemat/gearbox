@@ -100,7 +100,7 @@ fn rotation(a: Mat3, b: Mat3, k: f32) -> Mat3 {
     let mut left = 1.0 - k;
     let mut right = k;
     if 0.00001 < k.abs().max(left.abs()) * (1.0 - dot) {
-        let angle = (dot as f64).acos() as f32;
+        let angle = trig::acos(dot);
         let sin = sin_cos(angle).0;
         if 0.00001 <= sin.abs() {
             let inv = 1.0 / sin;

@@ -2,6 +2,42 @@ fn d(bits: u64) -> f64 {
     f64::from_bits(bits)
 }
 
+pub(super) fn acos(x: f32) -> f32 {
+    let ax = x.abs();
+    if ax < f32::from_bits(0x3280_0000) {
+        return std::f32::consts::FRAC_PI_2;
+    }
+    if ax >= 1.0 || x.is_nan() {
+        return if x == 1.0 {
+            0.0
+        } else if x == -1.0 {
+            std::f32::consts::PI
+        } else {
+            f32::NAN
+        };
+    }
+    let z = if ax >= 0.5 { (1.0 - ax) * 0.5 } else { ax * ax };
+    let numerator =
+        (f32::from_bits(0xbc5b_3fe1) - z * f32::from_bits(0x3b81_ce6b)) * z - f32::from_bits(0x3d67_8bdd);
+    let numerator = (numerator * z + f32::from_bits(0x3e3c_94dc)) * z;
+    let denominator = f32::from_bits(0x3f8d_6fa5) - z * f32::from_bits(0x3f56_1f0d);
+    let r = numerator / denominator;
+    let tail = d(0x3c91_a626_3314_5c07);
+    if ax < 0.5 {
+        (std::f64::consts::FRAC_PI_2 - (x as f64 - (tail - (r * x) as f64))) as f32
+    } else {
+        let s = z.sqrt();
+        if x < 0.0 {
+            let correction = ((r * s) as f64 - tail) + s as f64;
+            (std::f64::consts::PI - (correction + correction)) as f32
+        } else {
+            let head = f32::from_bits(s.to_bits() & 0xffff_0000);
+            let correction = (z - head * head) / (head + s);
+            ((s + s) * r + (correction + correction)) + head * 2.0
+        }
+    }
+}
+
 fn sine(x: f64) -> f64 {
     let z = x * x;
     let z2 = z * z;
@@ -64,7 +100,14 @@ pub fn sin_cos(angle: f32) -> (f32, f32) {
 
 #[cfg(test)]
 mod tests {
-    use super::sin_cos;
+    use super::{acos, sin_cos};
+
+    #[test]
+    fn small_rotation_angles() {
+        for (dot, expected) in [(0.9995362, 0x3cf9_8150), (0.9994528, 0x3d07_8158)] {
+            assert_eq!(acos(dot).to_bits(), expected);
+        }
+    }
 
     #[test]
     fn compressed_rotation_angles() {
