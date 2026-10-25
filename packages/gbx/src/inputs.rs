@@ -100,6 +100,8 @@ impl PlayerInputs {
             let mut state_read = false;
             let mut extra_read = false;
             let step = (|| -> Result<Result<(), String>, OutOfBits> {
+                let previous_state = state;
+                state &= 0x07ff_ffef;
                 if !r.bit()? {
                     if r.bit()? {
                         let states = r.num(2)?;
@@ -140,6 +142,8 @@ impl PlayerInputs {
                             events.push(Event { tick, kind: EventKind::SecondaryRespawn });
                         }
                     }
+                } else if state != previous_state {
+                    state_words.push((tick, state));
                 }
                 state_read = true;
                 if !r.bit()? {
@@ -190,5 +194,46 @@ impl PlayerInputs {
             state_words,
             extra_words,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn respawn_flags_clear_when_controls_are_reused() {
+        let decoded = PlayerInputs {
+            version: 12,
+            start_offset_ms: Some(0),
+            ticks: 6,
+            data: vec![8, 0, 0, 0, 48, 2, 0, 0, 128, 172, 35, 0, 0, 0, 224, 8, 0, 0, 0, 240, 1],
+        }
+        .decode()
+        .unwrap();
+        let mut word = 0;
+        let states: Vec<_> = (0..6)
+            .map(|tick| {
+                for &(_, next) in decoded.state_words.iter().filter(|(at, _)| *at == tick) {
+                    word = next;
+                }
+                word & ((1 << 31) | (1 << 33))
+            })
+            .collect();
+        assert_eq!(states, [0, 1 << 31, 0, 1 << 33, 0, 0]);
+    }
+
+    #[test]
+    fn abbreviated_inputs_keep_buttons_and_clear_transient_flags() {
+        let decoded = PlayerInputs {
+            version: 12,
+            start_offset_ms: Some(0),
+            ticks: 3,
+            data: vec![72, 0, 2, 224, 159, 74, 215, 1],
+        }
+        .decode()
+        .unwrap();
+        assert_eq!(decoded.state_words, [(0, 0x3_f800_8012), (1, 0x8002), (2, 0x8042)]);
+        assert!(decoded.ticks.iter().all(|t| t.steer == 42 && t.gas && !t.brake));
     }
 }
