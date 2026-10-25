@@ -72,3 +72,24 @@ fn a_record_with_respawns_drives_to_its_finish() {
     let map = Map::parse(replay.map_gbx.as_deref().unwrap()).unwrap();
     assert_eq!(record.drive(&map, &packs).unwrap().finish_ms, Some(record.time_ms));
 }
+
+#[test]
+fn a_respawn_at_the_start_rearms_the_last_start_adjustment() {
+    let Some(dir) = bench("297170") else { return };
+    let packs = PackSet::open(&Game::locate(None).unwrap().packs).unwrap();
+    let map = Map::parse(&std::fs::read(dir.join("map.Map.Gbx")).unwrap()).unwrap();
+    let record = Record::read(&dir.join("wr.Replay.Gbx")).unwrap();
+    let mut session = record.open(&map, &packs).unwrap();
+    for tick in 0..record.run.controls.len() {
+        record.step(&mut session, tick);
+        if session.race.players[0].controller.as_ref().unwrap().start_adjustments != 0 {
+            break;
+        }
+    }
+    let before = session.race.players[0].controller.as_ref().unwrap().start_adjustments;
+    assert!(before > 0);
+    session.track_respawns();
+    assert!(session.respawn(false));
+    assert_eq!(session.race.players[0].controller.as_ref().unwrap().start_adjustments, before - 1);
+    assert_eq!(session.vehicle().frozen_until, session.clock.now);
+}

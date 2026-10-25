@@ -119,10 +119,7 @@ impl Session {
     fn respawn_at_start(&mut self) -> bool {
         let now = self.clock.now;
         let Some(landmark) = self.start_landmark() else { return false };
-        self.select_car(0);
-        self.respawn_at(now, landmark, Reset::FULL);
-        self.vehicle.frozen_until = now;
-        true
+        self.respawn_standing(landmark, None, Some(now))
     }
 
     fn respawn_standing(&mut self, landmark: u32, saved: Option<&Checkpoint>, pending: Option<u32>) -> bool {

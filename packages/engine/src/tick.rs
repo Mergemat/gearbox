@@ -142,18 +142,6 @@ impl Session {
         });
     }
 
-    pub(crate) fn respawn_at(&mut self, now: u32, landmark: u32, reset: crate::vehicle::spawn::Reset) {
-        self.with_spawner(now, |spawner, vehicle, _| {
-            let pose = crate::vehicle::spawn::arena_pose(
-                spawner.initial_pose,
-                spawner.parent_pose,
-                spawner.waypoints,
-                landmark,
-            );
-            spawner.respawn_with(vehicle, pose, reset);
-        });
-    }
-
     pub(crate) fn respawn_at_pose(
         &mut self,
         now: u32,
