@@ -2,6 +2,27 @@ mod powf_tables;
 
 use crate::math::cvtt;
 
+pub fn expf(x: f32) -> f32 {
+    if x.is_nan() {
+        return x + x;
+    }
+    let d = f64::from_bits;
+    let x = x as f64;
+    let scaled = x * d(0x4057_1547_652b_82fe);
+    if scaled >= 8192.0 {
+        return f32::INFINITY;
+    }
+    if scaled < -9600.0 {
+        return 0.0;
+    }
+    let n = scaled.round_ties_even() as i32;
+    let r = x - n as f64 * d(0x3f86_2e42_fefa_39ef);
+    let q = r * r * (d(0x3fc5_5555_5555_5555) * r + 0.5) + r;
+    let t = d(powf_tables::EXP2_64[(n & 63) as usize]);
+    let scale = d((((n >> 6) + 1023) as u64) << 52);
+    ((q * t + t) * scale) as f32
+}
+
 pub fn lroundf(x: f32) -> i32 {
     if x == 0.0 || !x.is_finite() {
         return 0;

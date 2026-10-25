@@ -33,7 +33,7 @@ pub fn build(map: &Map) -> Result<Playback> {
             let magnitude = if motion.speed == i16::MIN {
                 0.0
             } else {
-                ((motion.speed as f32 / 1000.0) as f64).exp() as f32
+                gearbox_engine::numeric::expf(motion.speed as f32 / 1000.0)
             };
             track.samples.push(Sample {
                 time_ms: sample.time_ms,
@@ -74,6 +74,34 @@ mod tests {
                 .map(|time_ms| gearbox_gbx::record::Sample { time_ms, vehicle: None, raw: raw.clone() })
                 .into(),
         }
+    }
+
+    #[test]
+    fn clones_decode_quantized_velocity() {
+        let mut entity = vehicle(0, 100, 0.0);
+        for sample in &mut entity.samples {
+            sample.raw[65..67].copy_from_slice(&2768i16.to_le_bytes());
+            sample.raw[67] = 55;
+            sample.raw[68] = 12;
+        }
+        let map = Map {
+            clones_enabled: true,
+            author_clones: vec![AuthorClone { offset_ms: -10, speed: 1.0 }],
+            author_ghost: Some(Ghost {
+                record: Some(RecordData {
+                    version: 11,
+                    start_ms: 0,
+                    end_ms: 100,
+                    descs: vec![CLASS_VEHICLE_VIS],
+                    entities: vec![entity],
+                }),
+                record_entity_indices: vec![0],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let playback = build(&map).unwrap();
+        assert_eq!(playback.contacts(0.05)[0].velocity, Vec3::new(3.2876534, 15.404726, 2.3552055));
     }
 
     #[test]
