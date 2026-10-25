@@ -1,7 +1,7 @@
 <p align="center"><img src=".github/assets/banner.jpg" alt="Gearbox: Trackmania physics, tick for tick" width="100%"></p>
 
 [![Release](https://img.shields.io/github/v/release/Mergemat/gearbox?include_prereleases)](https://github.com/Mergemat/gearbox/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 Gearbox simulates a Trackmania 2020 race tick by tick, with the same results
 as the game, from a map file and your own game install. On top of that it
@@ -90,7 +90,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE). The GBX and pack readers build on
+[GPL-3.0-or-later](LICENSE). The GBX and pack readers build on
 [GBX.NET](https://github.com/BigBang1112/gbx-net) (MIT).
 
 Trackmania is a trademark of Ubisoft Nadeo. Gearbox isn't affiliated with or
