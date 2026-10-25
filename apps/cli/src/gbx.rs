@@ -165,7 +165,7 @@ fn summary(path: PathBuf) -> Result<()> {
         }
         match &g.record {
             Some(rec) => {
-                for ent in rec.entities.iter().filter(|e| e.class_id == CLASS_VEHICLE_VIS) {
+                for ent in g.record_entities().filter(|e| e.class_id == CLASS_VEHICLE_VIS) {
                     let s = &ent.samples;
                     let dt: Vec<i32> = s.windows(2).map(|w| w[1].time_ms - w[0].time_ms).collect();
                     let (lo, hi) = (dt.iter().min(), dt.iter().max());
@@ -221,14 +221,7 @@ fn dump_json(path: PathBuf, out: PathBuf) -> Result<()> {
         .iter()
         .map(|g| {
             let inputs: Vec<_> = g.inputs.iter().map(|i| i.decode().map_err(|e| format!("{e:#}"))).collect();
-            let samples: Vec<_> = g
-                .record
-                .iter()
-                .flat_map(|r| &r.entities)
-                .find(|e| e.class_id == CLASS_VEHICLE_VIS)
-                .into_iter()
-                .flat_map(|e| &e.samples)
-                .collect();
+            let samples = ghost_samples(g);
             json!({ "meta": g, "inputs": inputs, "samples": samples })
         })
         .collect();
@@ -236,4 +229,52 @@ fn dump_json(path: PathBuf, out: PathBuf) -> Result<()> {
     std::fs::write(&out, serde_json::to_vec(&doc)?)?;
     println!("wrote {}", out.display());
     Ok(())
+}
+
+fn ghost_samples(ghost: &gearbox_gbx::Ghost) -> Vec<&gearbox_gbx::record::Sample> {
+    ghost
+        .record_entities()
+        .filter(|entity| entity.class_id == CLASS_VEHICLE_VIS)
+        .flat_map(|entity| &entity.samples)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gearbox_gbx::{
+        Ghost,
+        record::{Entity, RecordData, Sample},
+    };
+
+    #[test]
+    fn samples_follow_the_ghost_across_its_assigned_vehicles() {
+        let entity = |class_id, time_ms| Entity {
+            class_id,
+            start_ms: 0,
+            end_ms: 100,
+            samples: vec![Sample { time_ms, vehicle: None, raw: vec![] }],
+        };
+        let ghost = Ghost {
+            record: Some(RecordData {
+                version: 10,
+                start_ms: 0,
+                end_ms: 100,
+                descs: vec![],
+                entities: vec![
+                    entity(CLASS_VEHICLE_VIS, 10),
+                    entity(CLASS_VEHICLE_VIS, 20),
+                    entity(0, 30),
+                    entity(CLASS_VEHICLE_VIS, 40),
+                ],
+            }),
+            record_entity_indices: vec![1, 2, 3],
+            ..Default::default()
+        };
+        let samples = serde_json::to_value(ghost_samples(&ghost)).unwrap();
+        assert_eq!(
+            samples.as_array().unwrap().iter().map(|s| s["time_ms"].as_i64().unwrap()).collect::<Vec<_>>(),
+            vec![20, 40]
+        );
+    }
 }
