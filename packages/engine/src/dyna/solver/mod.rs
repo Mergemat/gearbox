@@ -66,6 +66,7 @@ impl StepBuckets {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SolverWork {
+    pub contact_pool: crate::collision::ContactList,
     pub collision_entries: Vec<CollisionEntry>,
     pub static_entries: Vec<CollisionEntry>,
     pub narrow_pairs: Vec<(u32, u32)>,

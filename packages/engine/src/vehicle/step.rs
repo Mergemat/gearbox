@@ -195,7 +195,7 @@ pub fn collision_step(ctx: &mut StepCtx<'_>, now: i64, dt: f32, clip: f32) -> Co
         DynaCollision { world: ctx.world, state: ctx.state, manager: ctx.manager }
             .set_placement(vehicle_item, pose);
         let item = &ctx.state.dynamic_item[vehicle_item.index()];
-        let mut pool = ContactList::default();
+        let mut pool = std::mem::take(&mut ctx.dyna.work.contact_pool);
         for (lists, layers) in [
             (Lists::SURFACES, crate::collision::layers::MASKS[item.layer as usize]),
             (Lists::DISCRETE, 1048576),
@@ -215,6 +215,7 @@ pub fn collision_step(ctx: &mut StepCtx<'_>, now: i64, dt: f32, clip: f32) -> Co
                 &mut list,
             );
         }
+        ctx.dyna.work.contact_pool = pool;
         if scale != 1.0 {
             let inverse = 1.0 / scale;
             crate::shape::scale::shape(ctx.world, ctx.state, shape, inverse);
