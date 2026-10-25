@@ -23,10 +23,10 @@ impl Session {
         self.post(now);
         let crossed = self.respawns.is_some().then(|| self.crossing_waypoints().len());
         self.race_contacts(now, &frames);
-        self.transform_car(now);
         if let Some(crossed) = crossed {
             self.remember_for_respawn(now, crossed);
         }
+        self.transform_car(now);
         self.state.scene.insert(self.config.scene, scene);
     }
 
