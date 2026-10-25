@@ -6,8 +6,13 @@ use crate::{Iso, Mat3, Quat, Vec3, vehicle::ghost::Contact};
 
 #[derive(Clone, Debug, Default)]
 pub struct Playback {
-    pub samples: Vec<Sample>,
+    pub tracks: Vec<Track>,
     pub clones: Vec<CloneConfig>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Track {
+    pub samples: Vec<Sample>,
     pub start_ms: i32,
     pub end_ms: i32,
 }
@@ -29,22 +34,24 @@ impl Playback {
     pub fn contacts(&self, time: f32) -> Vec<Contact> {
         self.clones
             .iter()
-            .filter_map(|clone| {
-                if time < clone.start {
-                    return None;
-                }
+            .filter(|clone| time >= clone.start)
+            .flat_map(|clone| {
                 let local = ((time - clone.start) * clone.speed).max(0.0);
                 let ms = ((local as f64 * 1_000_000_000.0) as i64 / 1_000_000) as i32;
-                if ms < self.start_ms || self.end_ms < ms {
-                    return None;
-                }
-                let mut contact = self.sample(ms, local)?;
-                contact.velocity = contact.velocity * clone.speed;
-                Some(contact)
+                self.tracks.iter().filter_map(move |track| {
+                    if ms < track.start_ms || track.end_ms < ms {
+                        return None;
+                    }
+                    let mut contact = track.sample(ms, local)?;
+                    contact.velocity = contact.velocity * clone.speed;
+                    Some(contact)
+                })
             })
             .collect()
     }
+}
 
+impl Track {
     fn sample(&self, ms: i32, time: f32) -> Option<Contact> {
         let last = self.samples.len().checked_sub(1)?;
         let b = self.samples.partition_point(|s| s.time_ms <= ms).min(last);
