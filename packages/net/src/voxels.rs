@@ -31,9 +31,7 @@ const MAX_ACROSS: usize = 8192;
 const MAX_UP: usize = 640;
 const MAGIC: &[u8; 4] = b"GVOX";
 pub const FORMAT: u32 = 3;
-// Maps that exceed the legacy envelope keep wide triangles after the sparse hits.
 pub const EXTENDED_FORMAT: u32 = 4;
-// Avoid scanning a giant projected box for a triangle with few actual 4 m samples.
 const MAX_RASTER_WORK: usize = 4096;
 const VERTICAL_SAMPLES: [(f32, f32); 3] =
     [(0.0, 0.0), (-CELL * 0.25, -CELL * 0.25), (CELL * 0.25, CELL * 0.25)];
