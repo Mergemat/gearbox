@@ -7,10 +7,10 @@ use crate::observe::{self, VECTOR_LEN};
 use crate::voxels::{ACROSS, CHANNELS, FORWARD, UP};
 
 const MAGIC: &[u8; 4] = b"GNET";
-pub const FORMAT: u32 = 3;
+pub const FORMAT: u32 = 4;
 
-pub const STEER_BINS: usize = 11;
-pub const OUTPUTS: usize = STEER_BINS + 3;
+pub const STEER_COMPONENTS: usize = 5;
+pub const OUTPUTS: usize = 14;
 const KERNEL: usize = 3;
 
 #[derive(Clone, Debug)]
@@ -37,7 +37,9 @@ pub struct Net {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Verdict {
-    pub steer_logits: [f32; STEER_BINS],
+    pub steer_logits: [f32; STEER_COMPONENTS],
+    pub steer_means: [f32; 3],
+    pub steer_log_stds: [f32; 3],
     pub gas: f32,
     pub brake: f32,
     pub seconds_left: f32,
@@ -45,10 +47,14 @@ pub struct Verdict {
 
 impl Verdict {
     pub fn controls(&self) -> Controls {
-        let bin = (0..STEER_BINS)
+        let component = (0..STEER_COMPONENTS)
             .fold(0, |best, i| if self.steer_logits[i] > self.steer_logits[best] { i } else { best });
         Controls {
-            steer: -1.0 + 0.2 * bin as f32,
+            steer: match component {
+                0 => -1.0,
+                1 => 1.0,
+                i => self.steer_means[i - 2].clamp(-4.0, 4.0).tanh(),
+            },
             gas: f32::from(self.gas > 0.0),
             brake: f32::from(self.brake > 0.0),
         }
@@ -162,9 +168,11 @@ impl Net {
         }
         Verdict {
             steer_logits: std::array::from_fn(|i| x[i]),
-            gas: x[STEER_BINS],
-            brake: x[STEER_BINS + 1],
-            seconds_left: x[STEER_BINS + 2].exp_m1(),
+            steer_means: std::array::from_fn(|i| x[5 + i]),
+            steer_log_stds: std::array::from_fn(|i| x[8 + i]),
+            gas: x[11],
+            brake: x[12],
+            seconds_left: x[13].exp_m1(),
         }
     }
 }
@@ -273,7 +281,7 @@ mod tests {
         let mut weights = vec![0.0; OUTPUTS * inputs];
         let [y, x] = PICKED;
         weights[4 * inputs + VECTOR_LEN + y * dims[1] + x] = 3.0;
-        weights[STEER_BINS * inputs] = 1.0;
+        weights[11 * inputs] = 1.0;
         File {
             convs: vec![(CHANNELS * UP, 1, 2, conv, vec![0.0])],
             dense: vec![(inputs, OUTPUTS, weights, vec![0.0; OUTPUTS])],
@@ -298,25 +306,50 @@ mod tests {
 
     #[test]
     fn steering_and_pedals_are_chosen_independently() {
-        for (bin, expected) in
-            [-1.0, -0.8, -0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0].into_iter().enumerate()
+        for (component, expected) in
+            [-1.0, 1.0, (-0.5_f32).tanh(), 0.5_f32.tanh(), 4.0_f32.tanh()].into_iter().enumerate()
         {
             for (gas, brake, pedals) in
                 [(-1.0, 0.0, [0.0, 0.0]), (0.01, -1.0, [1.0, 0.0]), (1.0, 2.0, [1.0, 1.0])]
             {
-                let mut verdict = Verdict { steer_logits: [0.0; STEER_BINS], gas, brake, seconds_left: -1.0 };
-                verdict.steer_logits[bin] = 1.0;
+                let mut verdict = Verdict {
+                    steer_logits: [0.0; STEER_COMPONENTS],
+                    steer_means: [-0.5, 0.5, 8.0],
+                    steer_log_stds: [0.0; 3],
+                    gas,
+                    brake,
+                    seconds_left: -1.0,
+                };
+                verdict.steer_logits[component] = 1.0;
                 let controls = verdict.controls();
-                assert!((controls.steer - expected).abs() < 1e-6);
+                assert_eq!(controls.steer, expected);
                 assert_eq!([controls.gas, controls.brake], pedals);
             }
         }
     }
 
     #[test]
+    fn format_four_outputs_keep_their_meaning() {
+        let mut file = picker();
+        file.convs.clear();
+        let outputs = [-2.0, -1.0, 0.0, 1.0, 3.0, -2.0, 0.25, 7.0, -1.0, 0.0, 1.0, 0.1, -0.1, 2.0];
+        file.dense = vec![(VECTOR_LEN, OUTPUTS, vec![0.0; OUTPUTS * VECTOR_LEN], outputs.to_vec())];
+        let verdict = Net::read(&file.bytes(FORMAT)).unwrap().eval(&vec![0.0; observe::LEN]);
+        assert_eq!(verdict.steer_logits, outputs[..5]);
+        assert_eq!(verdict.steer_means, outputs[5..8]);
+        assert_eq!(verdict.steer_log_stds, outputs[8..11]);
+        assert_eq!(verdict.gas, 0.1);
+        assert_eq!(verdict.brake, -0.1);
+        assert_eq!(verdict.seconds_left, 2.0_f32.exp_m1());
+        assert_eq!(verdict.controls().steer, 4.0_f32.tanh());
+        assert_eq!(verdict.controls().gas, 1.0);
+        assert_eq!(verdict.controls().brake, 0.0);
+    }
+
+    #[test]
     fn old_formats_wrong_shapes_and_damaged_files_are_refused() {
         let file = picker();
-        assert!(Net::read(&file.bytes(2)).is_err());
+        assert!(Net::read(&file.bytes(3)).is_err());
         let valid = file.bytes(FORMAT);
         for offset in [8, 16, 20, 24] {
             let mut bytes = valid.clone();
