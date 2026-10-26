@@ -1,19 +1,20 @@
 use anyhow::{Result, ensure};
 use gearbox_engine::race::{Race, WaypointFlags};
-use gearbox_engine::vehicle::forces::{ForceRays, common::PedalMode};
+use gearbox_engine::vehicle::forces::common::PedalMode;
 use gearbox_engine::{Mat3, Session, Vec3, surface};
 use gearbox_search::gate::gates;
 
-pub const VERSION: u32 = 3;
+use crate::voxels::{self, Pose, Voxels};
+
+pub const VERSION: u32 = 4;
 pub const AHEAD: usize = 4;
 pub const SURFACES: usize = 12;
-pub const CAR_LEN: usize = 17;
+pub const CAR_LEN: usize = 16;
 pub const WHEEL_LEN: usize = SURFACES + 3;
 pub const EFFECTS_START: usize = CAR_LEN + 4 * WHEEL_LEN;
 pub const COURSE_START: usize = EFFECTS_START + 9;
-pub const TRACK_START: usize = COURSE_START + AHEAD * 5 + 7;
-pub const ROAD_DISTANCES: [f32; 8] = [2.0, 4.0, 8.0, 16.0, 24.0, 40.0, 64.0, 96.0];
-pub const LEN: usize = TRACK_START + 16 + ROAD_DISTANCES.len() * (1 + SURFACES);
+pub const VECTOR_LEN: usize = COURSE_START + AHEAD * 5 + 7;
+pub const LEN: usize = VECTOR_LEN + voxels::FEATURES;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -149,7 +150,7 @@ impl Car {
     }
 }
 
-fn surface_class(material: u8) -> usize {
+pub(crate) fn surface_class(material: u8) -> usize {
     match material {
         surface::CONCRETE
         | surface::PAVEMENT
@@ -189,20 +190,19 @@ fn surface_class(material: u8) -> usize {
     }
 }
 
-pub fn observe(session: &Session, course: &Course) -> [f32; LEN] {
+pub fn vector(session: &Session, course: &Course) -> [f32; VECTOR_LEN] {
     let car = Car::read(session);
     let vehicle = session.vehicle();
     let tuning = &session.config.model(vehicle.model_choice).assets.tuning;
     let velocity = car.to_car(car.velocity);
-    let mut out = [0.0; LEN];
+    let mut out = [0.0; VECTOR_LEN];
     out[0..3].copy_from_slice(&(velocity * 0.01).to_array());
     out[3..6].copy_from_slice(&(car.to_car(car.angular_velocity) * 0.1).to_array());
     out[6..9].copy_from_slice(&car.to_car(Vec3::new(0.0, 1.0, 0.0)).to_array());
     out[9] = velocity.x / velocity.x.hypot(velocity.z).max(1.0);
     out[10] = vehicle.rpm / 10_000.0;
     out[11] = vehicle.gear as f32 / 6.0;
-    out[12] = (vehicle.wheels[0].steering_angle + vehicle.wheels[1].steering_angle) / std::f32::consts::PI;
-    out[13 + vehicle.model_choice as usize] = 1.0;
+    out[12 + vehicle.model_choice as usize] = 1.0;
     for (slot, wheel) in
         out[CAR_LEN..EFFECTS_START].as_chunks_mut::<WHEEL_LEN>().0.iter_mut().zip(&vehicle.wheels)
     {
@@ -236,31 +236,14 @@ pub fn observe(session: &Session, course: &Course) -> [f32; LEN] {
         f32::from(vehicle.has_effect_flag(16)),
         (1.0 - vehicle.level_power_scale).clamp(0.0, 1.0),
     ]);
-    out[COURSE_START..TRACK_START].copy_from_slice(&course.features(&car, &session.race));
-    let rays = ForceRays {
-        geometry: gearbox_engine::shape::Geometry::new(&session.world, &session.state),
-        manager: &session.state.collision_world[session.config.manager],
-        vehicle_item: vehicle.item,
-    };
-    let origin = Vec3::from(car.position);
-    for (slot, degrees) in out[TRACK_START..TRACK_START + 16].iter_mut().zip([
-        -90.0_f32, -75.0, -60.0, -45.0, -30.0, -20.0, -10.0, -5.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0, 75.0,
-        90.0,
-    ]) {
-        let (sin, cos) = degrees.to_radians().sin_cos();
-        let direction = car.rotation * Vec3::new(sin * 100.0, 0.0, cos * 100.0);
-        *slot = rays.raycast(origin, direction).map_or(1.0, |hit| hit.fraction);
-    }
-    for (slot, distance) in
-        out[TRACK_START + 16..].as_chunks_mut::<{ 1 + SURFACES }>().0.iter_mut().zip(ROAD_DISTANCES)
-    {
-        let start = origin + car.rotation * Vec3::new(0.0, 16.0, distance);
-        slot[0] = -1.0;
-        if let Some(hit) = rays.raycast(start, car.rotation * Vec3::new(0.0, -80.0, 0.0)) {
-            slot[0] = (16.0 - hit.fraction * 80.0) / 64.0;
-            slot[1 + surface_class(hit.surface)] = 1.0;
-        }
-    }
+    out[COURSE_START..VECTOR_LEN].copy_from_slice(&course.features(&car, &session.race));
+    out
+}
+
+pub fn observe<B: AsRef<[u8]>>(session: &Session, course: &Course, grid: &Voxels<B>) -> Vec<f32> {
+    let mut out = vec![0.0; LEN];
+    out[..VECTOR_LEN].copy_from_slice(&vector(session, course));
+    voxels::expand(&grid.crop(&Pose::read(session)), &mut out[VECTOR_LEN..]);
     out
 }
 
