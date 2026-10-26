@@ -66,7 +66,7 @@ impl Gate {
     }
 }
 
-pub fn gates(native: &mut Session) -> Result<Vec<Gate>> {
+pub fn gates(native: &Session) -> Result<Vec<Gate>> {
     let items = native
         .waypoint_triggers()
         .into_iter()

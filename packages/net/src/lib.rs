@@ -1,5 +1,5 @@
 pub mod model;
 pub mod observe;
 
-pub use model::{ACTIONS, Net, Verdict};
+pub use model::{Net, STEER_BINS, Verdict};
 pub use observe::{Car, Course, observe};
