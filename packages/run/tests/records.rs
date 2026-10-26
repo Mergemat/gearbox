@@ -1,5 +1,9 @@
 use std::path::PathBuf;
 
+use gearbox_engine::{
+    Controls,
+    race::replay::{InputBits, InputState},
+};
 use gearbox_gbx::{Map, Replay};
 use gearbox_packs::install::Game;
 use gearbox_packs::packs::PackSet;
@@ -92,4 +96,45 @@ fn a_respawn_at_the_start_rearms_the_last_start_adjustment() {
     assert!(session.respawn(false));
     assert_eq!(session.race.players[0].controller.as_ref().unwrap().start_adjustments, before - 1);
     assert_eq!(session.vehicle().frozen_until, session.clock.now);
+}
+
+#[test]
+fn applied_controls_advance_a_restored_session_without_a_second_steer_limit() {
+    let Some(dir) = bench("297170") else { return };
+    let packs = PackSet::open(&Game::locate(None).unwrap().packs).unwrap();
+    let map = Map::parse(&std::fs::read(dir.join("map.Map.Gbx")).unwrap()).unwrap();
+    let mut record = Record::read(&dir.join("wr.Replay.Gbx")).unwrap();
+    record.run.t0 = 0;
+    let mut session = record.open(&map, &packs).unwrap();
+    let model = session.vehicle.model_choice as usize;
+    let tuning =
+        &mut std::sync::Arc::make_mut(&mut session.config).models[model].as_mut().unwrap().assets.tuning;
+    tuning.action_key_steer_limits = 1;
+    tuning.steer_limit_clamps = 0;
+    session.vehicle.steer_limit = 0.4;
+    session.seed = None;
+    let saved = session.save();
+
+    let raw = Controls { steer: 0.75, gas: 1.0, brake: 0.0 };
+    let effective = Controls { steer: 0.3, ..raw };
+    let input = InputState {
+        bits: InputBits::REPLAY,
+        axes: [raw.steer, raw.gas, raw.brake, 0.0],
+        ..Default::default()
+    };
+    let mut replay = saved.fork();
+    replay.step_with_input(raw, input);
+    assert_eq!(replay.applied, effective);
+
+    session.step(raw);
+    assert_eq!(session.applied, replay.applied);
+    assert_eq!(session.vehicle, replay.vehicle);
+    assert_eq!(session.body(), replay.body());
+
+    session.restore(&saved);
+    session.step_applied(effective);
+    assert_eq!(session.applied, effective);
+    assert_eq!(session.clock, replay.clock);
+    assert_eq!(session.vehicle, replay.vehicle);
+    assert_eq!(session.body(), replay.body());
 }

@@ -119,6 +119,15 @@ impl Session {
         self.step_with_input(controls, input);
     }
 
+    pub fn step_applied(&mut self, controls: Controls) {
+        let input = InputState {
+            bits: InputBits::REPLAY,
+            axes: [controls.steer, controls.gas, controls.brake, 0.0],
+            ..Default::default()
+        };
+        self.advance(controls, input);
+    }
+
     pub fn step_with_input(&mut self, mut controls: Controls, input: InputState) {
         let previous = std::mem::replace(&mut self.input, input);
         let tuning = &self.config.model(self.vehicle.model_choice).assets.tuning;
@@ -143,6 +152,11 @@ impl Session {
                 controls.steer = controls.steer.clamp(-*limit, *limit);
             }
         }
+        self.advance(controls, input);
+    }
+
+    fn advance(&mut self, controls: Controls, input: InputState) {
+        self.input = input;
         self.applied = controls;
         self.tick(self.clock.now, controls, self.seed, input);
         self.clock.now += 10;
