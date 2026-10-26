@@ -1855,6 +1855,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gearbox-engine",
+ "gearbox-gbx",
+ "gearbox-packs",
+ "gearbox-run",
  "gearbox-search",
 ]
 

@@ -15,5 +15,10 @@ anyhow = "1"
 gearbox-engine = { path = "../engine" }
 gearbox-search = { path = "../search" }
 
+[dev-dependencies]
+gearbox-gbx = { path = "../gbx" }
+gearbox-packs = { path = "../packs" }
+gearbox-run = { path = "../run" }
+
 [lints]
 workspace = true

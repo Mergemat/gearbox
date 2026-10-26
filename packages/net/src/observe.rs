@@ -6,7 +6,7 @@ use gearbox_search::gate::gates;
 
 use crate::voxels::{self, Pose, Voxels};
 
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
 pub const AHEAD: usize = 4;
 pub const SURFACES: usize = 17;
 pub const CAR_LEN: usize = 16;
@@ -407,7 +407,7 @@ mod tests {
     fn global_grid_keeps_every_checkpoint_and_distant_finish_as_lap_state_changes() {
         let size = [140u32, 10, 140];
         let mut bytes = b"GVOX".to_vec();
-        bytes.extend(2u32.to_le_bytes());
+        bytes.extend(voxels::FORMAT.to_le_bytes());
         for value in [-40.0f32, -20.0, -40.0] {
             bytes.extend(value.to_le_bytes());
         }
@@ -415,7 +415,8 @@ mod tests {
             bytes.extend(value.to_le_bytes());
         }
         bytes.extend(0u32.to_le_bytes());
-        bytes.resize(bytes.len() + 4 * (size[0] * size[2] + 1) as usize, 0);
+        bytes.extend(0u32.to_le_bytes());
+        bytes.extend(0u32.to_le_bytes());
         let grid = Voxels::read(bytes).unwrap();
         let mut race = race(1);
         race.rules.checkpoints_per_lap = 6;
