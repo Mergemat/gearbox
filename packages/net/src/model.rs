@@ -122,7 +122,7 @@ impl Net {
             steer_logits: std::array::from_fn(|i| x[i]),
             gas: x[STEER_BINS],
             brake: x[STEER_BINS + 1],
-            seconds_left: x[STEER_BINS + 2],
+            seconds_left: x[STEER_BINS + 2].exp_m1(),
         }
     }
 }
@@ -169,7 +169,7 @@ mod tests {
         assert!((v.controls().steer + 0.4).abs() < 1e-6);
         assert_eq!(v.seconds_left, 0.0);
         x[1] = -2.0;
-        assert_eq!(net.eval(&x).seconds_left, 7.5);
+        assert_eq!(net.eval(&x).seconds_left, 7.5f32.exp_m1());
     }
 
     #[test]

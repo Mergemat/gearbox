@@ -85,7 +85,7 @@ impl Course {
         let laps_left = self.laps.saturating_sub(completed);
         let finish = closest(car.position, &self.finishes).1;
         out[AHEAD * 5..AHEAD * 5 + 5]
-            .copy_from_slice(&car.target(finish, f32::from(left == 0 && laps_left == 1)));
+            .copy_from_slice(&car.target(finish, f32::from(left == 0 && laps_left > 0)));
         out[AHEAD * 5 + 5] = left as f32 / 10.0;
         out[AHEAD * 5 + 6] = laps_left as f32;
         out
@@ -245,7 +245,7 @@ pub fn observe(session: &Session, course: &Course) -> [f32; LEN] {
     };
     let origin = Vec3::from(car.position);
     for (slot, degrees) in out[TRACK_START..TRACK_START + 16].iter_mut().zip([
-        -90.0_f32, -60.0, -45.0, -30.0, -20.0, -10.0, -5.0, 0.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0, 75.0,
+        -90.0_f32, -75.0, -60.0, -45.0, -30.0, -20.0, -10.0, -5.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0, 75.0,
         90.0,
     ]) {
         let (sin, cos) = degrees.to_radians().sin_cos();
@@ -382,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn finish_opens_only_after_every_checkpoint_on_the_last_lap() {
+    fn finish_opens_once_every_checkpoint_of_the_lap_is_passed() {
         let mut race = race(2);
         let course = course(2);
         for lap in 0..2 {
@@ -391,7 +391,7 @@ mod tests {
             race.waypoint(0, None, 0, lap * 100 + 10);
             assert_eq!(course.features(&car(), &race)[24], 0.0);
             race.waypoint(0, None, 1, lap * 100 + 20);
-            assert_eq!(course.features(&car(), &race)[24], lap as f32);
+            assert_eq!(course.features(&car(), &race)[24], 1.0);
             race.waypoint(0, None, 3, lap * 100 + 30);
         }
         let finished = course.features(&car(), &race);
