@@ -31,6 +31,10 @@ const MAX_ACROSS: usize = 8192;
 const MAX_UP: usize = 640;
 const MAGIC: &[u8; 4] = b"GVOX";
 pub const FORMAT: u32 = 3;
+// Maps that exceed the legacy envelope keep wide triangles after the sparse hits.
+pub const EXTENDED_FORMAT: u32 = 4;
+// Avoid scanning a giant projected box for a triangle with few actual 4 m samples.
+const MAX_RASTER_WORK: usize = 4096;
 const VERTICAL_SAMPLES: [(f32, f32); 3] =
     [(0.0, 0.0), (-CELL * 0.25, -CELL * 0.25), (CELL * 0.25, CELL * 0.25)];
 
@@ -55,6 +59,13 @@ pub struct Voxels<B = Vec<u8>> {
     size: [usize; 3],
     entries: usize,
     coarse: Vec<f32>,
+    large: Vec<LargeTriangle>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct LargeTriangle {
+    points: [Vec3; 3],
+    code: u32,
 }
 
 const HEADER: usize = 4 + 4 + 12 + 12 + 4 + 4;
@@ -76,6 +87,91 @@ fn add_hit(column: &mut Vec<(u16, u32)>, y: u16, code: u32) {
         Some(slot) => slot.1 |= code,
         None => column.push((y, code)),
     }
+}
+
+fn cell_range(points: [Vec3; 3], axis: usize, origin: [f32; 3], size: [usize; 3]) -> std::ops::Range<usize> {
+    let lo = points.iter().map(|p| p[axis]).fold(f32::INFINITY, f32::min);
+    let hi = points.iter().map(|p| p[axis]).fold(f32::NEG_INFINITY, f32::max);
+    let first = (((lo - origin[axis]) / CELL).floor() as isize - 1).max(0) as usize;
+    let end = (((hi - origin[axis]) / CELL).ceil() as isize + 1).max(0) as usize;
+    first.min(size[axis])..end.min(size[axis])
+}
+
+fn raster_work(points: [Vec3; 3], origin: [f32; 3], size: [usize; 3]) -> usize {
+    [(0, 2), (1, 2), (0, 1)]
+        .into_iter()
+        .map(|(u, v)| {
+            let a = cell_range(points, u, origin, size).len();
+            let b = cell_range(points, v, origin, size).len();
+            a.saturating_mul(b)
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+fn triangle_hits_cell(points: [Vec3; 3], origin: [f32; 3], cell: [usize; 3]) -> bool {
+    for (u, v, d, samples) in
+        [(0, 2, 1, &VERTICAL_SAMPLES[..]), (1, 2, 0, &[(0.0, 0.0)][..]), (0, 1, 2, &[(0.0, 0.0)][..])]
+    {
+        let denominator = (points[1][u] - points[0][u]) * (points[2][v] - points[0][v])
+            - (points[2][u] - points[0][u]) * (points[1][v] - points[0][v]);
+        if denominator.abs() < 1e-8 {
+            continue;
+        }
+        let range_u = cell_range(points, u, origin, [usize::MAX; 3]);
+        let range_v = cell_range(points, v, origin, [usize::MAX; 3]);
+        if !range_u.contains(&cell[u]) || !range_v.contains(&cell[v]) {
+            continue;
+        }
+        for &(du, dv) in samples {
+            let pu = origin[u] + (cell[u] as f32 + 0.5) * CELL + du;
+            let pv = origin[v] + (cell[v] as f32 + 0.5) * CELL + dv;
+            let a = ((pu - points[0][u]) * (points[2][v] - points[0][v])
+                - (points[2][u] - points[0][u]) * (pv - points[0][v]))
+                / denominator;
+            let b = ((points[1][u] - points[0][u]) * (pv - points[0][v])
+                - (pu - points[0][u]) * (points[1][v] - points[0][v]))
+                / denominator;
+            if a < -1e-5 || b < -1e-5 || a + b > 1.00001 {
+                continue;
+            }
+            let depth = points[0][d] * (1.0 - a - b) + points[1][d] * a + points[2][d] * b;
+            if ((depth - origin[d]) / CELL).floor() == cell[d] as f32 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn cross(a: Vec3, b: Vec3) -> Vec3 {
+    Vec3::new(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x)
+}
+
+fn has_raster_projection(points: [Vec3; 3]) -> bool {
+    // Raster sampling rejects every projection of a zero-area triangle.
+    [(0, 2), (1, 2), (0, 1)].into_iter().any(|(u, v)| {
+        let denominator = (points[1][u] - points[0][u]) * (points[2][v] - points[0][v])
+            - (points[2][u] - points[0][u]) * (points[1][v] - points[0][v]);
+        denominator.abs() >= 1e-8
+    })
+}
+
+fn triangle_overlaps_box(points: [Vec3; 3], center: Vec3, half: Vec3) -> bool {
+    let p = points.map(|v| v - center);
+    let edges = [p[1] - p[0], p[2] - p[1], p[0] - p[2]];
+    let normal = cross(edges[0], edges[1]);
+    let axes = [Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.0, 0.0, 1.0)];
+    let separates = |axis: Vec3| {
+        let lo = p.iter().map(|v| v.dot(axis)).fold(f32::INFINITY, f32::min);
+        let hi = p.iter().map(|v| v.dot(axis)).fold(f32::NEG_INFINITY, f32::max);
+        let radius = half.dot(axis.abs());
+        lo > radius || hi < -radius
+    };
+    if axes.into_iter().any(separates) || separates(normal) {
+        return false;
+    }
+    !edges.into_iter().any(|edge| axes.into_iter().any(|axis| separates(cross(edge, axis))))
 }
 
 fn raster_triangle(
@@ -132,6 +228,23 @@ fn raster_triangle(
                 }
             }
         }
+    }
+}
+
+fn add_triangle(
+    points: [Vec3; 3],
+    normal: Vec3,
+    material: u8,
+    origin: [f32; 3],
+    size: [usize; 3],
+    extended: bool,
+    columns: &mut HashMap<u32, Vec<(u16, u32)>>,
+    large: &mut Vec<LargeTriangle>,
+) {
+    if extended && raster_work(points, origin, size) > MAX_RASTER_WORK {
+        large.push(LargeTriangle { points, code: code(normal, material) });
+    } else {
+        raster_triangle(points, normal, material, origin, size, columns);
     }
 }
 
@@ -195,8 +308,12 @@ impl Voxels {
             ((high.y - low.y) / CELL).ceil() as usize,
             ((high.z - low.z) / CELL).ceil() as usize,
         ];
+        // Existing maps retain their format 3 bytes and observation values.
+        let extended = size[0] > MAX_ACROSS || size[1] > MAX_UP || size[2] > MAX_ACROSS;
         ensure!(
-            size[0] <= MAX_ACROSS && size[1] <= MAX_UP && size[2] <= MAX_ACROSS,
+            size.iter().all(|&n| n > 0 && n <= u32::MAX as usize)
+                && size[1] <= u16::MAX as usize
+                && size[0].checked_mul(size[2]).is_some_and(|n| n <= u32::MAX as usize),
             "collision bounds exceed voxel map capacity: {size:?} cells"
         );
         let origin = [
@@ -205,6 +322,7 @@ impl Voxels {
             (low.z + high.z) * 0.5 - size[2] as f32 * CELL * 0.5,
         ];
         let mut columns: HashMap<u32, Vec<(u16, u32)>> = HashMap::new();
+        let mut large = Vec::new();
         for id in surfaces {
             let surface = geometry.entry(EntryId::Surface(SurfaceId(id)));
             match geometry.shape(surface.shape) {
@@ -212,13 +330,15 @@ impl Voxels {
                     for tri in &mesh.cooked {
                         let points =
                             tri.verts.map(|v| surface.iso.transform_point(mesh.vertices[v as usize]));
-                        raster_triangle(
+                        add_triangle(
                             points,
                             surface.iso.rot * tri.normal,
                             tri.ids as u8,
                             origin,
                             size,
+                            extended,
                             &mut columns,
+                            &mut large,
                         );
                     }
                 }
@@ -232,13 +352,15 @@ impl Voxels {
                         for edge in 1..indices.len() - 1 {
                             let points = [indices[0], indices[edge], indices[edge + 1]]
                                 .map(|v| surface.iso.transform_point(convex.vertices[v as usize]));
-                            raster_triangle(
+                            add_triangle(
                                 points,
                                 surface.iso.rot * face.normal,
                                 convex.material as u8,
                                 origin,
                                 size,
+                                extended,
                                 &mut columns,
+                                &mut large,
                             );
                         }
                     }
@@ -251,7 +373,7 @@ impl Voxels {
         let entries: usize = columns.iter().map(|(_, column)| column.len()).sum();
         ensure!(entries <= u32::MAX as usize, "voxel map has too many hits");
         let mut bytes = MAGIC.to_vec();
-        bytes.extend(FORMAT.to_le_bytes());
+        bytes.extend((if extended { EXTENDED_FORMAT } else { FORMAT }).to_le_bytes());
         for v in origin {
             bytes.extend(v.to_le_bytes());
         }
@@ -278,6 +400,18 @@ impl Voxels {
                 bytes.extend(c.to_le_bytes());
             }
         }
+        if extended {
+            ensure!(large.len() <= u32::MAX as usize, "voxel map has too many large triangles");
+            bytes.extend((large.len() as u32).to_le_bytes());
+            for triangle in large {
+                for point in triangle.points {
+                    for value in point.to_array() {
+                        bytes.extend(value.to_le_bytes());
+                    }
+                }
+                bytes.extend(triangle.code.to_le_bytes());
+            }
+        }
         Self::read(bytes)
     }
 }
@@ -288,20 +422,32 @@ impl<B: AsRef<[u8]>> Voxels<B> {
         ensure!(b.len() >= HEADER + 4 && &b[..4] == MAGIC, "not a voxel map");
         let word = |at: usize| u32::from_le_bytes(b[at..at + 4].try_into().unwrap());
         let format = word(4);
-        ensure!(format == FORMAT, "voxel map format {format}, this build reads {FORMAT}");
+        ensure!(
+            format == FORMAT || format == EXTENDED_FORMAT,
+            "voxel map format {format}, this build reads {FORMAT} or {EXTENDED_FORMAT}"
+        );
         let origin = [8, 12, 16].map(|at| f32::from_bits(word(at)));
         let size = [20, 24, 28].map(|at| word(at) as usize);
         ensure!(
             size.iter().all(|&n| n > 0)
-                && size[0] <= MAX_ACROSS
-                && size[1] <= MAX_UP
-                && size[2] <= MAX_ACROSS,
+                && size[1] <= u16::MAX as usize
+                && size[0].checked_mul(size[2]).is_some_and(|n| n <= u32::MAX as usize)
+                && (format == EXTENDED_FORMAT
+                    || (size[0] <= MAX_ACROSS && size[1] <= MAX_UP && size[2] <= MAX_ACROSS)),
             "invalid voxel map size {size:?}"
         );
         let entries = word(32) as usize;
         let columns = word(36) as usize;
         ensure!(columns <= size[0] * size[2], "too many voxel columns");
         let expected = HEADER + 8 * columns + 4 + 6 * entries;
+        ensure!(b.len() >= expected, "voxel map is {} bytes, its header needs at least {expected}", b.len());
+        let large_count = if format == EXTENDED_FORMAT {
+            ensure!(b.len() >= expected + 4, "voxel map has no large triangle count");
+            word(expected) as usize
+        } else {
+            0
+        };
+        let expected = expected + if format == EXTENDED_FORMAT { 4 + 40 * large_count } else { 0 };
         ensure!(b.len() == expected, "voxel map is {} bytes, its header says {expected}", b.len());
         ensure!(word(HEADER + 8 * columns) as usize == entries, "voxel map columns don't add up");
         let mut previous = None;
@@ -323,7 +469,22 @@ impl<B: AsRef<[u8]>> Voxels<B> {
             keys.push(key as u32);
         }
         ensure!(columns > 0 || entries == 0, "voxel hits without columns");
-        let mut map = Self { bytes, origin, size, entries, coarse: Vec::new() };
+        let mut large = Vec::with_capacity(large_count);
+        if format == EXTENDED_FORMAT {
+            let offset = HEADER + 8 * columns + 4 + 6 * entries + 4;
+            for i in 0..large_count {
+                let at = offset + i * 40;
+                let points = std::array::from_fn(|j| {
+                    Vec3::from_array(std::array::from_fn(|k| f32::from_bits(word(at + j * 12 + k * 4))))
+                });
+                ensure!(
+                    points.iter().all(|p| p.to_array().into_iter().all(f32::is_finite)),
+                    "invalid large triangle"
+                );
+                large.push(LargeTriangle { points, code: word(at + 36) });
+            }
+        }
+        let mut map = Self { bytes, origin, size, entries, coarse: Vec::new(), large };
         let mut coarse = vec![0.0; CELLS];
         for key in keys {
             let key = key as usize;
@@ -340,12 +501,48 @@ impl<B: AsRef<[u8]>> Voxels<B> {
                 }
             }
         }
+        // The sparse hit stream cannot supply coarse occupancy for stored triangles.
+        for triangle in &map.large {
+            if !has_raster_projection(triangle.points) {
+                continue;
+            }
+            let bins = [ACROSS, UP, FORWARD];
+            let mut ranges = [0..0, 0..0, 0..0];
+            for k in 0..3 {
+                let lo = triangle.points.iter().map(|p| p[k]).fold(f32::INFINITY, f32::min);
+                let hi = triangle.points.iter().map(|p| p[k]).fold(f32::NEG_INFINITY, f32::max);
+                let bin = size[k] as f32 * CELL / bins[k] as f32;
+                let start = ((lo - origin[k]) / bin).floor().max(0.0) as usize;
+                let end = ((hi - origin[k]) / bin).ceil().max(0.0) as usize;
+                ranges[k] = start.min(bins[k])..end.saturating_add(1).min(bins[k]);
+            }
+            for y in ranges[1].clone() {
+                for x in ranges[0].clone() {
+                    for z in ranges[2].clone() {
+                        let bin = [x, y, z];
+                        let center = Vec3::from_array(std::array::from_fn(|k| {
+                            origin[k] + (bin[k] as f32 + 0.5) * size[k] as f32 * CELL / bins[k] as f32
+                        }));
+                        let half = Vec3::from_array(std::array::from_fn(|k| {
+                            size[k] as f32 * CELL / bins[k] as f32 * 0.5
+                        }));
+                        if triangle_overlaps_box(triangle.points, center, half) {
+                            coarse[(y * ACROSS + x) * FORWARD + z] = 1.0;
+                        }
+                    }
+                }
+            }
+        }
         map.coarse = coarse;
         Ok(map)
     }
 
     pub fn bytes(&self) -> &[u8] {
         self.bytes.as_ref()
+    }
+
+    pub fn format(&self) -> u32 {
+        u32::from_le_bytes(self.bytes.as_ref()[4..8].try_into().unwrap())
     }
 
     pub fn occupied(&self) -> usize {
@@ -389,6 +586,9 @@ impl<B: AsRef<[u8]>> Voxels<B> {
         let (sin, cos) = pose.yaw.sin_cos();
         let [x, y, z] = pose.position;
         let low = ((y - self.origin[1]) / CELL - UP as f32 * 0.5).floor();
+        let first_y = low.ceil() as isize;
+        let mut columns =
+            if self.large.is_empty() { Vec::new() } else { Vec::with_capacity(FORWARD * ACROSS) };
         for f in 0..FORWARD {
             let ahead = (f as f32 - BEHIND as f32 + 0.5) * CELL;
             for a in 0..ACROSS {
@@ -400,10 +600,47 @@ impl<B: AsRef<[u8]>> Voxels<B> {
                 if !(cx >= 0.0 && cz >= 0.0 && cx < self.size[0] as f32 && cz < self.size[2] as f32) {
                     continue;
                 }
+                if !self.large.is_empty() {
+                    columns.push((cx as usize, cz as usize, f, a));
+                }
                 for (h, c) in self.column(cx as usize * self.size[2] + cz as usize) {
                     let u = h as f32 - low;
                     if (0.0..UP as f32).contains(&u) {
                         out[(u as usize * ACROSS + a) * FORWARD + f] |= c;
+                    }
+                }
+            }
+        }
+        if !self.large.is_empty() && !columns.is_empty() {
+            let min_x = columns.iter().map(|c| c.0).min().unwrap();
+            let max_x = columns.iter().map(|c| c.0).max().unwrap();
+            let min_z = columns.iter().map(|c| c.1).min().unwrap();
+            let max_z = columns.iter().map(|c| c.1).max().unwrap();
+            for triangle in &self.large {
+                let ranges = std::array::from_fn::<_, 3, _>(|k| {
+                    cell_range(triangle.points, k, self.origin, self.size)
+                });
+                if ranges[0].end <= min_x
+                    || ranges[0].start > max_x
+                    || ranges[2].end <= min_z
+                    || ranges[2].start > max_z
+                    || ranges[1].end as isize <= first_y
+                    || ranges[1].start as isize >= first_y + UP as isize
+                {
+                    continue;
+                }
+                for &(cx, cz, f, a) in &columns {
+                    if !ranges[0].contains(&cx) || !ranges[2].contains(&cz) {
+                        continue;
+                    }
+                    for h in 0..UP {
+                        let cy = first_y + h as isize;
+                        if cy < 0 || cy >= self.size[1] as isize || !ranges[1].contains(&(cy as usize)) {
+                            continue;
+                        }
+                        if triangle_hits_cell(triangle.points, self.origin, [cx, cy as usize, cz]) {
+                            out[(h * ACROSS + a) * FORWARD + f] |= triangle.code;
+                        }
                     }
                 }
             }
@@ -465,15 +702,32 @@ mod tests {
         let session = record.open(&map, &packs)?;
         let started = std::time::Instant::now();
         let voxels = Voxels::build(&session)?;
+        if let Some(path) = std::env::var_os("GEARBOX_TEST_BASELINE_GRID") {
+            use std::io::{Read, Seek};
+            let offset: u64 = std::env::var("GEARBOX_TEST_BASELINE_OFFSET")?.parse()?;
+            let mut file = std::fs::File::open(path)?;
+            file.seek(std::io::SeekFrom::Start(offset))?;
+            let mut baseline = vec![0; voxels.bytes().len()];
+            file.read_exact(&mut baseline)?;
+            assert!(voxels.bytes() == baseline, "voxel bytes differ from baseline");
+        }
         eprintln!(
-            "grid {:?}, {} hits, {} bytes, {} geometry bins, built in {:?}",
+            "grid {:?}, format {}, {} hits, {} large triangles, {} bytes, {} geometry bins, built in {:?}",
             voxels.size,
+            voxels.format(),
             voxels.occupied(),
+            voxels.large.len(),
             voxels.bytes().len(),
             voxels.coarse.iter().filter(|&&v| v != 0.0).count(),
             started.elapsed()
         );
         let course = crate::Course::race(&session)?;
+        for gate in gates(&session)? {
+            for bounds in gate.boxes {
+                assert!(voxels.global_index(bounds.min).is_some(), "gate min outside grid: {:?}", bounds.min);
+                assert!(voxels.global_index(bounds.max).is_some(), "gate max outside grid: {:?}", bounds.max);
+            }
+        }
         for point in course.checkpoints.iter().flat_map(|target| &target.gates).chain(&course.finishes) {
             assert!(voxels.global_index(*point).is_some(), "course gate outside grid: {point:?}");
         }
@@ -642,6 +896,76 @@ mod tests {
             [gearbox_engine::surface::ASPHALT, gearbox_engine::surface::WOOD, gearbox_engine::surface::METAL]
         {
             assert_eq!(f[4 + surface_class(material)], 1.0);
+        }
+    }
+
+    #[test]
+    fn large_triangle_survives_byte_form_near_and_far() {
+        let points =
+            [Vec3::new(0.0, 4.0, 0.0), Vec3::new(100_000.0, 4.0, 0.0), Vec3::new(0.0, 4.0, 100_000.0)];
+        let origin: [f32; 3] = [0.0; 3];
+        let size = [30_000, 20_000, 30_000];
+        let code = code(Vec3::new(0.0, 1.0, 0.0), gearbox_engine::surface::ASPHALT);
+        let collinear = [
+            Vec3::new(80_000.0, 4.0, 80_000.0),
+            Vec3::new(90_000.0, 4.0, 80_000.0),
+            Vec3::new(100_000.0, 4.0, 80_000.0),
+        ];
+        let mut bytes = MAGIC.to_vec();
+        bytes.extend(EXTENDED_FORMAT.to_le_bytes());
+        for value in origin {
+            bytes.extend(value.to_le_bytes());
+        }
+        for value in size {
+            bytes.extend((value as u32).to_le_bytes());
+        }
+        bytes.extend(0u32.to_le_bytes());
+        bytes.extend(0u32.to_le_bytes());
+        bytes.extend(0u32.to_le_bytes());
+        bytes.extend(2u32.to_le_bytes());
+        for triangle in [points, collinear] {
+            for point in triangle {
+                for value in point.to_array() {
+                    bytes.extend(value.to_le_bytes());
+                }
+            }
+            bytes.extend(code.to_le_bytes());
+        }
+        let voxels = Voxels::read(bytes).unwrap();
+        assert_eq!(voxels.format(), EXTENDED_FORMAT);
+        for (x, z) in [(2.0, 2.0), (40_002.0, 40_002.0)] {
+            let cell = [(x / CELL) as usize, 1, (z / CELL) as usize];
+            assert!(triangle_hits_cell(points, origin, cell));
+            let crop = voxels.crop(&Pose { position: [x, 4.0, z], yaw: 0.0 });
+            assert!(crop.iter().any(|&value| value & code == code));
+            assert_eq!(voxels.coarse[voxels.global_index([x, 4.0, z]).unwrap()], 1.0);
+        }
+        assert!(!triangle_hits_cell(points, origin, [20_000, 1, 20_000]));
+        assert_eq!(voxels.coarse[voxels.global_index([90_002.0, 4.0, 80_002.0]).unwrap()], 0.0);
+    }
+
+    #[test]
+    fn analytic_triangle_has_the_same_four_metre_samples_as_raster() {
+        let origin = [-12.0, -12.0, -12.0];
+        let size = [20, 20, 20];
+        let triangles = [
+            [Vec3::new(0.0, 4.0, 0.0), Vec3::new(52.0, 4.0, 0.0), Vec3::new(0.0, 4.0, 52.0)],
+            [Vec3::new(4.0, -4.0, 0.0), Vec3::new(4.0, 40.0, 0.0), Vec3::new(4.0, -4.0, 48.0)],
+            [Vec3::new(0.0, 0.0, 8.0), Vec3::new(48.0, 0.0, 8.0), Vec3::new(0.0, 40.0, 8.0)],
+        ];
+        for points in triangles {
+            let mut columns = HashMap::new();
+            raster_triangle(points, Vec3::new(0.0, 1.0, 0.0), 1, origin, size, &mut columns);
+            for x in 0..size[0] {
+                for y in 0..size[1] {
+                    for z in 0..size[2] {
+                        let raster = columns
+                            .get(&((x * size[2] + z) as u32))
+                            .is_some_and(|column| column.iter().any(|(height, _)| *height as usize == y));
+                        assert_eq!(triangle_hits_cell(points, origin, [x, y, z]), raster, "cell {x},{y},{z}");
+                    }
+                }
+            }
         }
     }
 
