@@ -32,7 +32,10 @@ const MAX_UP: usize = 640;
 const MAGIC: &[u8; 4] = b"GVOX";
 pub const FORMAT: u32 = 3;
 pub const EXTENDED_FORMAT: u32 = 4;
+pub const WIDE_FORMAT: u32 = 5;
 const MAX_RASTER_WORK: usize = 4096;
+const LARGE_TILE: usize = 64;
+const MAX_LARGE_TILES: u64 = 16;
 const VERTICAL_SAMPLES: [(f32, f32); 3] =
     [(0.0, 0.0), (-CELL * 0.25, -CELL * 0.25), (CELL * 0.25, CELL * 0.25)];
 
@@ -58,6 +61,8 @@ pub struct Voxels<B = Vec<u8>> {
     entries: usize,
     coarse: Vec<f32>,
     large: Vec<LargeTriangle>,
+    large_tiles: HashMap<(usize, usize), Vec<usize>>,
+    large_spanning: Vec<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -80,7 +85,7 @@ fn code(normal: Vec3, material: u8) -> u32 {
     (1 << direction) | (1 << (3 + surface_class(material)))
 }
 
-fn add_hit(column: &mut Vec<(u16, u32)>, y: u16, code: u32) {
+fn add_hit(column: &mut Vec<(u32, u32)>, y: u32, code: u32) {
     match column.iter_mut().find(|(h, _)| *h == y) {
         Some(slot) => slot.1 |= code,
         None => column.push((y, code)),
@@ -178,7 +183,7 @@ fn raster_triangle(
     material: u8,
     origin: [f32; 3],
     size: [usize; 3],
-    columns: &mut HashMap<u32, Vec<(u16, u32)>>,
+    columns: &mut HashMap<u64, Vec<(u32, u32)>>,
 ) {
     let c = code(normal, material);
     for (u, v, d, samples) in
@@ -221,8 +226,8 @@ fn raster_triangle(
                     cell[u] = iu;
                     cell[v] = iv;
                     cell[d] = id as usize;
-                    let key = (cell[0] * size[2] + cell[2]) as u32;
-                    add_hit(columns.entry(key).or_default(), cell[1] as u16, c);
+                    let key = cell[0] as u64 * size[2] as u64 + cell[2] as u64;
+                    add_hit(columns.entry(key).or_default(), cell[1] as u32, c);
                 }
             }
         }
@@ -236,7 +241,7 @@ fn add_triangle(
     origin: [f32; 3],
     size: [usize; 3],
     extended: bool,
-    columns: &mut HashMap<u32, Vec<(u16, u32)>>,
+    columns: &mut HashMap<u64, Vec<(u32, u32)>>,
     large: &mut Vec<LargeTriangle>,
 ) {
     if extended && raster_work(points, origin, size) > MAX_RASTER_WORK {
@@ -309,17 +314,16 @@ impl Voxels {
         // Existing maps retain their format 3 bytes and observation values.
         let extended = size[0] > MAX_ACROSS || size[1] > MAX_UP || size[2] > MAX_ACROSS;
         ensure!(
-            size.iter().all(|&n| n > 0 && n <= u32::MAX as usize)
-                && size[1] <= u16::MAX as usize
-                && size[0].checked_mul(size[2]).is_some_and(|n| n <= u32::MAX as usize),
+            size.iter().all(|&n| n > 0 && n <= u32::MAX as usize),
             "collision bounds exceed voxel map capacity: {size:?} cells"
         );
+        let wide = size[1] > u16::MAX as usize || size[0] as u64 * size[2] as u64 > u32::MAX as u64;
         let origin = [
             (low.x + high.x) * 0.5 - size[0] as f32 * CELL * 0.5,
             (low.y + high.y) * 0.5 - size[1] as f32 * CELL * 0.5,
             (low.z + high.z) * 0.5 - size[2] as f32 * CELL * 0.5,
         ];
-        let mut columns: HashMap<u32, Vec<(u16, u32)>> = HashMap::new();
+        let mut columns: HashMap<u64, Vec<(u32, u32)>> = HashMap::new();
         let mut large = Vec::new();
         for id in surfaces {
             let surface = geometry.entry(EntryId::Surface(SurfaceId(id)));
@@ -371,7 +375,16 @@ impl Voxels {
         let entries: usize = columns.iter().map(|(_, column)| column.len()).sum();
         ensure!(entries <= u32::MAX as usize, "voxel map has too many hits");
         let mut bytes = MAGIC.to_vec();
-        bytes.extend((if extended { EXTENDED_FORMAT } else { FORMAT }).to_le_bytes());
+        bytes.extend(
+            (if wide {
+                WIDE_FORMAT
+            } else if extended {
+                EXTENDED_FORMAT
+            } else {
+                FORMAT
+            })
+            .to_le_bytes(),
+        );
         for v in origin {
             bytes.extend(v.to_le_bytes());
         }
@@ -379,18 +392,27 @@ impl Voxels {
             bytes.extend((n as u32).to_le_bytes());
         }
         bytes.extend((entries as u32).to_le_bytes());
+        ensure!(columns.len() <= u32::MAX as usize, "voxel map has too many columns");
         bytes.extend((columns.len() as u32).to_le_bytes());
         let mut at = 0u32;
         for (index, column) in &mut columns {
             column.sort_unstable();
-            bytes.extend(index.to_le_bytes());
+            if wide {
+                bytes.extend(index.to_le_bytes());
+            } else {
+                bytes.extend((*index as u32).to_le_bytes());
+            }
             bytes.extend(at.to_le_bytes());
             at += column.len() as u32;
         }
         bytes.extend(at.to_le_bytes());
         for (_, column) in &columns {
             for (y, _) in column {
-                bytes.extend(y.to_le_bytes());
+                if wide {
+                    bytes.extend(y.to_le_bytes());
+                } else {
+                    bytes.extend((*y as u16).to_le_bytes());
+                }
             }
         }
         for (_, column) in &columns {
@@ -421,41 +443,54 @@ impl<B: AsRef<[u8]>> Voxels<B> {
         let word = |at: usize| u32::from_le_bytes(b[at..at + 4].try_into().unwrap());
         let format = word(4);
         ensure!(
-            format == FORMAT || format == EXTENDED_FORMAT,
-            "voxel map format {format}, this build reads {FORMAT} or {EXTENDED_FORMAT}"
+            format == FORMAT || format == EXTENDED_FORMAT || format == WIDE_FORMAT,
+            "voxel map format {format}, this build reads {FORMAT}, {EXTENDED_FORMAT}, or {WIDE_FORMAT}"
         );
+        let wide = format == WIDE_FORMAT;
         let origin = [8, 12, 16].map(|at| f32::from_bits(word(at)));
         let size = [20, 24, 28].map(|at| word(at) as usize);
         ensure!(
             size.iter().all(|&n| n > 0)
-                && size[1] <= u16::MAX as usize
-                && size[0].checked_mul(size[2]).is_some_and(|n| n <= u32::MAX as usize)
-                && (format == EXTENDED_FORMAT
+                && (wide
+                    || (size[1] <= u16::MAX as usize && size[0] as u64 * size[2] as u64 <= u32::MAX as u64))
+                && (format != FORMAT
                     || (size[0] <= MAX_ACROSS && size[1] <= MAX_UP && size[2] <= MAX_ACROSS)),
             "invalid voxel map size {size:?}"
         );
         let entries = word(32) as usize;
         let columns = word(36) as usize;
-        ensure!(columns <= size[0] * size[2], "too many voxel columns");
-        let expected = HEADER + 8 * columns + 4 + 6 * entries;
-        ensure!(b.len() >= expected, "voxel map is {} bytes, its header needs at least {expected}", b.len());
-        let large_count = if format == EXTENDED_FORMAT {
-            ensure!(b.len() >= expected + 4, "voxel map has no large triangle count");
+        ensure!(columns as u64 <= size[0] as u64 * size[2] as u64, "too many voxel columns");
+        let column_bytes = if wide { 12 } else { 8 };
+        let height_bytes = if wide { 4 } else { 2 };
+        let expected = HEADER as u64
+            + column_bytes as u64 * columns as u64
+            + 4
+            + (height_bytes + 4) as u64 * entries as u64;
+        ensure!(
+            b.len() as u64 >= expected,
+            "voxel map is {} bytes, its header needs at least {expected}",
+            b.len()
+        );
+        let expected = expected as usize;
+        let large_count = if format != FORMAT {
+            ensure!(b.len() as u64 >= expected as u64 + 4, "voxel map has no large triangle count");
             word(expected) as usize
         } else {
             0
         };
-        let expected = expected + if format == EXTENDED_FORMAT { 4 + 40 * large_count } else { 0 };
-        ensure!(b.len() == expected, "voxel map is {} bytes, its header says {expected}", b.len());
-        ensure!(word(HEADER + 8 * columns) as usize == entries, "voxel map columns don't add up");
+        let expected = expected as u64 + if format != FORMAT { 4 + 40 * large_count as u64 } else { 0 };
+        ensure!(b.len() as u64 == expected, "voxel map is {} bytes, its header says {expected}", b.len());
+        ensure!(word(HEADER + column_bytes * columns) as usize == entries, "voxel map columns don't add up");
         let mut previous = None;
         let mut offset = 0;
         let mut keys = Vec::with_capacity(columns);
         for i in 0..columns {
-            let key = word(HEADER + 8 * i) as usize;
-            let start = word(HEADER + 8 * i + 4) as usize;
+            let at = HEADER + column_bytes * i;
+            let key =
+                if wide { u64::from_le_bytes(b[at..at + 8].try_into().unwrap()) } else { word(at) as u64 };
+            let start = word(at + column_bytes - 4) as usize;
             ensure!(
-                key < size[0] * size[2] && previous.is_none_or(|prev| key > prev),
+                key < size[0] as u64 * size[2] as u64 && previous.is_none_or(|prev| key > prev),
                 "invalid voxel column index"
             );
             ensure!(
@@ -464,12 +499,12 @@ impl<B: AsRef<[u8]>> Voxels<B> {
             );
             previous = Some(key);
             offset = start;
-            keys.push(key as u32);
+            keys.push(key);
         }
         ensure!(columns > 0 || entries == 0, "voxel hits without columns");
         let mut large = Vec::with_capacity(large_count);
-        if format == EXTENDED_FORMAT {
-            let offset = HEADER + 8 * columns + 4 + 6 * entries + 4;
+        if format != FORMAT {
+            let offset = HEADER + column_bytes * columns + 4 + (height_bytes + 4) * entries + 4;
             for i in 0..large_count {
                 let at = offset + i * 40;
                 let points = std::array::from_fn(|j| {
@@ -482,11 +517,31 @@ impl<B: AsRef<[u8]>> Voxels<B> {
                 large.push(LargeTriangle { points, code: word(at + 36) });
             }
         }
-        let mut map = Self { bytes, origin, size, entries, coarse: Vec::new(), large };
+        let mut large_tiles: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+        let mut large_spanning = Vec::new();
+        for (index, triangle) in large.iter().enumerate() {
+            let x = cell_range(triangle.points, 0, origin, size);
+            let z = cell_range(triangle.points, 2, origin, size);
+            if x.is_empty() || z.is_empty() {
+                continue;
+            }
+            let tiles_x = (x.end - 1) / LARGE_TILE - x.start / LARGE_TILE + 1;
+            let tiles_z = (z.end - 1) / LARGE_TILE - z.start / LARGE_TILE + 1;
+            if tiles_x as u64 * tiles_z as u64 > MAX_LARGE_TILES {
+                large_spanning.push(index);
+                continue;
+            }
+            for tx in x.start / LARGE_TILE..=(x.end - 1) / LARGE_TILE {
+                for tz in z.start / LARGE_TILE..=(z.end - 1) / LARGE_TILE {
+                    large_tiles.entry((tx, tz)).or_default().push(index);
+                }
+            }
+        }
+        let mut map =
+            Self { bytes, origin, size, entries, coarse: Vec::new(), large, large_tiles, large_spanning };
         let mut coarse = vec![0.0; CELLS];
         for key in keys {
-            let key = key as usize;
-            let (x, z) = (key / size[2], key % size[2]);
+            let (x, z) = (key / size[2] as u64, key % size[2] as u64);
             for (y, _) in map.column(key) {
                 ensure!((y as usize) < size[1], "invalid voxel height");
                 let point = [
@@ -547,33 +602,45 @@ impl<B: AsRef<[u8]>> Voxels<B> {
         self.entries
     }
 
-    fn column(&self, index: usize) -> impl Iterator<Item = (u16, u32)> + '_ {
+    fn column(&self, index: u64) -> impl Iterator<Item = (u32, u32)> + '_ {
         let b = self.bytes.as_ref();
         let columns = u32::from_le_bytes(b[36..40].try_into().unwrap()) as usize;
+        let wide = self.format() == WIDE_FORMAT;
+        let column_bytes = if wide { 12 } else { 8 };
+        let height_bytes = if wide { 4 } else { 2 };
         let start = |i: usize| {
-            u32::from_le_bytes(b[HEADER + 8 * i + 4..HEADER + 8 * i + 8].try_into().unwrap()) as usize
+            let at = HEADER + column_bytes * i + column_bytes - 4;
+            u32::from_le_bytes(b[at..at + 4].try_into().unwrap()) as usize
+        };
+        let key = |i: usize| {
+            let at = HEADER + column_bytes * i;
+            if wide {
+                u64::from_le_bytes(b[at..at + 8].try_into().unwrap())
+            } else {
+                u32::from_le_bytes(b[at..at + 4].try_into().unwrap()) as u64
+            }
         };
         let mut lo = 0;
         let mut hi = columns;
         while lo < hi {
             let mid = (lo + hi) / 2;
-            let key =
-                u32::from_le_bytes(b[HEADER + 8 * mid..HEADER + 8 * mid + 4].try_into().unwrap()) as usize;
-            if key < index { lo = mid + 1 } else { hi = mid }
+            if key(mid) < index { lo = mid + 1 } else { hi = mid }
         }
-        let found = lo < columns
-            && u32::from_le_bytes(b[HEADER + 8 * lo..HEADER + 8 * lo + 4].try_into().unwrap()) as usize
-                == index;
+        let found = lo < columns && key(lo) == index;
         let (from, to) = if found {
             (start(lo), if lo + 1 < columns { start(lo + 1) } else { self.entries })
         } else {
             (0, 0)
         };
-        let heights = HEADER + 8 * columns + 4;
-        let codes = heights + 2 * self.entries;
+        let heights = HEADER + column_bytes * columns + 4;
+        let codes = heights + height_bytes * self.entries;
         (from..to.max(from)).map(move |e| {
             (
-                u16::from_le_bytes([b[heights + 2 * e], b[heights + 2 * e + 1]]),
+                if wide {
+                    u32::from_le_bytes(b[heights + 4 * e..heights + 4 * e + 4].try_into().unwrap())
+                } else {
+                    u16::from_le_bytes([b[heights + 2 * e], b[heights + 2 * e + 1]]) as u32
+                },
                 u32::from_le_bytes(b[codes + 4 * e..codes + 4 * e + 4].try_into().unwrap()),
             )
         })
@@ -601,7 +668,7 @@ impl<B: AsRef<[u8]>> Voxels<B> {
                 if !self.large.is_empty() {
                     columns.push((cx as usize, cz as usize, f, a));
                 }
-                for (h, c) in self.column(cx as usize * self.size[2] + cz as usize) {
+                for (h, c) in self.column(cx as u64 * self.size[2] as u64 + cz as u64) {
                     let u = h as f32 - low;
                     if (0.0..UP as f32).contains(&u) {
                         out[(u as usize * ACROSS + a) * FORWARD + f] |= c;
@@ -614,7 +681,18 @@ impl<B: AsRef<[u8]>> Voxels<B> {
             let max_x = columns.iter().map(|c| c.0).max().unwrap();
             let min_z = columns.iter().map(|c| c.1).min().unwrap();
             let max_z = columns.iter().map(|c| c.1).max().unwrap();
-            for triangle in &self.large {
+            let mut candidates = self.large_spanning.clone();
+            for tx in min_x / LARGE_TILE..=max_x / LARGE_TILE {
+                for tz in min_z / LARGE_TILE..=max_z / LARGE_TILE {
+                    if let Some(indices) = self.large_tiles.get(&(tx, tz)) {
+                        candidates.extend(indices);
+                    }
+                }
+            }
+            candidates.sort_unstable();
+            candidates.dedup();
+            for index in candidates {
+                let triangle = &self.large[index];
                 let ranges = std::array::from_fn::<_, 3, _>(|k| {
                     cell_range(triangle.points, k, self.origin, self.size)
                 });
@@ -710,8 +788,9 @@ mod tests {
             assert!(voxels.bytes() == baseline, "voxel bytes differ from baseline");
         }
         eprintln!(
-            "grid {:?}, format {}, {} hits, {} large triangles, {} bytes, {} geometry bins, built in {:?}",
+            "grid {:?} at {:?}, format {}, {} hits, {} large triangles, {} bytes, {} geometry bins, built in {:?}",
             voxels.size,
+            voxels.origin,
             voxels.format(),
             voxels.occupied(),
             voxels.large.len(),
@@ -731,6 +810,15 @@ mod tests {
         }
         assert!(voxels.occupied() > 0);
         assert!(voxels.crop(&Pose::read(&session)).iter().any(|&code| code != 0));
+        if let Some(count) = std::env::var_os("GEARBOX_TEST_BENCH_CROP") {
+            let count: usize = count.to_string_lossy().parse()?;
+            let pose = Pose::read(&session);
+            let start = std::time::Instant::now();
+            for _ in 0..count {
+                std::hint::black_box(voxels.crop(&pose));
+            }
+            eprintln!("{count} crops in {:?}", start.elapsed());
+        }
         Ok(())
     }
 
@@ -886,7 +974,7 @@ mod tests {
             size,
             &mut columns,
         );
-        let column = &columns[&((size[2] + 1) as u32)];
+        let column = &columns[&((size[2] + 1) as u64)];
         let code = column.iter().find(|(y, _)| *y == 1).unwrap().1;
         let f = features(code);
         assert_eq!(&f[..4], &[1.0, 1.0, 1.0, 1.0]);
@@ -943,24 +1031,103 @@ mod tests {
     }
 
     #[test]
+    fn wide_coordinates_keep_height_and_column_distinct() {
+        let size = [250_696u32, 125_097, 250_601];
+        let origin = [0.0f32; 3];
+        let hits = [
+            (5u64 * size[2] as u64 + 7, 9u32, 0x11u32),
+            (250_600u64 * size[2] as u64 + 250_500, 120_000u32, 0x22u32),
+        ];
+        let mut bytes = MAGIC.to_vec();
+        bytes.extend(5u32.to_le_bytes());
+        for value in origin {
+            bytes.extend(value.to_le_bytes());
+        }
+        for value in size {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend(2u32.to_le_bytes());
+        bytes.extend(2u32.to_le_bytes());
+        for (i, &(key, _, _)) in hits.iter().enumerate() {
+            bytes.extend(key.to_le_bytes());
+            bytes.extend((i as u32).to_le_bytes());
+        }
+        bytes.extend(2u32.to_le_bytes());
+        for &(_, height, _) in &hits {
+            bytes.extend(height.to_le_bytes());
+        }
+        for &(_, _, code) in &hits {
+            bytes.extend(code.to_le_bytes());
+        }
+        let triangle = [
+            Vec3::new(500_000.0, 480_000.0, 500_000.0),
+            Vec3::new(500_400.0, 480_000.0, 500_000.0),
+            Vec3::new(500_000.0, 480_000.0, 500_400.0),
+        ];
+        bytes.extend(1u32.to_le_bytes());
+        for point in triangle {
+            for value in point.to_array() {
+                bytes.extend(value.to_le_bytes());
+            }
+        }
+        bytes.extend(0x44u32.to_le_bytes());
+        let voxels = Voxels::read(bytes.clone()).unwrap();
+        assert_eq!(voxels.bytes(), bytes);
+        assert_eq!(voxels.format(), 5);
+        for &(key, height, expected) in &hits {
+            let x = key / size[2] as u64;
+            let z = key % size[2] as u64;
+            let pose = Pose {
+                position: [(x as f32 + 0.5) * CELL, (height as f32 + 0.5) * CELL, (z as f32 + 0.5) * CELL],
+                yaw: 0.0,
+            };
+            assert!(voxels.crop(&pose).iter().any(|&code| code == expected));
+            assert_eq!(voxels.coarse[voxels.global_index(pose.position).unwrap()], 1.0);
+        }
+        let near_triangle = [500_050.0, 480_002.0, 500_050.0];
+        assert!(voxels.crop(&Pose { position: near_triangle, yaw: 0.0 }).contains(&0x44));
+        for position in [[500_250.0, 480_002.0, 500_050.0], [500_050.0, 480_002.0, 500_250.0]] {
+            assert!(voxels.crop(&Pose { position, yaw: 0.0 }).contains(&0x44));
+        }
+        assert_eq!(voxels.coarse[voxels.global_index(near_triangle).unwrap()], 1.0);
+        let away = [520_050.0, 480_002.0, 520_050.0];
+        assert!(voxels.crop(&Pose { position: away, yaw: 0.0 }).iter().all(|&code| code == 0));
+        let mut invalid_height = bytes.clone();
+        let height_offset = HEADER + 2 * 12 + 4 + 4;
+        invalid_height[height_offset..height_offset + 4].copy_from_slice(&size[1].to_le_bytes());
+        assert!(Voxels::read(invalid_height).is_err());
+        let mut invalid_key = bytes;
+        invalid_key[HEADER + 12..HEADER + 20]
+            .copy_from_slice(&(size[0] as u64 * size[2] as u64).to_le_bytes());
+        assert!(Voxels::read(invalid_key).is_err());
+    }
+
+    #[test]
     fn analytic_triangle_has_the_same_four_metre_samples_as_raster() {
-        let origin = [-12.0, -12.0, -12.0];
         let size = [20, 20, 20];
         let triangles = [
             [Vec3::new(0.0, 4.0, 0.0), Vec3::new(52.0, 4.0, 0.0), Vec3::new(0.0, 4.0, 52.0)],
             [Vec3::new(4.0, -4.0, 0.0), Vec3::new(4.0, 40.0, 0.0), Vec3::new(4.0, -4.0, 48.0)],
             [Vec3::new(0.0, 0.0, 8.0), Vec3::new(48.0, 0.0, 8.0), Vec3::new(0.0, 40.0, 8.0)],
         ];
-        for points in triangles {
-            let mut columns = HashMap::new();
-            raster_triangle(points, Vec3::new(0.0, 1.0, 0.0), 1, origin, size, &mut columns);
-            for x in 0..size[0] {
-                for y in 0..size[1] {
-                    for z in 0..size[2] {
-                        let raster = columns
-                            .get(&((x * size[2] + z) as u32))
-                            .is_some_and(|column| column.iter().any(|(height, _)| *height as usize == y));
-                        assert_eq!(triangle_hits_cell(points, origin, [x, y, z]), raster, "cell {x},{y},{z}");
+        for shift in [Vec3::ZERO, Vec3::new(500_000.0, 480_000.0, 500_000.0)] {
+            let origin = (shift - Vec3::new(12.0, 12.0, 12.0)).to_array();
+            for base in triangles {
+                let points = base.map(|point| point + shift);
+                let mut columns = HashMap::new();
+                raster_triangle(points, Vec3::new(0.0, 1.0, 0.0), 1, origin, size, &mut columns);
+                for x in 0..size[0] {
+                    for y in 0..size[1] {
+                        for z in 0..size[2] {
+                            let raster = columns
+                                .get(&((x * size[2] + z) as u64))
+                                .is_some_and(|column| column.iter().any(|(height, _)| *height as usize == y));
+                            assert_eq!(
+                                triangle_hits_cell(points, origin, [x, y, z]),
+                                raster,
+                                "cell {x},{y},{z}"
+                            );
+                        }
                     }
                 }
             }
