@@ -6,9 +6,9 @@ use gearbox_search::gate::gates;
 
 use crate::voxels::{self, Pose, Voxels};
 
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 pub const AHEAD: usize = 4;
-pub const SURFACES: usize = 12;
+pub const SURFACES: usize = 17;
 pub const CAR_LEN: usize = 16;
 pub const WHEEL_LEN: usize = SURFACES + 3;
 pub const EFFECTS_START: usize = CAR_LEN + 4 * WHEEL_LEN;
@@ -91,6 +91,19 @@ impl Course {
         out[AHEAD * 5 + 6] = laps_left as f32;
         out
     }
+
+    fn mark_global<B: AsRef<[u8]>>(&self, race: &Race, grid: &Voxels<B>, out: &mut [f32]) {
+        for target in &self.checkpoints {
+            let channel =
+                if passed(race, target.group) { voxels::GLOBAL_PASSED } else { voxels::GLOBAL_UNPASSED };
+            for &gate in &target.gates {
+                grid.mark_global(gate, channel, out);
+            }
+        }
+        for &gate in &self.finishes {
+            grid.mark_global(gate, voxels::GLOBAL_FINISH, out);
+        }
+    }
 }
 
 fn entries(race: &Race, run: u32) -> impl Iterator<Item = &gearbox_engine::race::Entry> {
@@ -152,35 +165,32 @@ impl Car {
 
 pub(crate) fn surface_class(material: u8) -> usize {
     match material {
+        surface::TURBO
+        | surface::TURBO_2
+        | surface::TURBO_ROULETTE
+        | surface::TURBO_WOOD
+        | surface::TURBO_2_WOOD
+        | surface::TURBO_TECH_MAGNETIC
+        | surface::TURBO_2_TECH_MAGNETIC => 12,
+        surface::FREE_WHEELING | surface::FREE_WHEELING_WOOD | surface::FREE_WHEELING_TECH_MAGNETIC => 13,
+        surface::NO_GRIP => 14,
+        surface::NO_STEERING => 15,
+        surface::NO_BRAKES => 16,
         surface::CONCRETE
         | surface::PAVEMENT
         | surface::ASPHALT
         | surface::WET_ASPHALT
-        | surface::WET_PAVEMENT
-        | surface::TURBO
-        | surface::TURBO_2
-        | surface::TURBO_ROULETTE
-        | surface::FREE_WHEELING
-        | surface::NO_GRIP
-        | surface::NO_STEERING
-        | surface::NO_BRAKES => 0,
+        | surface::WET_PAVEMENT => 0,
         surface::DIRT | surface::DIRT_ROAD | surface::WET_DIRT_ROAD | surface::GRAVEL => 1,
         surface::GRASS | surface::WET_GRASS => 2,
         surface::ICE | surface::ROAD_ICE => 3,
         surface::PLASTIC | surface::ROAD_SYNTHETIC => 4,
-        surface::WOOD
-        | surface::SLIDING_WOOD
-        | surface::TURBO_WOOD
-        | surface::TURBO_2_WOOD
-        | surface::FREE_WHEELING_WOOD => 5,
+        surface::WOOD | surface::SLIDING_WOOD => 5,
         surface::METAL
         | surface::RESONANT_METAL
         | surface::METAL_TRANS
         | surface::METAL_FENCE
         | surface::TECH_MAGNETIC
-        | surface::TURBO_TECH_MAGNETIC
-        | surface::TURBO_2_TECH_MAGNETIC
-        | surface::FREE_WHEELING_TECH_MAGNETIC
         | surface::TECH_SUPER_MAGNETIC => 6,
         surface::SAND => 7,
         surface::SNOW => 8,
@@ -244,6 +254,9 @@ pub fn observe<B: AsRef<[u8]>>(session: &Session, course: &Course, grid: &Voxels
     let mut out = vec![0.0; LEN];
     out[..VECTOR_LEN].copy_from_slice(&vector(session, course));
     voxels::expand(&grid.crop(&Pose::read(session)), &mut out[VECTOR_LEN..]);
+    grid.global(&mut out[VECTOR_LEN..]);
+    course.mark_global(&session.race, grid, &mut out[VECTOR_LEN..]);
+    grid.mark_global(session.body().pos.to_array(), voxels::GLOBAL_CAR, &mut out[VECTOR_LEN..]);
     out
 }
 
@@ -388,5 +401,60 @@ mod tests {
         assert_eq!(car.to_car(Vec3::new(50.0, 0.0, 0.0)).to_array(), [0.0, 0.0, 50.0]);
         assert_eq!(&car.target([-100.0, 0.0, 0.0], 1.0)[..3], &[0.0, 0.0, -1.0]);
         assert_eq!(&car.target([0.0; 3], 1.0)[..3], &[0.0; 3]);
+    }
+
+    #[test]
+    fn global_grid_keeps_every_checkpoint_and_distant_finish_as_lap_state_changes() {
+        let size = [140u32, 10, 140];
+        let mut bytes = b"GVOX".to_vec();
+        bytes.extend(2u32.to_le_bytes());
+        for value in [-40.0f32, -20.0, -40.0] {
+            bytes.extend(value.to_le_bytes());
+        }
+        for value in size {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend(0u32.to_le_bytes());
+        bytes.resize(bytes.len() + 4 * (size[0] * size[2] + 1) as usize, 0);
+        let grid = Voxels::read(bytes).unwrap();
+        let mut race = race(1);
+        race.rules.checkpoints_per_lap = 6;
+        race.rules.waypoints = (0..7)
+            .map(|group| RaceWaypoint {
+                flags: if group == 6 { WaypointFlags::GOAL } else { WaypointFlags::CHECKPOINT },
+                group,
+                order: u32::MAX,
+                pose: Iso::default(),
+                respawn_pose: Iso::default(),
+                linked: true,
+                respawn: false,
+            })
+            .collect();
+        let course = Course {
+            checkpoints: (0..6)
+                .map(|group| Target { group, gates: vec![[0.0, 0.0, 100.0 + group as f32 * 60.0]] })
+                .collect(),
+            finishes: vec![[0.0, 0.0, 500.0]],
+            laps: 1,
+        };
+        let mut global = vec![0.0; voxels::FEATURES];
+        course.mark_global(&race, &grid, &mut global);
+        for target in &course.checkpoints {
+            let index = grid.global_index(target.gates[0]).unwrap();
+            assert_eq!(global[voxels::GLOBAL_UNPASSED * voxels::CELLS + index], 1.0);
+        }
+        let finish_index = grid.global_index(course.finishes[0]).unwrap();
+        assert_eq!(global[voxels::GLOBAL_FINISH * voxels::CELLS + finish_index], 1.0);
+        assert_eq!(course.features(&car(), &race)[24], 0.0);
+        race.waypoint(0, None, 5, 10);
+        global.fill(0.0);
+        course.mark_global(&race, &grid, &mut global);
+        let passed_index = grid.global_index(course.checkpoints[5].gates[0]).unwrap();
+        assert_eq!(global[voxels::GLOBAL_UNPASSED * voxels::CELLS + passed_index], 0.0);
+        assert_eq!(global[voxels::GLOBAL_PASSED * voxels::CELLS + passed_index], 1.0);
+        for waypoint in 0..5 {
+            race.waypoint(0, None, waypoint, 20 + waypoint * 10);
+        }
+        assert_eq!(course.features(&car(), &race)[24], 1.0);
     }
 }
