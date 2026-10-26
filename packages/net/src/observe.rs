@@ -4,10 +4,10 @@ use gearbox_engine::vehicle::forces::{ForceRays, common::PedalMode};
 use gearbox_engine::{Mat3, Session, Vec3, surface};
 use gearbox_search::gate::gates;
 
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 pub const AHEAD: usize = 4;
 pub const SURFACES: usize = 12;
-pub const CAR_LEN: usize = 20;
+pub const CAR_LEN: usize = 17;
 pub const WHEEL_LEN: usize = SURFACES + 3;
 pub const EFFECTS_START: usize = CAR_LEN + 4 * WHEEL_LEN;
 pub const COURSE_START: usize = EFFECTS_START + 9;
@@ -202,8 +202,7 @@ pub fn observe(session: &Session, course: &Course) -> [f32; LEN] {
     out[10] = vehicle.rpm / 10_000.0;
     out[11] = vehicle.gear as f32 / 6.0;
     out[12] = (vehicle.wheels[0].steering_angle + vehicle.wheels[1].steering_angle) / std::f32::consts::PI;
-    out[13..16].copy_from_slice(&[vehicle.controls.gas, vehicle.controls.brake, vehicle.controls.steer]);
-    out[16 + vehicle.model_choice as usize] = 1.0;
+    out[13 + vehicle.model_choice as usize] = 1.0;
     for (slot, wheel) in
         out[CAR_LEN..EFFECTS_START].as_chunks_mut::<WHEEL_LEN>().0.iter_mut().zip(&vehicle.wheels)
     {
