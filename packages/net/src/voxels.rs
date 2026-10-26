@@ -24,8 +24,8 @@ pub const GLOBAL_CAR: usize = LOCAL_CHANNELS + 4;
 
 const MARGIN: f32 = 96.0;
 const MARGIN_UP: f32 = 32.0;
-const MAX_ACROSS: usize = 640;
-const MAX_UP: usize = 128;
+const MAX_ACROSS: usize = 2048;
+const MAX_UP: usize = 512;
 const MAX_HITS: usize = 64;
 const MAGIC: &[u8; 4] = b"GVOX";
 const FORMAT: u32 = 2;
