@@ -594,6 +594,10 @@ impl<B: AsRef<[u8]>> Voxels<B> {
         self.bytes.as_ref()
     }
 
+    pub(crate) fn bounds(&self) -> ([f32; 3], [f32; 3]) {
+        (self.origin, self.size.map(|n| n as f32 * CELL))
+    }
+
     pub fn format(&self) -> u32 {
         u32::from_le_bytes(self.bytes.as_ref()[4..8].try_into().unwrap())
     }

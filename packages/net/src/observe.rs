@@ -5,15 +5,19 @@ use gearbox_engine::{Mat3, Session, Vec3, surface};
 use gearbox_search::gate::gates;
 
 use crate::voxels::{self, Pose, Voxels};
+use crate::{dynamics, frame, probes};
 
-pub const VERSION: u32 = 6;
+pub const VERSION: u32 = 7;
 pub const AHEAD: usize = 4;
 pub const SURFACES: usize = 17;
 pub const CAR_LEN: usize = 16;
 pub const WHEEL_LEN: usize = SURFACES + 3;
 pub const EFFECTS_START: usize = CAR_LEN + 4 * WHEEL_LEN;
 pub const COURSE_START: usize = EFFECTS_START + 9;
-pub const VECTOR_LEN: usize = COURSE_START + AHEAD * 5 + 7;
+pub const DYNAMICS_START: usize = COURSE_START + AHEAD * 5 + 7;
+pub const PROBES_START: usize = DYNAMICS_START + dynamics::LEN;
+pub const FRAME_START: usize = PROBES_START + probes::LEN;
+pub const VECTOR_LEN: usize = FRAME_START + frame::LEN;
 pub const LEN: usize = VECTOR_LEN + voxels::FEATURES;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -200,7 +204,7 @@ pub(crate) fn surface_class(material: u8) -> usize {
     }
 }
 
-pub fn vector(session: &Session, course: &Course) -> [f32; VECTOR_LEN] {
+pub fn vector<B: AsRef<[u8]>>(session: &Session, course: &Course, grid: &Voxels<B>) -> [f32; VECTOR_LEN] {
     let car = Car::read(session);
     let vehicle = session.vehicle();
     let tuning = &session.config.model(vehicle.model_choice).assets.tuning;
@@ -246,17 +250,25 @@ pub fn vector(session: &Session, course: &Course) -> [f32; VECTOR_LEN] {
         f32::from(vehicle.has_effect_flag(16)),
         (1.0 - vehicle.level_power_scale).clamp(0.0, 1.0),
     ]);
-    out[COURSE_START..VECTOR_LEN].copy_from_slice(&course.features(&car, &session.race));
+    out[COURSE_START..DYNAMICS_START].copy_from_slice(&course.features(&car, &session.race));
+    out[DYNAMICS_START..PROBES_START].copy_from_slice(&dynamics::read(session));
+    out[PROBES_START..FRAME_START].copy_from_slice(&probes::read(session));
+    out[FRAME_START..VECTOR_LEN].copy_from_slice(&frame::at(grid, Pose::read(session)));
     out
 }
 
 pub fn observe<B: AsRef<[u8]>>(session: &Session, course: &Course, grid: &Voxels<B>) -> Vec<f32> {
     let mut out = vec![0.0; LEN];
-    out[..VECTOR_LEN].copy_from_slice(&vector(session, course));
+    out[..VECTOR_LEN].copy_from_slice(&vector(session, course, grid));
     voxels::expand(&grid.crop(&Pose::read(session)), &mut out[VECTOR_LEN..]);
     grid.global(&mut out[VECTOR_LEN..]);
     course.mark_global(&session.race, grid, &mut out[VECTOR_LEN..]);
     grid.mark_global(session.body().pos.to_array(), voxels::GLOBAL_CAR, &mut out[VECTOR_LEN..]);
+    for value in &mut out[VECTOR_LEN + voxels::GLOBAL_UNPASSED * voxels::CELLS
+        ..VECTOR_LEN + voxels::GLOBAL_CAR * voxels::CELLS]
+    {
+        *value = value.ln_1p();
+    }
     out
 }
 
