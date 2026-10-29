@@ -20,6 +20,7 @@ struct Dense {
 
 #[derive(Clone, Debug)]
 pub struct Net {
+    version: u32,
     period: u32,
     mean: Vec<f32>,
     std: Vec<f32>,
@@ -60,13 +61,11 @@ impl Net {
         let format = r.word()?;
         ensure!(format == FORMAT, "network file format {format}, this build reads {FORMAT}");
         let version = r.word()?;
-        ensure!(
-            version == observe::VERSION,
-            "network was trained on observation version {version}, this build has {}",
-            observe::VERSION
-        );
+        let expected = observe::len(version).with_context(|| {
+            format!("network was trained on observation version {version}, this build has 8 and 9")
+        })?;
         let [len, period, steers] = r.words()?;
-        ensure!(len == observe::LEN, "network reads {len} observations, this build has {}", observe::LEN);
+        ensure!(len == expected, "network reads {len} observations, version {version} has {expected}");
         ensure!(period > 0, "network has no decision period");
         ensure!(steers == STEER.len(), "network has {steers} steering bins, this build has {}", STEER.len());
         ensure!(r.floats(steers)? == STEER, "network steering bins differ from {STEER:?}");
@@ -87,7 +86,44 @@ impl Net {
         }
         ensure!(inputs == OUTPUTS, "network gives {inputs} outputs, expected {OUTPUTS}");
         ensure!(r.at == bytes.len(), "{} bytes after the last layer", bytes.len() - r.at);
-        Ok(Self { period: period as u32, mean, std, layers })
+        Ok(Self { version, period: period as u32, mean, std, layers })
+    }
+
+    pub fn write(&self) -> Vec<u8> {
+        let mut out = MAGIC.to_vec();
+        let words = [FORMAT, self.version, self.inputs() as u32, self.period, STEER.len() as u32];
+        out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
+        let floats = STEER.iter().chain(&self.mean).chain(&self.std);
+        out.extend(floats.flat_map(|v| v.to_le_bytes()));
+        out.extend((self.layers.len() as u32).to_le_bytes());
+        let mut inputs = self.inputs();
+        for layer in &self.layers {
+            out.extend([inputs as u32, layer.outputs as u32].iter().flat_map(|w| w.to_le_bytes()));
+            out.extend(layer.weights.iter().chain(&layer.bias).flat_map(|v| v.to_le_bytes()));
+            inputs = layer.outputs;
+        }
+        out
+    }
+
+    pub fn widen(&self) -> Self {
+        let mut net = self.clone();
+        if self.version == 8 {
+            let added = observe::LEN_V9 - observe::LEN;
+            net.version = 9;
+            net.mean.resize(observe::LEN_V9, 0.0);
+            net.std.resize(observe::LEN_V9, 1.0);
+            let first = &mut net.layers[0];
+            first.weights.resize(first.weights.len() + added * first.outputs, 0.0);
+        }
+        net
+    }
+
+    pub fn version(&self) -> u32 {
+        self.version
+    }
+
+    pub fn inputs(&self) -> usize {
+        self.mean.len()
     }
 
     pub fn period(&self) -> u32 {
@@ -95,7 +131,8 @@ impl Net {
     }
 
     pub fn eval(&self, observation: &[f32]) -> Verdict {
-        assert_eq!(observation.len(), observe::LEN, "observation length");
+        assert!(observation.len() >= self.inputs(), "observation length");
+        let observation = &observation[..self.inputs()];
         let mut x: Vec<f32> =
             observation.iter().zip(&self.mean).zip(&self.std).map(|((v, m), s)| (v - m) / s).collect();
         let mut y = Vec::new();
@@ -233,6 +270,19 @@ mod tests {
                 assert_eq!([controls.gas, controls.brake], pedals);
             }
         }
+    }
+
+    #[test]
+    fn a_widened_v8_network_reads_v9_and_decides_as_before() {
+        let net = Net::read(&file(&two_layers(), 0.5, 2.0)).unwrap();
+        let wide = net.widen();
+        assert_eq!([wide.version(), wide.inputs() as u32], [9, observe::LEN_V9 as u32]);
+        let again = Net::read(&wide.write()).unwrap();
+        assert_eq!(again.write(), wide.write());
+        let obs = values(observe::LEN_V9, 17).iter().map(|v| v * 40.0).collect::<Vec<_>>();
+        let verdict = net.eval(&obs);
+        assert_eq!(verdict, net.eval(&obs[..observe::LEN]));
+        assert_eq!(verdict, again.eval(&obs));
     }
 
     #[test]

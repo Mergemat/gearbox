@@ -5,6 +5,7 @@ use gearbox_engine::{Mat3, Session, Vec3, surface};
 use gearbox_search::gate::gates;
 
 use crate::ground::{self, Ground};
+use crate::triggers::{self, Trigger};
 use crate::{dynamics, rays};
 
 pub const VERSION: u32 = 8;
@@ -18,8 +19,22 @@ pub const TARGETS_START: usize = DYNAMICS_START + dynamics::LEN;
 pub const GROUND_START: usize = TARGETS_START + AHEAD * 5 + 7;
 pub const RAYS_START: usize = GROUND_START + ground::LEN;
 pub const LEN: usize = RAYS_START + rays::LEN;
+pub const TRAVEL_START: usize = LEN;
+pub const TRIGGERS_START: usize = TRAVEL_START + ground::TRAVEL_LEN;
+pub const RAYS_3D_START: usize = TRIGGERS_START + triggers::LEN;
+pub const STATE_START: usize = RAYS_3D_START + rays::EXTRA_LEN;
+pub const STATE_LEN: usize = 15;
+pub const LEN_V9: usize = STATE_START + STATE_LEN;
 
-const _: () = assert!(LEN == 677);
+const _: () = assert!(LEN == 677 && LEN_V9 == 1006);
+
+pub fn len(version: u32) -> Option<usize> {
+    match version {
+        8 => Some(LEN),
+        9 => Some(LEN_V9),
+        _ => None,
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -32,6 +47,7 @@ pub struct Course {
     pub checkpoints: Vec<Target>,
     pub finishes: Vec<[f32; 3]>,
     pub laps: u32,
+    pub triggers: Vec<Trigger>,
 }
 
 impl Course {
@@ -54,7 +70,7 @@ impl Course {
         }
         ensure!(!finishes.is_empty(), "the map has no finish gate");
         let laps = if session.race.rules.lap_race { session.race.rules.laps.max(1) } else { 1 };
-        Ok(Self { checkpoints, finishes, laps })
+        Ok(Self { checkpoints, finishes, laps, triggers: triggers::build(session) })
     }
 
     pub fn checkpoints_left(&self, session: &Session) -> usize {
@@ -186,7 +202,16 @@ impl Car {
         self.rotation.transpose_mul_vec(world)
     }
 
-    fn target(&self, point: [f32; 3], flag: f32) -> [f32; 5] {
+    pub fn travel(&self) -> ([f32; 2], f32) {
+        let speed = hypot(self.velocity.x, self.velocity.z);
+        if speed >= ground::TRAVEL_MIN_SPEED {
+            return ([self.velocity.x, self.velocity.z], speed);
+        }
+        let forward = self.rotation * Vec3::new(0.0, 0.0, 1.0);
+        ([forward.x, forward.z], speed)
+    }
+
+    pub(crate) fn target(&self, point: [f32; 3], flag: f32) -> [f32; 5] {
         let delta = self.to_car(Vec3::from(point) - Vec3::from(self.position));
         let distance = delta.dot(delta).sqrt();
         let direction = if distance > 1e-3 { delta * (1.0 / distance) } else { Vec3::ZERO };
@@ -237,8 +262,9 @@ pub(crate) fn surface_class(material: u8) -> usize {
 }
 
 pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f32]) {
-    assert_eq!(out.len(), LEN, "observation length");
+    assert!(out.len() == LEN || out.len() == LEN_V9, "observation length");
     out.fill(0.0);
+    let (out, extra) = out.split_at_mut(LEN);
     let car = Car::read(session);
     let vehicle = session.vehicle();
     let tuning = &session.config.model(vehicle.model_choice).assets.tuning;
@@ -287,7 +313,58 @@ pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f
     out[TARGETS_START..GROUND_START].copy_from_slice(&course.features(&car, &session.race));
     let forward = car.rotation * Vec3::new(0.0, 0.0, 1.0);
     ground.ahead(car.position, [forward.x, forward.z], &mut out[GROUND_START..RAYS_START]);
-    rays::read(session, &mut out[RAYS_START..]);
+    if extra.is_empty() {
+        rays::read(session, &mut out[RAYS_START..], &mut []);
+        return;
+    }
+    let (travel, extra) = extra.split_at_mut(TRIGGERS_START - LEN);
+    let (near, extra) = extra.split_at_mut(RAYS_3D_START - TRIGGERS_START);
+    let (rays_3d, state) = extra.split_at_mut(STATE_START - RAYS_3D_START);
+    rays::read(session, &mut out[RAYS_START..], rays_3d);
+    let (direction, speed) = car.travel();
+    ground.travel(car.position, direction, speed, travel);
+    triggers::read(&course.triggers, &car, direction, near);
+    read_state(session, state);
+}
+
+fn read_state(session: &Session, out: &mut [f32]) {
+    let vehicle = session.vehicle();
+    let tuning = &session.config.model(vehicle.model_choice).assets.tuning;
+    let now = session.clock.now;
+    out[..3].copy_from_slice(&[vehicle.controls.steer, vehicle.controls.gas, vehicle.controls.brake]);
+    out[3..7].copy_from_slice(&vehicle.wheel_layers);
+    for (slot, wheel) in out[7..11].iter_mut().zip(&vehicle.wheels) {
+        *slot = f32::from(wheel.contact != 0 && magnetic(wheel.material));
+    }
+    let power = vehicle.level_power(tuning);
+    out[11] = if power >= 1.0 {
+        0.0
+    } else if power >= tuning.level_power_base {
+        0.5
+    } else {
+        1.0
+    };
+    let duration = vehicle.ground_pull_duration_ms;
+    if vehicle.boost_level != 0 && duration > 0 {
+        let left = vehicle.boost_last_contact.wrapping_add(duration).wrapping_sub(now) as i32;
+        out[12] = left.clamp(0, duration as i32) as f32 / duration as f32;
+    }
+    if vehicle.frozen_until != u32::MAX {
+        out[13] = (vehicle.frozen_until.wrapping_sub(now) as i32).clamp(0, 1000) as f32 * 0.001;
+    }
+    out[14] = (session.respawn_count() as f32 * 0.1).min(1.0);
+}
+
+fn magnetic(material: u8) -> bool {
+    matches!(
+        material,
+        surface::TECH_MAGNETIC
+            | surface::TURBO_TECH_MAGNETIC
+            | surface::TURBO_2_TECH_MAGNETIC
+            | surface::FREE_WHEELING_TECH_MAGNETIC
+            | surface::TECH_SUPER_MAGNETIC
+            | surface::TECH_MAGNETIC_ACCEL
+    )
 }
 
 #[cfg(test)]
@@ -354,6 +431,7 @@ mod tests {
             ],
             finishes: vec![[0.0, 0.0, 20.0]],
             laps,
+            triggers: Vec::new(),
         }
     }
 
@@ -475,19 +553,22 @@ mod tests {
     }
 
     #[test]
+    fn travel_follows_the_motion_once_moving_and_the_nose_before() {
+        let reversing = Car { velocity: Vec3::new(0.0, -30.0, -20.0), ..car() };
+        assert_eq!(reversing.travel(), ([0.0, -20.0], 20.0));
+        let creeping = Car { velocity: Vec3::new(-3.0, 0.0, -4.0), ..car() };
+        assert_eq!(creeping.travel(), ([0.0, 1.0], 5.0));
+    }
+
+    #[test]
     #[ignore = "requires a local real map, record and game packs"]
     fn observing_every_tick_leaves_the_run_unchanged() -> Result<()> {
-        use anyhow::Context;
-        let var = |name: &str| std::env::var_os(name).map(std::path::PathBuf::from).context(name.to_owned());
-        let map = gearbox_gbx::Map::parse(&std::fs::read(var("GEARBOX_TEST_MAP")?)?)?;
-        let record = gearbox_run::Record::read(&var("GEARBOX_TEST_RECORD")?)?;
-        let packs = gearbox_packs::install::Game::locate(Some(&var("GEARBOX_TEST_GAME")?))?.open()?;
-        let start = record.open(&map, &packs)?;
+        let (record, start) = open("GEARBOX_TEST")?;
         let course = Course::race(&start)?;
         let ground = Ground::build(&start);
         let drive = |watch: bool| {
             let mut session = start.clone();
-            let mut out = vec![0.0; LEN];
+            let mut out = vec![0.0; LEN_V9];
             let mut seen = Vec::new();
             for tick in 0..record.run.controls.len() + 100 {
                 if watch {
@@ -508,6 +589,71 @@ mod tests {
         assert_eq!(finish, blind);
         assert_eq!(state, blind_state);
         assert_eq!(seen, drive(true).2);
+        Ok(())
+    }
+
+    fn open(prefix: &str) -> Result<(gearbox_run::Record, Session)> {
+        use anyhow::Context;
+        let var = |name: &str| std::env::var_os(name).map(std::path::PathBuf::from).context(name.to_owned());
+        let map = gearbox_gbx::Map::parse(&std::fs::read(var(&format!("{prefix}_MAP"))?)?)?;
+        let record = gearbox_run::Record::read(&var(&format!("{prefix}_RECORD"))?)?;
+        let packs = gearbox_packs::install::Game::locate(Some(&var("GEARBOX_TEST_GAME")?))?.open()?;
+        let start = record.open(&map, &packs)?;
+        Ok((record, start))
+    }
+
+    #[test]
+    #[ignore = "requires a local real map with effect gates, its record and game packs"]
+    fn every_effect_gate_shows_its_type_a_second_before_the_car_touches_it() -> Result<()> {
+        let (record, mut session) = open("GEARBOX_TEST_EFFECT")?;
+        let course = Course::race(&session)?;
+        let ground = Ground::build(&session);
+        let mut out = vec![0.0; LEN_V9];
+        let mut seen = Vec::new();
+        let mut touched = 0;
+        for tick in 0..record.run.controls.len() + 100 {
+            observe(&session, &course, &ground, &mut out);
+            let slots = out[TRIGGERS_START..RAYS_3D_START].as_chunks::<{ triggers::FEATURES }>().0;
+            seen.push(
+                slots.iter().flat_map(|slot| slot[7..].iter().position(|&v| v == 1.0)).collect::<Vec<_>>(),
+            );
+            let before = session.vehicle().surface_contact_effect;
+            if !record.step(&mut session, tick) || session.race().and_then(|r| r.finish).is_some() {
+                break;
+            }
+            let effect = session.vehicle().surface_contact_effect;
+            if effect != 0 && effect != before && session.race_ms() >= 1000 {
+                touched += 1;
+                let early = &seen[tick + 1 - 100];
+                assert!(early.contains(&(effect as usize - 1)), "gate {effect} at {} ms", session.race_ms());
+            }
+        }
+        assert!(touched > 0);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires a local real map with a loop, its record and game packs"]
+    fn upward_rays_reach_the_far_side_of_a_loop() -> Result<()> {
+        let (record, mut session) = open("GEARBOX_TEST_LOOP")?;
+        let course = Course::race(&session)?;
+        let ground = Ground::build(&session);
+        let mut out = vec![0.0; LEN_V9];
+        let (mut inverted, mut hits) = (0, 0);
+        for tick in 0..record.run.controls.len() + 100 {
+            let up = session.body().rot * Vec3::new(0.0, 1.0, 0.0);
+            if up.y < -0.5 && session.vehicle().wheels.iter().all(|wheel| wheel.contact != 0) {
+                observe(&session, &course, &ground, &mut out);
+                inverted += 1;
+                hits += usize::from(
+                    out[RAYS_3D_START + 2 * 12 + 1] == 1.0 && out[RAYS_3D_START + 2 * 12 + 6] == 1.0,
+                );
+            }
+            if !record.step(&mut session, tick) || session.race().and_then(|r| r.finish).is_some() {
+                break;
+            }
+        }
+        assert!(inverted > 0 && hits == inverted, "{hits} of {inverted} inverted ticks");
         Ok(())
     }
 }

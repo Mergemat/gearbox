@@ -10,6 +10,12 @@ pub const BEARINGS: [f32; 9] = [-70.0, -45.0, -25.0, -10.0, 0.0, 10.0, 25.0, 45.
 pub const DISTANCES: [f32; 10] = [3.0, 6.0, 10.0, 16.0, 24.0, 34.0, 48.0, 66.0, 90.0, 120.0];
 pub const FEATURES: usize = 5;
 pub const LEN: usize = BEARINGS.len() * DISTANCES.len() * FEATURES;
+pub const TRAVEL_BEARINGS: [f32; 7] = [-45.0, -20.0, -8.0, 0.0, 8.0, 20.0, 45.0];
+pub const TRAVEL_TIMES: [f32; 5] = [0.75, 1.25, 2.0, 3.0, 4.0];
+pub const TRAVEL_FEATURES: usize = 4;
+pub const TRAVEL_LEN: usize = TRAVEL_BEARINGS.len() * TRAVEL_TIMES.len() * TRAVEL_FEATURES;
+pub const TRAVEL_MIN_SPEED: f32 = 10.0;
+pub const TRAVEL_REACH: f32 = 600.0;
 
 const BEARING_SIN: [f32; 9] = [
     -0.939_692_6,
@@ -33,6 +39,10 @@ const BEARING_COS: [f32; 9] = [
     0.707_106_8,
     0.342_020_14,
 ];
+const TRAVEL_SIN: [f32; 7] =
+    [-0.707_106_8, -0.342_020_14, -0.139_173_1, 0.0, 0.139_173_1, 0.342_020_14, 0.707_106_8];
+const TRAVEL_COS: [f32; 7] =
+    [0.707_106_8, 0.939_692_6, 0.990_268_1, 1.0, 0.990_268_1, 0.939_692_6, 0.707_106_8];
 const MIN_NORMAL_Y: f32 = 0.3;
 const MERGE: f32 = 1.0;
 const MARGIN: f32 = 256.0;
@@ -135,8 +145,7 @@ impl Ground {
 
     pub fn ahead(&self, position: [f32; 3], forward: [f32; 2], out: &mut [f32]) {
         assert_eq!(out.len(), LEN);
-        let length = hypot(forward[0], forward[1]);
-        let [fx, fz] = if length > 1e-6 { forward.map(|v| v / length) } else { [0.0, 1.0] };
+        let [fx, fz] = unit(forward);
         let samples = out.as_chunks_mut::<FEATURES>().0;
         for b in 0..BEARINGS.len() {
             let dx = BEARING_COS[b] * fx + BEARING_SIN[b] * fz;
@@ -158,6 +167,37 @@ impl Ground {
             }
         }
     }
+
+    pub fn travel(&self, position: [f32; 3], direction: [f32; 2], speed: f32, out: &mut [f32]) {
+        assert_eq!(out.len(), TRAVEL_LEN);
+        let [fx, fz] = unit(direction);
+        let speed = speed.max(TRAVEL_MIN_SPEED);
+        let samples = out.as_chunks_mut::<TRAVEL_FEATURES>().0;
+        for b in 0..TRAVEL_BEARINGS.len() {
+            let dx = TRAVEL_COS[b] * fx + TRAVEL_SIN[b] * fz;
+            let dz = TRAVEL_COS[b] * fz - TRAVEL_SIN[b] * fx;
+            for (t, &time) in TRAVEL_TIMES.iter().enumerate() {
+                let distance = (time * speed).min(TRAVEL_REACH);
+                let x = position[0] + dx * distance;
+                let z = position[2] + dz * distance;
+                let limit = position[1] + 2.0 + 0.25 * distance;
+                samples[b * TRAVEL_TIMES.len() + t] = match self.under(x, z, limit) {
+                    Some(layer) => [
+                        1.0,
+                        ((layer.height - position[1]) / 16.0).clamp(-4.0, 4.0),
+                        f32::from(layer.surface) / 11.0,
+                        f32::from(layer.special) / 4.0,
+                    ],
+                    None => [0.0; TRAVEL_FEATURES],
+                };
+            }
+        }
+    }
+}
+
+fn unit(direction: [f32; 2]) -> [f32; 2] {
+    let length = hypot(direction[0], direction[1]);
+    if length > 1e-6 { direction.map(|v| v / length) } else { [0.0, 1.0] }
 }
 
 fn face(triangle: &PhysicalTriangle) -> Option<([f32; 3], Layer)> {
@@ -308,6 +348,27 @@ mod tests {
         small.ahead([0.0; 3], [0.0, 1.0], &mut out);
         assert_eq!(sample(&out, 4, 0)[0], 1.0);
         assert!(DISTANCES.iter().enumerate().skip(1).all(|(d, _)| sample(&out, 4, d) == [0.0; FEATURES]));
+    }
+
+    #[test]
+    fn the_travel_fan_reaches_further_with_speed_up_to_its_cap() {
+        let mut triangles = quad(-3.0, [-20.0, 20.0], [480.0, 520.0], gameplay::NONE).to_vec();
+        triangles.extend(quad(0.0, [-20.0, 20.0], [590.0, 700.0], gameplay::TURBO));
+        let ground = Ground::from_triangles(&triangles, [[-50.0, -50.0], [50.0, 800.0]]);
+        let ahead = |speed: f32| {
+            let mut out = vec![0.0; TRAVEL_LEN];
+            ground.travel([0.0; 3], [0.0, 1.0], speed, &mut out);
+            out.as_chunks::<TRAVEL_FEATURES>().0[15..20].to_vec()
+        };
+        let mut seen = vec![[0.0; TRAVEL_FEATURES]; 5];
+        assert_eq!(ahead(0.0), seen);
+        seen[2] = [1.0, -3.0 / 16.0, 0.0, 0.0];
+        seen[3] = [1.0, 0.0, 0.0, 0.25];
+        seen[4] = seen[3];
+        assert_eq!(ahead(250.0), seen);
+        let mut out = vec![0.0; TRAVEL_LEN];
+        ground.travel([0.0; 3], [-1.0, 0.0], 250.0, &mut out);
+        assert!(out.iter().all(|&v| v == 0.0));
     }
 
     #[test]
