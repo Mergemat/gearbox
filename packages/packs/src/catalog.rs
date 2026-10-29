@@ -1393,10 +1393,7 @@ pub(crate) fn cache_key(set: &PackSet, paks: &[&str]) -> u64 {
     for pak in &set.paks {
         (&pak.path, pak.len, pak.checksum).hash(&mut hasher);
     }
-    let binary = std::env::current_exe().and_then(std::fs::metadata);
-    if let Ok(meta) = binary {
-        (meta.len(), meta.modified().ok()).hash(&mut hasher);
-    }
+    env!("GEARBOX_CATALOG_SOURCE").hash(&mut hasher);
     hasher.finish()
 }
 
