@@ -164,6 +164,7 @@ pub struct Assets {
     surfaces: Arc<Vec<Surface>>,
     extra_surfaces: Vec<Surface>,
     by_name: HashMap<String, Vec<String>>,
+    item_files: HashMap<String, Vec<String>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -182,6 +183,18 @@ impl<'a> BlockLookup<'a> {
     }
 }
 
+fn item_file(path: &str) -> String {
+    path.rsplit('\\').next().unwrap_or(path).to_ascii_lowercase()
+}
+
+fn item_files(index: &Index) -> HashMap<String, Vec<String>> {
+    let mut files: HashMap<String, Vec<String>> = HashMap::new();
+    for path in index.items.keys() {
+        files.entry(item_file(path)).or_default().push(path.clone());
+    }
+    files
+}
+
 pub fn block_name(path: &str) -> &str {
     let f = path.rsplit(['\\', '/']).next().unwrap_or(path);
     f.split('.').next().unwrap_or(f)
@@ -189,18 +202,20 @@ pub fn block_name(path: &str) -> &str {
 
 impl Assets {
     pub fn from_packs(set: &crate::packs::PackSet, filters: &[&str]) -> Result<Self> {
-        static CACHED: OnceLock<Mutex<Option<(u64, Assets)>>> = OnceLock::new();
+        static CACHED: OnceLock<Mutex<Option<(u64, Arc<Assets>)>>> = OnceLock::new();
         let key = crate::catalog::cache_key(set, filters);
         let mut cached = CACHED.get_or_init(Default::default).lock().unwrap();
-        if let Some((old_key, assets)) = cached.as_ref()
-            && *old_key == key
-        {
-            return Ok(assets.clone());
-        }
-        let catalog = crate::catalog::crawl_cached(set, filters, &crate::install::cache_dir())?;
-        let assets = Self::from_catalog(catalog);
-        *cached = Some((key, assets.clone()));
-        Ok(assets)
+        let assets = match cached.as_ref() {
+            Some((old_key, assets)) if *old_key == key => assets.clone(),
+            _ => {
+                let catalog = crate::catalog::crawl_cached(set, filters, &crate::install::cache_dir())?;
+                let assets = Arc::new(Self::from_catalog(catalog));
+                *cached = Some((key, assets.clone()));
+                assets
+            }
+        };
+        drop(cached);
+        Ok(Assets::clone(&assets))
     }
 
     pub fn from_catalog(cat: Catalog) -> Self {
@@ -216,6 +231,7 @@ impl Assets {
         }
         Self {
             dir: PathBuf::new(),
+            item_files: item_files(&cat.index),
             index: cat.index,
             surfaces: Arc::new(cat.surfaces),
             extra_surfaces: Vec::new(),
@@ -251,6 +267,7 @@ impl Assets {
         }
         Ok(Assets {
             dir: dir.to_owned(),
+            item_files: item_files(&index),
             index,
             surfaces: Arc::new(surfaces),
             extra_surfaces: Vec::new(),
@@ -276,6 +293,11 @@ impl Assets {
         self.index.blocks.extend(cat.index.blocks);
         self.index.prefabs.extend(cat.index.prefabs);
         self.index.custom_blocks.extend(cat.index.custom_blocks);
+        for path in cat.index.items.keys() {
+            if !self.index.items.contains_key(path) {
+                self.item_files.entry(item_file(path)).or_default().push(path.clone());
+            }
+        }
         self.index.items.extend(cat.index.items);
         self.index.materials.extend(cat.index.materials);
         self.index.modifiers.extend(cat.index.modifiers);
@@ -385,9 +407,10 @@ impl Assets {
     pub fn find_item(&self, name: &str, env: &str) -> Option<&str> {
         let file = format!("\\{}.item.gbx", name.to_ascii_lowercase());
         let own = format!("{env}\\Items\\");
-        self.index
-            .items
-            .keys()
+        self.item_files
+            .get(&item_file(&file))
+            .into_iter()
+            .flatten()
             .filter(|p| {
                 p.to_ascii_lowercase().ends_with(&file)
                     && (p.starts_with(&own) || p.starts_with("Stadium\\Items\\"))
