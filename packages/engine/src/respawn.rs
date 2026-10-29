@@ -8,6 +8,7 @@ pub struct Respawns {
     respawn_point: Option<u32>,
     saved: Vec<Checkpoint>,
     respawn_at: Option<u32>,
+    count: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -87,6 +88,10 @@ impl Session {
         self.respawns.get_or_insert_with(Default::default);
     }
 
+    pub fn respawn_count(&self) -> u32 {
+        self.respawns.as_ref().map_or(0, |respawns| respawns.count)
+    }
+
     pub fn respawn(&mut self, standing: bool) -> bool {
         let Some(respawns) = self.respawns.as_ref() else { return false };
         let Some(passed) = respawns.passed else { return self.respawn_at_start() };
@@ -155,6 +160,7 @@ impl Session {
         vehicle.frozen_until = at;
         if let Some(respawns) = self.respawns.as_mut() {
             respawns.respawn_at = Some(at);
+            respawns.count += 1;
         }
         true
     }
@@ -176,6 +182,7 @@ impl Session {
         vehicle.slow_motion_gate = u32::MAX;
         if let Some(respawns) = self.respawns.as_mut() {
             respawns.respawn_at = Some(at);
+            respawns.count += 1;
         }
         true
     }

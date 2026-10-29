@@ -16,6 +16,14 @@ pub struct WaypointTrigger {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EffectTrigger {
+    pub effect: u8,
+    pub direction: Vec3,
+    pub min: [f32; 3],
+    pub max: [f32; 3],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StaticHit {
     pub point: Vec3,
     pub normal: Vec3,
@@ -66,6 +74,31 @@ impl Session {
                     }
                 })
                 .or_insert(WaypointTrigger { waypoint, kind, min, max });
+        }
+        items.into_values().collect()
+    }
+
+    pub fn effect_triggers(&self) -> Vec<EffectTrigger> {
+        use crate::static_world::Entity;
+        let geometry = Geometry::new(&self.world, &self.state);
+        let mut items = std::collections::BTreeMap::<u32, EffectTrigger>::new();
+        for surface in &self.world.statics.surfaces {
+            let Entity::Gate(index) = self.world.statics.items[surface.item as usize].entity else {
+                continue;
+            };
+            let Some(record) = self.world.gate_record.get(index as usize) else { continue };
+            let bounds = geometry.world_box(ShapeId::Shared(SharedShapeId(surface.shape)), surface.iso);
+            let min = (bounds.center - bounds.half).to_array();
+            let max = (bounds.center + bounds.half).to_array();
+            items
+                .entry(surface.item)
+                .and_modify(|trigger| {
+                    for k in 0..3 {
+                        trigger.min[k] = trigger.min[k].min(min[k]);
+                        trigger.max[k] = trigger.max[k].max(max[k]);
+                    }
+                })
+                .or_insert(EffectTrigger { effect: record.effect, direction: record.dir, min, max });
         }
         items.into_values().collect()
     }
