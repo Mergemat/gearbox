@@ -4,21 +4,22 @@ use gearbox_engine::vehicle::forces::common::PedalMode;
 use gearbox_engine::{Mat3, Session, Vec3, surface};
 use gearbox_search::gate::gates;
 
-use crate::voxels::{self, Pose, Voxels};
-use crate::{dynamics, frame, probes};
+use crate::ground::{self, Ground};
+use crate::{dynamics, rays};
 
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 8;
 pub const AHEAD: usize = 4;
 pub const SURFACES: usize = 17;
 pub const CAR_LEN: usize = 16;
 pub const WHEEL_LEN: usize = SURFACES + 3;
 pub const EFFECTS_START: usize = CAR_LEN + 4 * WHEEL_LEN;
-pub const COURSE_START: usize = EFFECTS_START + 9;
-pub const DYNAMICS_START: usize = COURSE_START + AHEAD * 5 + 7;
-pub const PROBES_START: usize = DYNAMICS_START + dynamics::LEN;
-pub const FRAME_START: usize = PROBES_START + probes::LEN;
-pub const VECTOR_LEN: usize = FRAME_START + frame::LEN;
-pub const LEN: usize = VECTOR_LEN + voxels::FEATURES;
+pub const DYNAMICS_START: usize = EFFECTS_START + 9;
+pub const TARGETS_START: usize = DYNAMICS_START + dynamics::LEN;
+pub const GROUND_START: usize = TARGETS_START + AHEAD * 5 + 7;
+pub const RAYS_START: usize = GROUND_START + ground::LEN;
+pub const LEN: usize = RAYS_START + rays::LEN;
+
+const _: () = assert!(LEN == 677);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -134,19 +135,6 @@ impl Course {
         out[AHEAD * 5 + 6] = laps_left as f32;
         out
     }
-
-    fn mark_global<B: AsRef<[u8]>>(&self, race: &Race, grid: &Voxels<B>, out: &mut [f32]) {
-        for target in &self.checkpoints {
-            let channel =
-                if passed(race, target.group) { voxels::GLOBAL_PASSED } else { voxels::GLOBAL_UNPASSED };
-            for &gate in &target.gates {
-                grid.mark_global(gate, channel, out);
-            }
-        }
-        for &gate in &self.finishes {
-            grid.mark_global(gate, voxels::GLOBAL_FINISH, out);
-        }
-    }
 }
 
 fn entries(race: &Race, run: u32) -> impl Iterator<Item = &gearbox_engine::race::Entry> {
@@ -202,7 +190,7 @@ impl Car {
         let delta = self.to_car(Vec3::from(point) - Vec3::from(self.position));
         let distance = delta.dot(delta).sqrt();
         let direction = if distance > 1e-3 { delta * (1.0 / distance) } else { Vec3::ZERO };
-        [direction.x, direction.y, direction.z, distance.ln_1p() / 5.0, flag]
+        [direction.x, direction.y, direction.z, libm::log1pf(distance) / 5.0, flag]
     }
 }
 
@@ -243,12 +231,13 @@ pub(crate) fn surface_class(material: u8) -> usize {
     }
 }
 
-pub fn vector<B: AsRef<[u8]>>(session: &Session, course: &Course, grid: &Voxels<B>) -> [f32; VECTOR_LEN] {
+pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f32]) {
+    assert_eq!(out.len(), LEN, "observation length");
+    out.fill(0.0);
     let car = Car::read(session);
     let vehicle = session.vehicle();
     let tuning = &session.config.model(vehicle.model_choice).assets.tuning;
     let velocity = car.to_car(car.velocity);
-    let mut out = [0.0; VECTOR_LEN];
     out[0..3].copy_from_slice(&(velocity * 0.01).to_array());
     out[3..6].copy_from_slice(&(car.to_car(car.angular_velocity) * 0.1).to_array());
     out[6..9].copy_from_slice(&car.to_car(Vec3::new(0.0, 1.0, 0.0)).to_array());
@@ -278,7 +267,7 @@ pub fn vector<B: AsRef<[u8]>>(session: &Session, course: &Course, grid: &Voxels<
         vehicle.turbo_duration_ms.saturating_sub(session.clock.now.wrapping_sub(vehicle.turbo_end)) as f32
             / vehicle.turbo_duration_ms.max(1) as f32
     };
-    out[EFFECTS_START..COURSE_START].copy_from_slice(&[
+    out[EFFECTS_START..DYNAMICS_START].copy_from_slice(&[
         f32::from(vehicle.turbo_active != 0),
         turbo_left,
         vehicle.boost_level as f32 / 2.0,
@@ -289,26 +278,11 @@ pub fn vector<B: AsRef<[u8]>>(session: &Session, course: &Course, grid: &Voxels<
         f32::from(vehicle.has_effect_flag(16)),
         (1.0 - vehicle.level_power_scale).clamp(0.0, 1.0),
     ]);
-    out[COURSE_START..DYNAMICS_START].copy_from_slice(&course.features(&car, &session.race));
-    out[DYNAMICS_START..PROBES_START].copy_from_slice(&dynamics::read(session));
-    out[PROBES_START..FRAME_START].copy_from_slice(&probes::read(session));
-    out[FRAME_START..VECTOR_LEN].copy_from_slice(&frame::at(grid, Pose::read(session)));
-    out
-}
-
-pub fn observe<B: AsRef<[u8]>>(session: &Session, course: &Course, grid: &Voxels<B>) -> Vec<f32> {
-    let mut out = vec![0.0; LEN];
-    out[..VECTOR_LEN].copy_from_slice(&vector(session, course, grid));
-    voxels::expand(&grid.crop(&Pose::read(session)), &mut out[VECTOR_LEN..]);
-    grid.global(&mut out[VECTOR_LEN..]);
-    course.mark_global(&session.race, grid, &mut out[VECTOR_LEN..]);
-    grid.mark_global(session.body().pos.to_array(), voxels::GLOBAL_CAR, &mut out[VECTOR_LEN..]);
-    for value in &mut out[VECTOR_LEN + voxels::GLOBAL_UNPASSED * voxels::CELLS
-        ..VECTOR_LEN + voxels::GLOBAL_CAR * voxels::CELLS]
-    {
-        *value = value.ln_1p();
-    }
-    out
+    dynamics::read(session, &mut out[DYNAMICS_START..TARGETS_START]);
+    out[TARGETS_START..GROUND_START].copy_from_slice(&course.features(&car, &session.race));
+    let forward = car.rotation * Vec3::new(0.0, 0.0, 1.0);
+    ground.ahead(car.position, [forward.x, forward.z], &mut out[GROUND_START..RAYS_START]);
+    rays::read(session, &mut out[RAYS_START..]);
 }
 
 #[cfg(test)]
@@ -462,7 +436,7 @@ mod tests {
         let features = course.features(&car(), &race(1));
         for (slot, distance) in features[..20].as_chunks::<5>().0.iter().zip([1.0_f32, 2.0, 5.0, 10.0]) {
             assert_eq!(&slot[..3], &[0.0, 0.0, 1.0]);
-            assert!((slot[3] - distance.ln_1p() / 5.0).abs() < 1e-6);
+            assert!((slot[3] - libm::log1pf(distance) / 5.0).abs() < 1e-6);
             assert_eq!(slot[4], 1.0);
         }
         assert_eq!(features[25], 0.6);
@@ -493,61 +467,5 @@ mod tests {
         assert_eq!(car.to_car(Vec3::new(50.0, 0.0, 0.0)).to_array(), [0.0, 0.0, 50.0]);
         assert_eq!(&car.target([-100.0, 0.0, 0.0], 1.0)[..3], &[0.0, 0.0, -1.0]);
         assert_eq!(&car.target([0.0; 3], 1.0)[..3], &[0.0; 3]);
-    }
-
-    #[test]
-    fn global_grid_keeps_every_checkpoint_and_distant_finish_as_lap_state_changes() {
-        let size = [140u32, 10, 140];
-        let mut bytes = b"GVOX".to_vec();
-        bytes.extend(voxels::FORMAT.to_le_bytes());
-        for value in [-40.0f32, -20.0, -40.0] {
-            bytes.extend(value.to_le_bytes());
-        }
-        for value in size {
-            bytes.extend(value.to_le_bytes());
-        }
-        bytes.extend(0u32.to_le_bytes());
-        bytes.extend(0u32.to_le_bytes());
-        bytes.extend(0u32.to_le_bytes());
-        let grid = Voxels::read(bytes).unwrap();
-        let mut race = race(1);
-        race.rules.checkpoints_per_lap = 6;
-        race.rules.waypoints = (0..7)
-            .map(|group| RaceWaypoint {
-                flags: if group == 6 { WaypointFlags::GOAL } else { WaypointFlags::CHECKPOINT },
-                group,
-                order: u32::MAX,
-                pose: Iso::default(),
-                respawn_pose: Iso::default(),
-                linked: true,
-                respawn: false,
-            })
-            .collect();
-        let course = Course {
-            checkpoints: (0..6)
-                .map(|group| Target { group, gates: vec![[0.0, 0.0, 100.0 + group as f32 * 60.0]] })
-                .collect(),
-            finishes: vec![[0.0, 0.0, 500.0]],
-            laps: 1,
-        };
-        let mut global = vec![0.0; voxels::FEATURES];
-        course.mark_global(&race, &grid, &mut global);
-        for target in &course.checkpoints {
-            let index = grid.global_index(target.gates[0]).unwrap();
-            assert_eq!(global[voxels::GLOBAL_UNPASSED * voxels::CELLS + index], 1.0);
-        }
-        let finish_index = grid.global_index(course.finishes[0]).unwrap();
-        assert_eq!(global[voxels::GLOBAL_FINISH * voxels::CELLS + finish_index], 1.0);
-        assert_eq!(course.features(&car(), &race)[24], 0.0);
-        race.waypoint(0, None, 5, 10);
-        global.fill(0.0);
-        course.mark_global(&race, &grid, &mut global);
-        let passed_index = grid.global_index(course.checkpoints[5].gates[0]).unwrap();
-        assert_eq!(global[voxels::GLOBAL_UNPASSED * voxels::CELLS + passed_index], 0.0);
-        assert_eq!(global[voxels::GLOBAL_PASSED * voxels::CELLS + passed_index], 1.0);
-        for waypoint in 0..5 {
-            race.waypoint(0, None, waypoint, 20 + waypoint * 10);
-        }
-        assert_eq!(course.features(&car(), &race)[24], 1.0);
     }
 }

@@ -1,10 +1,9 @@
 pub mod dynamics;
-pub mod frame;
+pub mod ground;
 pub mod model;
 pub mod observe;
-pub mod probes;
-pub mod voxels;
+pub mod rays;
 
-pub use model::{Net, STEER_COMPONENTS, Verdict};
-pub use observe::{Car, Course, observe};
-pub use voxels::{Pose, Voxels};
+pub use ground::Ground;
+pub use model::{Net, PERIOD, STEER, Verdict};
+pub use observe::{Car, Course, LEN, VERSION, observe};

@@ -1859,6 +1859,7 @@ dependencies = [
  "gearbox-packs",
  "gearbox-run",
  "gearbox-search",
+ "libm",
 ]
 
 [[package]]
