@@ -1,5 +1,6 @@
 use gearbox_engine::consumer::PhysicalTriangle;
 use gearbox_engine::{Session, gameplay};
+use gearbox_search::gate::gates;
 
 use crate::observe::surface_class;
 
@@ -34,12 +35,13 @@ const BEARING_COS: [f32; 9] = [
 ];
 const MIN_NORMAL_Y: f32 = 0.3;
 const MERGE: f32 = 1.0;
-const MAX_COLUMNS: usize = 4096;
+const MARGIN: f32 = 256.0;
+const MAX_COLUMNS: usize = 2048;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Layer {
     pub height: f32,
-    pub normal_y: f32,
+    pub normal_y: u8,
     pub surface: u8,
     pub special: u8,
 }
@@ -55,31 +57,27 @@ pub struct Ground {
 impl Ground {
     pub fn build(session: &Session) -> Self {
         let start = session.config.initial_pose.pos;
-        Self::from_triangles(&session.static_triangles(), [start.x, start.z])
-    }
-
-    pub fn from_triangles(triangles: &[PhysicalTriangle], center: [f32; 2]) -> Self {
-        let faces: Vec<_> = triangles.iter().filter_map(face).collect();
-        if faces.is_empty() {
-            return Self::default();
-        }
-        let reach = MAX_COLUMNS as f32 * CELL * 0.5;
-        let mut low = [f32::INFINITY; 2];
-        let mut high = [f32::NEG_INFINITY; 2];
-        for (points, ..) in &faces {
-            for p in points {
-                for (k, v) in [p[0], p[2]].into_iter().enumerate() {
-                    low[k] = low[k].min(v.max(center[k] - reach));
-                    high[k] = high[k].max(v.min(center[k] + reach));
-                }
+        let mut low = [start.x, start.z];
+        let mut high = low;
+        for bounds in gates(session).unwrap_or_default().iter().flat_map(|gate| &gate.boxes) {
+            for (k, axis) in [0, 2].into_iter().enumerate() {
+                low[k] = low[k].min(bounds.min[axis]);
+                high[k] = high[k].max(bounds.max[axis]);
             }
         }
+        Self::from_triangles(&session.static_triangles(), [low.map(|v| v - MARGIN), high.map(|v| v + MARGIN)])
+    }
+
+    pub fn from_triangles(triangles: &[PhysicalTriangle], [low, high]: [[f32; 2]; 2]) -> Self {
         let origin = low.map(|v| (v / CELL).floor() * CELL);
-        let size: [usize; 2] =
-            std::array::from_fn(|k| (((high[k] - origin[k]) / CELL).floor() as usize + 1).min(MAX_COLUMNS));
+        let size: [usize; 2] = std::array::from_fn(|k| {
+            (((high[k] - origin[k]) / CELL).ceil().max(1.0) as usize).min(MAX_COLUMNS)
+        });
         let mut hits: Vec<(u32, Layer)> = Vec::new();
-        for (points, normal, layer) in &faces {
-            rasterize(points, normal, *layer, origin, size, &mut hits);
+        for triangle in triangles {
+            if let Some((normal, layer)) = face(triangle) {
+                rasterize(&triangle.v, &normal, layer, origin, size, &mut hits);
+            }
         }
         let columns = size[0] * size[1];
         let mut starts = vec![0u32; columns + 1];
@@ -90,7 +88,7 @@ impl Ground {
             starts[i + 1] += starts[i];
         }
         let mut fill = starts.clone();
-        let mut sorted = vec![Layer { height: 0.0, normal_y: 0.0, surface: 0, special: 0 }; hits.len()];
+        let mut sorted = vec![Layer { height: 0.0, normal_y: 0, surface: 0, special: 0 }; hits.len()];
         for (column, layer) in hits {
             let at = &mut fill[column as usize];
             sorted[*at as usize] = layer;
@@ -115,6 +113,10 @@ impl Ground {
         }
         starts[columns] = layers.len() as u32;
         Self { origin, size, starts, layers }
+    }
+
+    pub fn bytes(&self) -> usize {
+        size_of::<Self>() + self.starts.len() * size_of::<u32>() + self.layers.len() * size_of::<Layer>()
     }
 
     pub fn column(&self, x: f32, z: f32) -> &[Layer] {
@@ -147,7 +149,7 @@ impl Ground {
                     Some(layer) => [
                         1.0,
                         ((layer.height - position[1]) / 16.0).clamp(-4.0, 4.0),
-                        layer.normal_y,
+                        f32::from(layer.normal_y) / 255.0,
                         f32::from(layer.surface) / 11.0,
                         f32::from(layer.special) / 4.0,
                     ],
@@ -158,7 +160,7 @@ impl Ground {
     }
 }
 
-fn face(triangle: &PhysicalTriangle) -> Option<([[f32; 3]; 3], [f32; 3], Layer)> {
+fn face(triangle: &PhysicalTriangle) -> Option<([f32; 3], Layer)> {
     let [a, b, c] = triangle.v;
     let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
@@ -186,11 +188,11 @@ fn face(triangle: &PhysicalTriangle) -> Option<([[f32; 3]; 3], [f32; 3], Layer)>
     };
     let layer = Layer {
         height: 0.0,
-        normal_y: normal[1] / length,
+        normal_y: (normal[1] / length * 255.0).round() as u8,
         surface: if class < 12 { class as u8 } else { 0 },
         special,
     };
-    Some((triangle.v, normal, layer))
+    Some((normal, layer))
 }
 
 fn rasterize(
@@ -244,6 +246,8 @@ fn rasterize(
 mod tests {
     use super::*;
 
+    const AREA: [[f32; 2]; 2] = [[-300.0, -300.0], [300.0, 300.0]];
+
     fn quad(height: f32, x: [f32; 2], z: [f32; 2], gameplay: u8) -> [PhysicalTriangle; 2] {
         let corner = |i: usize, k: usize| [x[i], height, z[k]];
         let triangle = |v| PhysicalTriangle { v, surface: gearbox_engine::surface::ASPHALT, gameplay };
@@ -262,7 +266,7 @@ mod tests {
     fn a_car_under_a_bridge_sees_its_road_and_a_car_on_it_sees_the_deck() {
         let mut triangles = quad(0.0, [-200.0, 200.0], [-200.0, 200.0], gameplay::NONE).to_vec();
         triangles.extend(quad(8.0, [-6.0, 6.0], [-200.0, 200.0], gameplay::TURBO));
-        let ground = Ground::from_triangles(&triangles, [0.0, 0.0]);
+        let ground = Ground::from_triangles(&triangles, AREA);
         let mut out = vec![0.0; LEN];
         ground.ahead([0.0, 0.5, 0.0], [0.0, 1.0], &mut out);
         assert_eq!(sample(&out, 4, 0), &[1.0, -0.5 / 16.0, 1.0, 0.0, 0.0]);
@@ -274,7 +278,7 @@ mod tests {
     #[test]
     fn positive_bearings_turn_toward_the_car_x_axis() {
         let triangles = quad(1.0, [5.0, 200.0], [-200.0, 200.0], gameplay::NONE);
-        let ground = Ground::from_triangles(&triangles, [0.0, 0.0]);
+        let ground = Ground::from_triangles(&triangles, AREA);
         let seen = |forward: [f32; 2], bearing: usize, distance: usize| {
             let mut out = vec![0.0; LEN];
             ground.ahead([0.0; 3], forward, &mut out);
@@ -296,8 +300,10 @@ mod tests {
             surface: gearbox_engine::surface::ASPHALT,
             gameplay: gameplay::NONE,
         };
-        assert_eq!(Ground::from_triangles(&[wall], [0.0, 0.0]), Ground::default());
-        let small = Ground::from_triangles(&quad(0.0, [-4.0, 4.0], [-4.0, 4.0], gameplay::NONE), [0.0, 0.0]);
+        let walled = Ground::from_triangles(&[wall], AREA);
+        walled.ahead([0.0; 3], [0.0, 1.0], &mut out);
+        assert!(out.iter().all(|&v| v == 0.0));
+        let small = Ground::from_triangles(&quad(0.0, [-4.0, 4.0], [-4.0, 4.0], gameplay::NONE), AREA);
         out.fill(1.0);
         small.ahead([0.0; 3], [0.0, 1.0], &mut out);
         assert_eq!(sample(&out, 4, 0)[0], 1.0);
@@ -310,10 +316,10 @@ mod tests {
             .into_iter()
             .flat_map(|h| quad(h, [-10.0, 10.0], [-10.0, 10.0], gameplay::NONE))
             .collect();
-        let ground = Ground::from_triangles(&triangles, [0.0, 0.0]);
+        let ground = Ground::from_triangles(&triangles, AREA);
         let heights: Vec<f32> = ground.column(1.0, 1.0).iter().map(|l| l.height).collect();
         assert_eq!(heights, [12.0, 9.0, 6.0, 3.0]);
-        let low = Ground::from_triangles(&triangles[..4], [0.0, 0.0]);
+        let low = Ground::from_triangles(&triangles[..4], AREA);
         assert_eq!(low.column(1.0, 1.0).iter().map(|l| l.height).collect::<Vec<_>>(), [0.5]);
         assert_eq!(low.under(1.0, 1.0, 0.4), None);
     }

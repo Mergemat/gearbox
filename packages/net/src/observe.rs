@@ -468,4 +468,41 @@ mod tests {
         assert_eq!(&car.target([-100.0, 0.0, 0.0], 1.0)[..3], &[0.0, 0.0, -1.0]);
         assert_eq!(&car.target([0.0; 3], 1.0)[..3], &[0.0; 3]);
     }
+
+    #[test]
+    #[ignore = "requires a local real map, record and game packs"]
+    fn observing_every_tick_leaves_the_run_unchanged() -> Result<()> {
+        use anyhow::Context;
+        let var = |name: &str| std::env::var_os(name).map(std::path::PathBuf::from).context(name.to_owned());
+        let map = gearbox_gbx::Map::parse(&std::fs::read(var("GEARBOX_TEST_MAP")?)?)?;
+        let record = gearbox_run::Record::read(&var("GEARBOX_TEST_RECORD")?)?;
+        let packs = gearbox_packs::install::Game::locate(Some(&var("GEARBOX_TEST_GAME")?))?.open()?;
+        let start = record.open(&map, &packs)?;
+        let course = Course::race(&start)?;
+        let ground = Ground::build(&start);
+        let drive = |watch: bool| {
+            let mut session = start.clone();
+            let mut out = vec![0.0; LEN];
+            let mut seen = Vec::new();
+            for tick in 0..record.run.controls.len() + 100 {
+                if watch {
+                    observe(&session, &course, &ground, &mut out);
+                    seen.push(out.iter().map(|v| v.to_bits()).collect::<Vec<_>>());
+                }
+                if !record.step(&mut session, tick) || session.race().and_then(|r| r.finish).is_some() {
+                    break;
+                }
+            }
+            let body = session.body();
+            let state = [body.pos, body.vel, body.ang_vel].map(|v| v.to_array().map(f32::to_bits));
+            (session.race().and_then(|r| r.finish), state, seen)
+        };
+        let (finish, state, seen) = drive(true);
+        let (blind, blind_state, _) = drive(false);
+        assert!(finish.is_some());
+        assert_eq!(finish, blind);
+        assert_eq!(state, blind_state);
+        assert_eq!(seen, drive(true).2);
+        Ok(())
+    }
 }
