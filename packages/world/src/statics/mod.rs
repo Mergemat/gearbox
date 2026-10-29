@@ -101,8 +101,9 @@ pub(crate) fn finish(
     let mut world = StaticWorld { material14_alias, ..StaticWorld::default() };
     let mut gates = GateIds::default();
     let mut prepared = HashSet::new();
+    let omitted: HashSet<usize> = selection.omitted_items.iter().copied().collect();
     for (i, spec) in built.items.into_iter().enumerate() {
-        if selection.omitted_items.contains(&i) {
+        if omitted.contains(&i) {
             continue;
         }
         let entity = gates.assign(spec.entity);

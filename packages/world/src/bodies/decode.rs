@@ -24,6 +24,7 @@ pub(super) struct Decoder<'a> {
     pub animations: Vec<KinematicModel>,
     pub bodies: Vec<Instance>,
     pub omitted: Vec<usize>,
+    fallbacks: HashMap<(u32, [u32; 12]), Vec<usize>>,
 }
 
 struct Placement<'a> {
@@ -45,6 +46,7 @@ impl<'a> Decoder<'a> {
             animations: Vec::new(),
             bodies: Vec::new(),
             omitted: Vec::new(),
+            fallbacks: HashMap::new(),
         }
     }
 
@@ -53,7 +55,6 @@ impl<'a> Decoder<'a> {
         source: &mut PackSource<'_>,
         path: &str,
         placement: &Placement<'_>,
-        specs: &[ItemSpec],
         depth: usize,
         dynamic_index: &mut u32,
     ) -> Result<()> {
@@ -75,7 +76,7 @@ impl<'a> Decoder<'a> {
             chain.push(Loc { rotation: entity.rotation, position: entity.position });
             let nested = Placement { chain, ..*placement };
             if let EntModel::Prefab(child) = &entity.model {
-                self.prefab(source, child, &nested, specs, depth + 1, dynamic_index)?;
+                self.prefab(source, child, &nested, depth + 1, dynamic_index)?;
             } else if let EntModel::Dyna { dyna_shape: Some(id), static_shape, source: asset_path, .. } =
                 &entity.model
             {
@@ -97,7 +98,6 @@ impl<'a> Decoder<'a> {
                     &prefab,
                     raw,
                     &nested,
-                    specs,
                     *static_shape,
                     &surface,
                     dynamic_index,
@@ -189,7 +189,6 @@ impl<'a> Decoder<'a> {
         prefab: &gearbox_packs::catalog::Prefab,
         raw: &gearbox_packs::prefab::Prefab,
         placement: &Placement<'_>,
-        specs: &[ItemSpec],
         static_shape: Option<usize>,
         surface: &gearbox_packs::assets::PlacedSurface<'_>,
         dynamic_index: &mut u32,
@@ -241,15 +240,10 @@ impl<'a> Decoder<'a> {
             let surface = source.assets.place(id, Role::DynaStaticShape, &[], &modifiers);
             if surface.surface.surf.is_some() {
                 let shape = source.shape(&surface).map_err(anyhow::Error::msg)?;
-                let index = specs
-                    .iter()
-                    .enumerate()
-                    .position(|(index, spec)| {
-                        !self.omitted.contains(&index)
-                            && spec.shape == shape
-                            && spec.transform.to_array().map(f32::to_bits)
-                                == raw_base.to_array().map(f32::to_bits)
-                    })
+                let index = self
+                    .fallbacks
+                    .get_mut(&(shape, raw_base.to_array().map(f32::to_bits)))
+                    .and_then(Vec::pop)
                     .with_context(|| format!("dynamic static fallback absent: {path}"))?;
                 self.omitted.push(index);
             }
@@ -324,9 +318,15 @@ impl<'a> Decoder<'a> {
         source: &mut PackSource<'_>,
         specs: &[ItemSpec],
     ) -> Result<()> {
-        self.blocks(map, source, specs)?;
-        self.items(map, source, specs)?;
-        self.decoration(map, source, specs)
+        for (index, spec) in specs.iter().enumerate().rev() {
+            self.fallbacks
+                .entry((spec.shape, spec.transform.to_array().map(f32::to_bits)))
+                .or_default()
+                .push(index);
+        }
+        self.blocks(map, source)?;
+        self.items(map, source)?;
+        self.decoration(map, source)
     }
 
     fn block_prefab(source: &PackSource<'_>, key: &statics::BlockKey) -> Result<Option<String>> {
@@ -350,12 +350,7 @@ impl<'a> Decoder<'a> {
             .and_then(|mobil| mobil.prefab.clone()))
     }
 
-    fn blocks(
-        &mut self,
-        map: &gearbox_gbx::Map,
-        source: &mut PackSource<'_>,
-        specs: &[ItemSpec],
-    ) -> Result<()> {
+    fn blocks(&mut self, map: &gearbox_gbx::Map, source: &mut PackSource<'_>) -> Result<()> {
         for block in map.blocks.iter().chain(&map.baked_blocks) {
             let key = statics::BlockKey::of(block);
             let Some(prefab) = Self::block_prefab(source, &key)? else { continue };
@@ -366,17 +361,12 @@ impl<'a> Decoder<'a> {
                 modifier: None,
                 chain: Vec::new(),
             };
-            self.prefab(source, &prefab, &placement, specs, 0, &mut 0)?;
+            self.prefab(source, &prefab, &placement, 0, &mut 0)?;
         }
         Ok(())
     }
 
-    fn items(
-        &mut self,
-        map: &gearbox_gbx::Map,
-        source: &mut PackSource<'_>,
-        specs: &[ItemSpec],
-    ) -> Result<()> {
+    fn items(&mut self, map: &gearbox_gbx::Map, source: &mut PackSource<'_>) -> Result<()> {
         for item in &map.items {
             let name = item.model.as_deref().context("dynamic item without model")?;
             let path =
@@ -400,19 +390,14 @@ impl<'a> Decoder<'a> {
                         modifier: modifier.as_deref(),
                         chain: Vec::new(),
                     };
-                    self.prefab(source, &prefab, &placement, specs, 0, &mut 0)?;
+                    self.prefab(source, &prefab, &placement, 0, &mut 0)?;
                 }
             }
         }
         Ok(())
     }
 
-    fn decoration(
-        &mut self,
-        map: &gearbox_gbx::Map,
-        source: &mut PackSource<'_>,
-        specs: &[ItemSpec],
-    ) -> Result<()> {
+    fn decoration(&mut self, map: &gearbox_gbx::Map, source: &mut PackSource<'_>) -> Result<()> {
         let decoration = statics::packs::decoration(source.assets, map).cloned();
         let Some(decoration) = decoration.filter(|deco| deco.map.is_some()) else { return Ok(()) };
         let size = decoration.map_size.context("decoration without map dimensions")?;
@@ -440,7 +425,7 @@ impl<'a> Decoder<'a> {
                 modifier: None,
                 chain: Vec::new(),
             };
-            self.prefab(source, &prefab, &placement, specs, 0, &mut 0)?;
+            self.prefab(source, &prefab, &placement, 0, &mut 0)?;
         }
         Ok(())
     }
