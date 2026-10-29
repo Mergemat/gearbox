@@ -13,6 +13,7 @@ macro_rules! ids {
 ids!(
     VehicleId,
     SharedShapeId,
+    OwnedShapeId,
     SphereId,
     EllipsoidId,
     BoxId,
@@ -27,6 +28,7 @@ ids!(
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ShapeId {
     Shared(SharedShapeId),
+    Owned(OwnedShapeId),
     Sphere(SphereId),
     Ellipsoid(EllipsoidId),
     Box(BoxId),
@@ -42,6 +44,10 @@ impl Default for ShapeId {
 impl ShapeId {
     pub fn shared(self) -> Option<SharedShapeId> {
         if let Self::Shared(id) = self { Some(id) } else { None }
+    }
+
+    pub fn owned(self) -> Option<OwnedShapeId> {
+        if let Self::Owned(id) = self { Some(id) } else { None }
     }
 
     pub fn compound(self) -> Option<CompoundInstanceId> {

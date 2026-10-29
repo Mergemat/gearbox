@@ -63,7 +63,7 @@ pub(super) fn prepare(
     ensure!(source.wheels.len() == 4, "unsupported non-four-wheel car model");
     ensure!(shape.manual_wheel_positions != 0, "unsupported automatic wheel placement");
     let mut wheels = wheels(source, shape, tuning)?;
-    let (source_collision, template) = geometry::prepare(source, tuning, &mut wheels, world, state)?;
+    let (source_collision, template) = geometry::prepare(source, tuning, &mut wheels, state)?;
     let (center, half, average) = wheel_bounds(&wheels, shape.wheel_height);
     let body = body(tuning, center, half, average);
     let local_inverse_inertia = box_inertia(tuning.inertia_mass, tuning.inertia_half);

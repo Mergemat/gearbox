@@ -1,7 +1,7 @@
 use crate::static_world as sw;
-use crate::{Iso, ShapeId, State, Vec3, World};
+use crate::{Iso, ShapeId, State, Vec3};
 
-pub fn shape(world: &mut World, state: &mut State, shape_id: ShapeId, scale: f32) {
+pub fn shape(state: &mut State, shape_id: ShapeId, scale: f32) {
     match shape_id {
         ShapeId::Sphere(id) => {
             let sphere = &mut state.sphere_shape[id.index()];
@@ -11,7 +11,7 @@ pub fn shape(world: &mut World, state: &mut State, shape_id: ShapeId, scale: f32
             let ellipsoid = &mut state.ellipsoid_shape[id.index()];
             ellipsoid.radii = scale * ellipsoid.radii;
         }
-        ShapeId::Shared(id) => match &mut world.statics.shapes[id.index()].geometry {
+        ShapeId::Owned(id) => match &mut state.owned_shape[id.index()].geometry {
             sw::Geometry::Mesh(mesh) => {
                 for vertex in &mut mesh.vertices {
                     *vertex = scale * *vertex;
@@ -23,16 +23,17 @@ pub fn shape(world: &mut World, state: &mut State, shape_id: ShapeId, scale: f32
                 }
                 let children = compound.children.clone();
                 for child in children {
-                    shape(world, state, child, scale);
+                    shape(state, child, scale);
                 }
             }
             sw::Geometry::Convex(_) => {}
         },
         ShapeId::Compound(id) => {
             let base = state.compound_instance[id.index()].base;
-            shape(world, state, base, scale);
+            shape(state, base, scale);
             positions(&mut state.compound_instance[id.index()].transforms, scale);
         }
+        ShapeId::Shared(_) => panic!("shared map shapes are not scaled"),
         ShapeId::Box(_) => {}
     }
 }

@@ -49,12 +49,17 @@ impl<'a> Geometry<'a> {
             ShapeId::Sphere(id) => Shape::Sphere(&self.state.sphere_shape[id.index()]),
             ShapeId::Ellipsoid(id) => Shape::Ellipsoid(&self.state.ellipsoid_shape[id.index()]),
             ShapeId::Box(id) => Shape::Box(&self.world.box_shape[id.index()]),
-            ShapeId::Shared(id) => match &self.world.statics.shapes[id.index()].geometry {
-                sw::Geometry::Mesh(mesh) => Shape::Mesh(mesh),
-                sw::Geometry::Compound(compound) => Shape::Compound(compound),
-                sw::Geometry::Convex(convex) => Shape::Convex(convex),
-            },
+            ShapeId::Shared(id) => Self::geometry(&self.world.statics.shapes[id.index()].geometry),
+            ShapeId::Owned(id) => Self::geometry(&self.state.owned_shape[id.index()].geometry),
             ShapeId::Compound(id) => Shape::CompoundInstance(&self.state.compound_instance[id.index()]),
+        }
+    }
+
+    fn geometry(geometry: &'a sw::Geometry) -> Shape<'a> {
+        match geometry {
+            sw::Geometry::Mesh(mesh) => Shape::Mesh(mesh),
+            sw::Geometry::Compound(compound) => Shape::Compound(compound),
+            sw::Geometry::Convex(convex) => Shape::Convex(convex),
         }
     }
 

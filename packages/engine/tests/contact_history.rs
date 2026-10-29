@@ -84,36 +84,39 @@ fn contact_normals_retain_history_across_collision_steps() {
     let impacts = ImpactModel::default();
     let fluid = FluidTuning::default();
     let model = DynaModel::default();
-    let mut ctx = StepCtx {
-        world: &mut world,
-        state: &mut state,
-        manager: 0,
-        dyna: &mut dyna,
-        vehicle: &mut vehicle,
-        assets: Assets {
-            tuning: &tuning,
-            geometry: &geometry,
-            impacts: &impacts,
-            fluid: &fluid,
-            body: &model,
-        },
-        tick: 0,
-        dt: 0.01,
-        ghost_contacts: &[],
-        events: None,
+    let step = |world: &World, state: &mut State, dyna: &mut Dyna, vehicle: &mut Vehicle, now: i64| {
+        let mut ctx = StepCtx {
+            world,
+            state,
+            manager: 0,
+            dyna,
+            vehicle,
+            assets: Assets {
+                tuning: &tuning,
+                geometry: &geometry,
+                impacts: &impacts,
+                fluid: &fluid,
+                body: &model,
+            },
+            tick: 0,
+            dt: 0.01,
+            ghost_contacts: &[],
+            events: None,
+        };
+        collision_step(&mut ctx, now, 0.01, 0.01)
     };
-    let first = collision_step(&mut ctx, 0, 0.01, 0.01);
+    let first = step(&world, &mut state, &mut dyna, &mut vehicle, 0);
     assert_eq!(first.contacts.len(), 1);
     assert!(first.contacts.as_slice()[0].normal.x < -0.05);
-    for surface in &mut ctx.world.statics.surfaces {
+    for surface in &mut world.statics.surfaces {
         surface.iso = Iso::IDENTITY;
     }
-    for item in &mut ctx.world.statics.items {
+    for item in &mut world.statics.items {
         item.iso = Iso::IDENTITY;
     }
-    ctx.state.dynamic_item[0].shape = ShapeId::Sphere(SphereId(0));
-    ctx.state.shape_entry[0].shape = ShapeId::Sphere(SphereId(0));
-    let second = collision_step(&mut ctx, 10_000_000, 0.01, 0.01);
+    state.dynamic_item[0].shape = ShapeId::Sphere(SphereId(0));
+    state.shape_entry[0].shape = ShapeId::Sphere(SphereId(0));
+    let second = step(&world, &mut state, &mut dyna, &mut vehicle, 10_000_000);
     assert_eq!(second.contacts.len(), 1);
     assert!(second.contacts.as_slice()[0].normal.x < -0.05, "{:?}", second.contacts.as_slice()[0].normal);
 }

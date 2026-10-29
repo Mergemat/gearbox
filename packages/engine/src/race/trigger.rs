@@ -154,7 +154,7 @@ pub struct CollisionStep {
 }
 
 pub fn detect(
-    world: &mut crate::World,
+    world: &crate::World,
     state: &mut crate::State,
     manager: usize,
     dyna: &crate::dyna::Dyna,
@@ -179,7 +179,7 @@ pub fn detect(
     let pose = dyna.state(handle).pose();
     let shape = state.dynamic_item[vehicle_item.index()].shape;
     if step.scale != 1.0 {
-        crate::shape::scale::shape(world, state, shape, step.scale);
+        crate::shape::scale::shape(state, shape, step.scale);
     }
     DynaCollision { world, state, manager }.set_placement(vehicle_item, pose);
     let item = &state.dynamic_item[vehicle_item.index()];
@@ -198,7 +198,7 @@ pub fn detect(
     );
     if step.scale != 1.0 {
         let inverse = 1.0 / step.scale;
-        crate::shape::scale::shape(world, state, shape, inverse);
+        crate::shape::scale::shape(state, shape, inverse);
         DynaCollision { world, state, manager }.set_placement(vehicle_item, pose);
         for contact in contacts.as_mut_slice() {
             contact.rescale(pose, inverse);

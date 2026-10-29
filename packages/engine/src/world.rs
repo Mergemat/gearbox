@@ -10,6 +10,7 @@ pub struct World {
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
+    pub owned_shape: Vec<crate::static_world::Shape>,
     pub compound_instance: Vec<collision::CompoundInstance>,
     pub scene: Vec<arena::Scene>,
     pub collision_world: Vec<collision::CollisionWorld>,

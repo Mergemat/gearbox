@@ -6,7 +6,6 @@ use crate::{
     session::{Controls, Session},
     vehicle::{before, post, step, vis},
 };
-use std::sync::Arc;
 
 pub const DT: f32 = 0.010000001;
 
@@ -81,7 +80,7 @@ impl Session {
     fn step_context(&mut self, now: u32) -> step::StepCtx<'_> {
         let model = self.config.model(self.vehicle.model_choice);
         step::StepCtx {
-            world: Arc::make_mut(&mut self.world),
+            world: &self.world,
             state: &mut self.state,
             manager: self.config.manager,
             dyna: &mut self.dyna,

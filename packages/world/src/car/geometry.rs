@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, ensure};
 use gearbox_engine::{
-    Aabb, CompoundInstanceId, EllipsoidId, Iso, ShapeId, SharedShapeId, SphereId, State, Vec3, World,
+    Aabb, CompoundInstanceId, EllipsoidId, Iso, OwnedShapeId, ShapeId, SphereId, State, Vec3, World,
     collision::{CompoundInstance, EllipsoidShape, SphereShape},
     static_world as sw,
 };
@@ -40,7 +40,7 @@ fn primitive(source: &SurfNode, state: &mut State) -> Result<ShapeId> {
     }
 }
 
-pub(super) fn compound(source: &SurfNode, world: &mut World, state: &mut State) -> Result<ShapeId> {
+pub(super) fn compound(source: &SurfNode, state: &mut State) -> Result<ShapeId> {
     let Surf::Compound { surfs, locs, joints } = &source.surf else {
         anyhow::bail!("unsupported non-compound car collision");
     };
@@ -49,8 +49,8 @@ pub(super) fn compound(source: &SurfNode, world: &mut World, state: &mut State) 
         "unsupported car compound child/transform/joint counts"
     );
     let children = surfs.iter().map(|child| primitive(child, state)).collect::<Result<_>>()?;
-    let result = ShapeId::Shared(SharedShapeId(world.statics.shapes.len() as u32));
-    world.statics.shapes.push(sw::Shape {
+    let result = ShapeId::Owned(OwnedShapeId(state.owned_shape.len() as u32));
+    state.owned_shape.push(sw::Shape {
         main_dir: source.gameplay_main_dir.map(Vec3::from_array).unwrap_or(Vec3::new(0.0, 0.0, 1.0)),
         geometry: sw::Geometry::Compound(sw::Compound {
             children,
@@ -66,20 +66,19 @@ pub(super) fn prepare(
     source: &CarModel,
     tuning: &gearbox_engine::vehicle::Tuning,
     wheels: &mut [gearbox_engine::vehicle::model::WheelDefinition],
-    world: &mut World,
     state: &mut State,
 ) -> Result<(ShapeId, ShapeId)> {
     let surface = source.collision.surface.surf.as_ref().context("empty car collision surface")?;
-    let original = compound(surface, world, state)?;
-    let prepared = compound(surface, world, state)?;
+    let original = compound(surface, state)?;
+    let prepared = compound(surface, state)?;
     let skeleton = source.collision.skeleton.as_ref().context("car collision without skeleton")?;
     ensure!(
         source.wheels.iter().all(|wheel| skeleton.names.contains(&wheel.name)),
         "wheel absent from car skeleton"
     );
-    let shape_index = prepared.shared().context("car compound reference")?.index();
-    world.statics.shapes[shape_index].main_dir = Vec3::new(0.0, 0.0, 1.0);
-    let sw::Geometry::Compound(base) = &world.statics.shapes[shape_index].geometry else {
+    let shape_index = prepared.owned().context("car compound reference")?.index();
+    state.owned_shape[shape_index].main_dir = Vec3::new(0.0, 0.0, 1.0);
+    let sw::Geometry::Compound(base) = state.owned_shape[shape_index].geometry.clone() else {
         anyhow::bail!("unsupported car compound base");
     };
     ensure!(!base.joints.is_empty(), "unsupported car collision without skeleton joints");

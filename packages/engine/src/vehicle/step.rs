@@ -43,7 +43,7 @@ pub struct CollisionFrame {
 }
 
 pub struct StepCtx<'a> {
-    pub world: &'a mut World,
+    pub world: &'a World,
     pub state: &'a mut State,
     pub manager: usize,
     pub dyna: &'a mut Dyna,
@@ -190,7 +190,7 @@ pub fn collision_step(ctx: &mut StepCtx<'_>, now: i64, dt: f32, clip: f32) -> Co
         let shape = ctx.state.dynamic_item[vehicle_item.index()].shape;
         let scale = ctx.assets.tuning.collision_scale;
         if scale != 1.0 {
-            crate::shape::scale::shape(ctx.world, ctx.state, shape, scale);
+            crate::shape::scale::shape(ctx.state, shape, scale);
         }
         DynaCollision { world: ctx.world, state: ctx.state, manager: ctx.manager }
             .set_placement(vehicle_item, pose);
@@ -218,7 +218,7 @@ pub fn collision_step(ctx: &mut StepCtx<'_>, now: i64, dt: f32, clip: f32) -> Co
         ctx.dyna.work.contact_pool = pool;
         if scale != 1.0 {
             let inverse = 1.0 / scale;
-            crate::shape::scale::shape(ctx.world, ctx.state, shape, inverse);
+            crate::shape::scale::shape(ctx.state, shape, inverse);
             DynaCollision { world: ctx.world, state: ctx.state, manager: ctx.manager }
                 .set_placement(vehicle_item, pose);
             for contact in list.as_mut_slice() {
