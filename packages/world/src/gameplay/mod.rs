@@ -21,7 +21,18 @@ pub struct Gameplay {
     pub initial_pose: Iso,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Layout {
+    waypoints: Vec<RaceWaypoint>,
+    checkpoints_per_lap: u32,
+    spawn: u32,
+}
+
 pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, start: u32, now: u32) -> Result<Gameplay> {
+    Ok(layout(map, assets)?.gameplay(map, start, now))
+}
+
+pub(crate) fn layout(map: &gearbox_gbx::Map, assets: &MapAssets<'_>) -> Result<Layout> {
     let catalog = assets.geometry(map)?;
     let environment = crate::statics::packs::environment(map).map_err(anyhow::Error::msg)?;
     let mut landmarks = Vec::new();
@@ -40,33 +51,40 @@ pub fn build(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, start: u32, now: u3
     }
     let spawn = select_spawn(&landmarks)?;
     let (waypoints, checkpoints_per_lap) = groups(landmarks);
-    let initial_pose = Iso::from_array([0.0; 12]);
-    let settings = race::RaceRules {
-        start,
-        mode_bits: LOCAL_RACE_MODE,
-        checkpoints: checkpoints_per_lap,
-        ..Default::default()
-    };
-    Ok(Gameplay {
-        race: Race {
-            rules: Rules {
-                mode: race::Mode::Race,
-                checkpoints_per_lap,
-                lap_race: map.lap_race,
-                laps: if map.lap_race { map.laps } else { 0 },
-                waypoints,
-                clear_untouched: false,
+    Ok(Layout { waypoints, checkpoints_per_lap, spawn })
+}
+
+impl Layout {
+    pub(crate) fn gameplay(&self, map: &gearbox_gbx::Map, start: u32, now: u32) -> Gameplay {
+        let Layout { waypoints, checkpoints_per_lap, spawn } = self.clone();
+        let initial_pose = Iso::from_array([0.0; 12]);
+        let settings = race::RaceRules {
+            start,
+            mode_bits: LOCAL_RACE_MODE,
+            checkpoints: checkpoints_per_lap,
+            ..Default::default()
+        };
+        Gameplay {
+            race: Race {
+                rules: Rules {
+                    mode: race::Mode::Race,
+                    checkpoints_per_lap,
+                    lap_race: map.lap_race,
+                    laps: if map.lap_race { map.laps } else { 0 },
+                    waypoints,
+                    clear_untouched: false,
+                },
+                store: player::store(start),
+                players: vec![player::build(start, spawn, 0)],
             },
-            store: player::store(start),
-            players: vec![player::build(start, spawn, 0)],
-        },
-        settings,
-        scene: scene::build(now),
-        entities: vec![EntityBinding { handle: 0, kind: EntityKind::Vehicle, index: 0 }],
-        ghost: Default::default(),
-        spawn,
-        initial_pose,
-    })
+            settings,
+            scene: scene::build(now),
+            entities: vec![EntityBinding { handle: 0, kind: EntityKind::Vehicle, index: 0 }],
+            ghost: Default::default(),
+            spawn,
+            initial_pose,
+        }
+    }
 }
 
 pub(crate) fn block_waypoint(

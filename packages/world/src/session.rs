@@ -12,6 +12,7 @@ use gearbox_engine::{
     race::RaceRules,
     session::{Clock, Session, SessionConfig, VehicleAssets, VehicleModel},
     vehicle::{Vehicle, spawn, vis},
+    world_water::Water,
 };
 use gearbox_packs::packs::PackSet;
 use std::sync::Arc;
@@ -34,41 +35,59 @@ impl Default for OpenOptions {
 }
 
 pub fn open(map: &gearbox_gbx::Map, packs: &PackSet, options: OpenOptions) -> Result<Session> {
-    let clock = Clock::new(options.t0).map_err(anyhow::Error::msg)?;
-    let map_assets = MapAssets::from_packs(packs, &gearbox_packs::catalog::PAKS, map)?;
-    let gameplay = gameplay::build(map, &map_assets, clock.start, clock.now)?;
-    let (mut world, mut state, mut dyna) = build_world(map, &map_assets, clock.start)?;
-    let car = load_car(map, packs, options.car, &mut world, &mut state)?;
-    let (vehicle, effects, assets) =
-        spawn_car(&car, &gameplay, clock.now, &mut world, &mut state, &mut dyna)?;
-    let models = load_models(packs, car, assets, &mut world, &mut state)?;
-    state.scene.push(gameplay.scene);
-    let ghosts = crate::ghost::build(map)?;
-    let config = session_config(models, &gameplay.settings, gameplay.initial_pose, ghosts);
-    Ok(Session {
-        world: Arc::new(world),
-        state,
-        vehicle,
-        dyna,
-        race: gameplay.race,
-        rng: 1,
-        config: Arc::new(config),
-        effects,
-        clock,
-        seed: options.seed,
-        input: Default::default(),
-        applied: Default::default(),
-        respawns: None,
-    })
+    Prepared::new(map, packs)?.open(options)
 }
 
-fn build_world(map: &gearbox_gbx::Map, assets: &MapAssets<'_>, start: u32) -> Result<(World, State, Dyna)> {
-    let mut world = World::default();
-    world.water = crate::water::build(map, assets)?;
-    let mut state = State::default();
-    let mut dyna = bodies::manager(start);
-    bodies::build(map, assets)?.register(&mut world, &mut state, &mut dyna)?;
-    Ok((world, state, dyna))
+pub struct Prepared<'a> {
+    map: &'a gearbox_gbx::Map,
+    packs: &'a PackSet,
+    layout: gameplay::Layout,
+    water: Water,
+    bodies: bodies::Built,
+}
+
+impl<'a> Prepared<'a> {
+    pub fn new(map: &'a gearbox_gbx::Map, packs: &'a PackSet) -> Result<Self> {
+        let assets = MapAssets::from_packs(packs, &gearbox_packs::catalog::PAKS, map)?;
+        Ok(Self {
+            map,
+            packs,
+            layout: gameplay::layout(map, &assets)?,
+            water: crate::water::build(map, &assets)?,
+            bodies: bodies::build(map, &assets)?,
+        })
+    }
+
+    pub fn open(&self, options: OpenOptions) -> Result<Session> {
+        let clock = Clock::new(options.t0).map_err(anyhow::Error::msg)?;
+        let gameplay = self.layout.gameplay(self.map, clock.start, clock.now);
+        let mut world = World { water: self.water.clone(), ..World::default() };
+        let mut state = State::default();
+        let mut dyna = bodies::manager(clock.start);
+        self.bodies.clone().register(&mut world, &mut state, &mut dyna)?;
+        let car = load_car(self.map, self.packs, options.car, &mut world, &mut state)?;
+        let (vehicle, effects, assets) =
+            spawn_car(&car, &gameplay, clock.now, &mut world, &mut state, &mut dyna)?;
+        let models = load_models(self.packs, car, assets, &mut world, &mut state)?;
+        state.scene.push(gameplay.scene);
+        let ghosts = crate::ghost::build(self.map)?;
+        let config = session_config(models, &gameplay.settings, gameplay.initial_pose, ghosts);
+        Ok(Session {
+            world: Arc::new(world),
+            state,
+            vehicle,
+            dyna,
+            race: gameplay.race,
+            rng: 1,
+            config: Arc::new(config),
+            effects,
+            clock,
+            seed: options.seed,
+            input: Default::default(),
+            applied: Default::default(),
+            respawns: None,
+        })
+    }
 }
 
 fn load_car(

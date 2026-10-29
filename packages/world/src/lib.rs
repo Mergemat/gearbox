@@ -6,7 +6,7 @@ pub mod paths;
 pub mod session;
 pub mod statics;
 pub mod water;
-pub use session::{OpenOptions, open, open_file};
+pub use session::{OpenOptions, Prepared, open, open_file};
 
 fn sort_by_key<T, K: Ord>(values: &mut Vec<T>, key: impl Fn(&T) -> K) {
     let mut entries: Vec<_> =

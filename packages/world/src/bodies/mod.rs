@@ -20,6 +20,7 @@ pub struct Instance {
     pub placement: Iso,
 }
 
+#[derive(Clone)]
 pub struct Built {
     pub statics: gearbox_engine::static_world::StaticWorld,
     pub selection: Selection,
