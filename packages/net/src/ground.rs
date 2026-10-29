@@ -2,7 +2,7 @@ use gearbox_engine::consumer::PhysicalTriangle;
 use gearbox_engine::{Session, gameplay};
 use gearbox_search::gate::gates;
 
-use crate::observe::surface_class;
+use crate::observe::{hypot, surface_class};
 
 pub const CELL: f32 = 2.0;
 pub const LAYERS: usize = 4;
@@ -135,7 +135,7 @@ impl Ground {
 
     pub fn ahead(&self, position: [f32; 3], forward: [f32; 2], out: &mut [f32]) {
         assert_eq!(out.len(), LEN);
-        let length = forward[0].hypot(forward[1]);
+        let length = hypot(forward[0], forward[1]);
         let [fx, fz] = if length > 1e-6 { forward.map(|v| v / length) } else { [0.0, 1.0] };
         let samples = out.as_chunks_mut::<FEATURES>().0;
         for b in 0..BEARINGS.len() {

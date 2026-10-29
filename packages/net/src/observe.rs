@@ -194,6 +194,11 @@ impl Car {
     }
 }
 
+pub(crate) fn hypot(x: f32, y: f32) -> f32 {
+    let [x, y] = [x, y].map(f64::from);
+    (x * x + y * y).sqrt() as f32
+}
+
 pub(crate) fn surface_class(material: u8) -> usize {
     match material {
         surface::TURBO
@@ -241,7 +246,7 @@ pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f
     out[0..3].copy_from_slice(&(velocity * 0.01).to_array());
     out[3..6].copy_from_slice(&(car.to_car(car.angular_velocity) * 0.1).to_array());
     out[6..9].copy_from_slice(&car.to_car(Vec3::new(0.0, 1.0, 0.0)).to_array());
-    out[9] = velocity.x / velocity.x.hypot(velocity.z).max(1.0);
+    out[9] = velocity.x / hypot(velocity.x, velocity.z).max(1.0);
     out[10] = vehicle.rpm / 10_000.0;
     out[11] = vehicle.gear as f32 / 6.0;
     out[12 + vehicle.model_choice as usize] = 1.0;
