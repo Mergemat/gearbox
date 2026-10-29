@@ -2439,10 +2439,11 @@ impl Editor {
         let Some(map) = self.map.clone() else {
             return self.error("io", format!("open a map before importing {}", path.display()));
         };
-        let f = match crate::replay::load(path).and_then(|r| crate::replay::inputs(&r, &map, &self.game.packs)) {
-            Ok(f) => f,
-            Err(e) => return self.error("io", format!("import {}: {e:#}", path.display())),
-        };
+        let f =
+            match crate::replay::load(path).and_then(|r| crate::replay::inputs(&r, &map, &self.game.packs)) {
+                Ok(f) => f,
+                Err(e) => return self.error("io", format!("import {}: {e:#}", path.display())),
+            };
         let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
         let start_ms = gearbox_engine::session::Clock::new(f.t0).ok().map(|c| c.race_ms);
         self.info(

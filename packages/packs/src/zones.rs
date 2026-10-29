@@ -109,7 +109,8 @@ impl Zones {
                 continue;
             }
             let (name, zone) = read(&buf).map_err(|e| e.context(path.clone()))?;
-            let head = crate::unpack::parse_head(&buf).ok_or_else(|| anyhow::anyhow!("truncated zone {path}"))??;
+            let head =
+                crate::unpack::parse_head(&buf).ok_or_else(|| anyhow::anyhow!("truncated zone {path}"))??;
             let block_class = match f.class_id {
                 CLASS_FLAT => "gamectnblockinfoflat",
                 CLASS_FRONTIER => "gamectnblockinfofrontier",

@@ -60,6 +60,52 @@ impl Course {
         self.checkpoints.iter().filter(|target| !passed(&session.race, target.group)).count()
     }
 
+    pub fn task_potential(&self, session: &Session) -> f32 {
+        self.potential_at(session.vehicle().pos.to_array(), &session.race)
+    }
+
+    pub fn gates_left(&self, session: &Session) -> usize {
+        let laps = self.laps_left(&session.race);
+        if laps == 0 {
+            return 0;
+        }
+        (laps - 1) as usize * (self.checkpoints.len() + 1) + self.checkpoints_left(session) + 1
+    }
+
+    fn laps_left(&self, race: &Race) -> u32 {
+        let completed = race.players.first().map_or(0, |player| {
+            entries(race, player.player.race_run)
+                .filter(|entry| {
+                    race.rules.waypoints[entry.waypoint as usize].flags.contains(WaypointFlags::GOAL)
+                })
+                .count() as u32
+        });
+        self.laps.saturating_sub(completed)
+    }
+
+    fn potential_at(&self, position: [f32; 3], race: &Race) -> f32 {
+        let laps_left = self.laps_left(race);
+        if laps_left == 0 {
+            return 0.0;
+        }
+        let mut left = 0;
+        let mut distance = f32::INFINITY;
+        for target in &self.checkpoints {
+            if !passed(race, target.group) {
+                left += 1;
+                distance = distance.min(closest(position, &target.gates).0);
+            }
+        }
+        if left == 0 {
+            distance = closest(position, &self.finishes).0;
+        }
+        let distance = distance.sqrt();
+        let proximity = if distance.is_finite() { distance / (distance + 100.0) } else { 1.0 };
+        let per_lap = self.checkpoints.len() + 1;
+        let remaining = (laps_left - 1) as usize * per_lap + left;
+        -(remaining as f32 + proximity) / (self.laps as usize * per_lap) as f32
+    }
+
     fn features(&self, car: &Car, race: &Race) -> [f32; AHEAD * 5 + 7] {
         let mut nearest = [(f32::INFINITY, [0.0; 3]); AHEAD];
         let mut left = 0;
@@ -80,14 +126,7 @@ impl Course {
                 slot.copy_from_slice(&car.target(point, 1.0));
             }
         }
-        let completed = race.players.first().map_or(0, |player| {
-            entries(race, player.player.race_run)
-                .filter(|entry| {
-                    race.rules.waypoints[entry.waypoint as usize].flags.contains(WaypointFlags::GOAL)
-                })
-                .count() as u32
-        });
-        let laps_left = self.laps.saturating_sub(completed);
+        let laps_left = self.laps_left(race);
         let finish = closest(car.position, &self.finishes).1;
         out[AHEAD * 5..AHEAD * 5 + 5]
             .copy_from_slice(&car.target(finish, f32::from(left == 0 && laps_left > 0)));
@@ -371,6 +410,47 @@ mod tests {
             assert_eq!(course(1).features(&car(), &race)[25], 0.1);
             assert_eq!(race.state(0).unwrap().checkpoints.len(), 1);
         }
+    }
+
+    #[test]
+    fn task_potential_counts_valid_groups_and_completed_laps() {
+        let course = course(2);
+        let mut race = race(2);
+        let mut previous = course.potential_at([0.0; 3], &race);
+        assert!((-1.0..0.0).contains(&previous));
+        for lap in 0..2 {
+            for waypoint in [2, 0, 3] {
+                race.waypoint(0, None, waypoint, lap * 100 + waypoint * 10 + 10);
+                let next = course.potential_at([0.0; 3], &race);
+                assert!(next > previous);
+                previous = next;
+            }
+        }
+        assert_eq!(previous, 0.0);
+    }
+
+    #[test]
+    fn task_potential_approaches_any_unpassed_linked_gate_without_counting_it_twice() {
+        let course = course(1);
+        let mut race = race(1);
+        let start = course.potential_at([0.0; 3], &race);
+        assert!(course.potential_at([0.0, 0.0, -199.0], &race) > start);
+        race.waypoint(0, None, 2, 100);
+        let passed = course.potential_at([0.0; 3], &race);
+        race.waypoint(0, None, 1, 200);
+        assert_eq!(course.potential_at([0.0; 3], &race), passed);
+        assert!(course.potential_at([90.0, 0.0, 0.0], &race) > passed);
+        assert!(course.potential_at([-1000.0; 3], &race) < passed);
+    }
+
+    #[test]
+    fn task_potential_ignores_gate_timestamps_and_waiting() {
+        let course = course(1);
+        let mut early = race(1);
+        let mut late = race(1);
+        early.waypoint(0, None, 2, 10);
+        late.waypoint(0, None, 2, 240_000);
+        assert_eq!(course.potential_at([0.0; 3], &early), course.potential_at([0.0; 3], &late));
     }
 
     #[test]

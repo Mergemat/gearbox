@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{Context, Result, bail, ensure};
 
@@ -160,7 +161,8 @@ impl Car {
 pub struct Assets {
     pub dir: PathBuf,
     pub index: Index,
-    surfaces: Vec<Surface>,
+    surfaces: Arc<Vec<Surface>>,
+    extra_surfaces: Vec<Surface>,
     by_name: HashMap<String, Vec<String>>,
 }
 
@@ -186,6 +188,21 @@ pub fn block_name(path: &str) -> &str {
 }
 
 impl Assets {
+    pub fn from_packs(set: &crate::packs::PackSet, filters: &[&str]) -> Result<Self> {
+        static CACHED: OnceLock<Mutex<Option<(u64, Assets)>>> = OnceLock::new();
+        let key = crate::catalog::cache_key(set, filters);
+        let mut cached = CACHED.get_or_init(Default::default).lock().unwrap();
+        if let Some((old_key, assets)) = cached.as_ref()
+            && *old_key == key
+        {
+            return Ok(assets.clone());
+        }
+        let catalog = crate::catalog::crawl_cached(set, filters, &crate::install::cache_dir())?;
+        let assets = Self::from_catalog(catalog);
+        *cached = Some((key, assets.clone()));
+        Ok(assets)
+    }
+
     pub fn from_catalog(cat: Catalog) -> Self {
         let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
         for (path, block) in &cat.index.blocks {
@@ -197,7 +214,13 @@ impl Assets {
         for paths in by_name.values_mut() {
             paths.sort_by_key(|p| (p.contains("\\Deprecated\\"), !p.starts_with("Stadium\\"), p.clone()));
         }
-        Self { dir: PathBuf::new(), index: cat.index, surfaces: cat.surfaces, by_name }
+        Self {
+            dir: PathBuf::new(),
+            index: cat.index,
+            surfaces: Arc::new(cat.surfaces),
+            extra_surfaces: Vec::new(),
+            by_name,
+        }
     }
 
     pub fn open(dir: &Path) -> Result<Assets> {
@@ -226,19 +249,29 @@ impl Assets {
         for v in by_name.values_mut() {
             v.sort_by_key(|p| (p.contains("\\Deprecated\\"), !p.starts_with("Stadium\\"), p.clone()));
         }
-        Ok(Assets { dir: dir.to_owned(), index, surfaces, by_name })
+        Ok(Assets {
+            dir: dir.to_owned(),
+            index,
+            surfaces: Arc::new(surfaces),
+            extra_surfaces: Vec::new(),
+            by_name,
+        })
     }
 
     pub fn surface(&self, id: usize) -> &Surface {
-        &self.surfaces[id]
+        if id < self.surfaces.len() {
+            &self.surfaces[id]
+        } else {
+            &self.extra_surfaces[id - self.surfaces.len()]
+        }
     }
 
     pub fn surface_count(&self) -> usize {
-        self.surfaces.len()
+        self.surfaces.len() + self.extra_surfaces.len()
     }
 
     pub fn add_catalog(&mut self, cat: Catalog) {
-        self.surfaces.extend(cat.surfaces);
+        self.extra_surfaces.extend(cat.surfaces);
         self.index.surfaces.extend(cat.index.surfaces);
         self.index.blocks.extend(cat.index.blocks);
         self.index.prefabs.extend(cat.index.prefabs);
@@ -506,7 +539,7 @@ impl Assets {
         PlacedSurface {
             id,
             role,
-            surface: &self.surfaces[id],
+            surface: self.surface(id),
             loc,
             chain: chain.to_vec(),
             materials,
@@ -519,7 +552,36 @@ impl Assets {
 
 #[cfg(test)]
 mod tests {
-    use super::Loc;
+    use super::*;
+
+    #[test]
+    fn map_catalogs_keep_surface_ids_and_materials_independent() {
+        let catalog = |material| Catalog {
+            index: Index { materials: [("surface".into(), (material as u8, 0))].into(), ..Index::default() },
+            surfaces: vec![Surface {
+                version: 0,
+                surf_version: 0,
+                surf: None,
+                materials: Vec::new(),
+                material_ids: vec![material],
+            }],
+        };
+        let base = Assets::from_catalog(catalog(1));
+        let mut first = base.clone();
+        let mut second = base.clone();
+        first.add_catalog(catalog(2));
+        second.add_catalog(catalog(3));
+        let mut fork = first.clone();
+        fork.add_catalog(catalog(4));
+        for (assets, expected) in
+            [(&base, vec![1]), (&first, vec![1, 2]), (&second, vec![1, 3]), (&fork, vec![1, 2, 4])]
+        {
+            let actual: Vec<_> =
+                (0..assets.surface_count()).map(|id| assets.surface(id).material_ids[0]).collect();
+            assert_eq!(actual, expected);
+            assert_eq!(assets.index.materials["surface"].0, *expected.last().unwrap() as u8);
+        }
+    }
 
     fn yaw90() -> Loc {
         let h = std::f32::consts::FRAC_1_SQRT_2;

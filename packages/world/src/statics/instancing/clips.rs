@@ -140,7 +140,9 @@ pub(super) fn free_parents(
                 let ground = || -> Result<bool> {
                     let zone = geometry.ground.iter().find(|(cell, _)| *cell == [unit[0], unit[2]]);
                     let Some((_, ground)) = zone else { return Ok(false) };
-                    ground.contains(unit[1], face).with_context(|| format!("free clip ground on {}", block.name))
+                    ground
+                        .contains(unit[1], face)
+                        .with_context(|| format!("free clip ground on {}", block.name))
                 };
                 for (j, name) in names.iter().enumerate() {
                     let Some(name) = name else { continue };

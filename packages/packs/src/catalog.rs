@@ -1387,7 +1387,7 @@ pub fn crawl_cached(set: &PackSet, paks: &[&str], cache: &Path) -> Result<Catalo
     Ok(catalog)
 }
 
-fn cache_key(set: &PackSet, paks: &[&str]) -> u64 {
+pub(crate) fn cache_key(set: &PackSet, paks: &[&str]) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     paks.hash(&mut hasher);
     for pak in &set.paks {

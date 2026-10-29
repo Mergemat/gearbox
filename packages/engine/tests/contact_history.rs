@@ -42,8 +42,7 @@ fn contact_normals_retain_history_across_collision_steps() {
             bounds,
         }),
     });
-    let tilted =
-        Iso::new(Mat3::from_array([0.995, -0.1, 0.0, 0.1, 0.995, 0.0, 0.0, 0.0, 1.0]), Vec3::ZERO);
+    let tilted = Iso::new(Mat3::from_array([0.995, -0.1, 0.0, 0.1, 0.995, 0.0, 0.0, 0.0, 1.0]), Vec3::ZERO);
     for i in 0..2 {
         world.statics.items.push(Item {
             entity: Entity::None,
@@ -55,12 +54,7 @@ fn contact_normals_retain_history_across_collision_steps() {
             id: i,
             index: i,
         });
-        world.statics.surfaces.push(Surface {
-            shape: 0,
-            iso: tilted,
-            item: i,
-            tag: u32::MAX as u64,
-        });
+        world.statics.surfaces.push(Surface { shape: 0, iso: tilted, item: i, tag: u32::MAX as u64 });
     }
     world.statics.tree.nodes =
         AabbTree::build(&mut [Leaf { bounds, index: 0 }, Leaf { bounds, index: 1 }], 1).nodes;
@@ -121,9 +115,5 @@ fn contact_normals_retain_history_across_collision_steps() {
     ctx.state.shape_entry[0].shape = ShapeId::Sphere(SphereId(0));
     let second = collision_step(&mut ctx, 10_000_000, 0.01, 0.01);
     assert_eq!(second.contacts.len(), 1);
-    assert!(
-        second.contacts.as_slice()[0].normal.x < -0.05,
-        "{:?}",
-        second.contacts.as_slice()[0].normal
-    );
+    assert!(second.contacts.as_slice()[0].normal.x < -0.05, "{:?}", second.contacts.as_slice()[0].normal);
 }

@@ -22,6 +22,19 @@ struct Conv {
     bias: Vec<f32>,
 }
 
+impl Conv {
+    fn new(inputs: usize, outputs: usize, stride: usize, weights: Vec<f32>, bias: Vec<f32>) -> Self {
+        let taps = inputs * KERNEL * KERNEL;
+        let mut packed = vec![0.0; weights.len()];
+        for (o, row) in weights.chunks_exact(taps).enumerate() {
+            for (tap, &weight) in row.iter().enumerate() {
+                packed[tap * outputs + o] = weight;
+            }
+        }
+        Self { inputs, outputs, stride, weights: packed, bias }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct Dense {
     inputs: usize,
@@ -99,7 +112,7 @@ impl Net {
             ensure!(kernel == KERNEL && stride > 0 && inputs > 0 && outputs > 0, "invalid convolution layer");
             let weights = r.floats(outputs * inputs * KERNEL * KERNEL)?;
             let bias = r.floats(outputs)?;
-            convs.push(Conv { inputs, outputs, stride, weights, bias });
+            convs.push(Conv::new(inputs, outputs, stride, weights, bias));
         }
         let [dense_count] = r.words()?;
         ensure!(dense_count > 0 && dense_count <= 16, "invalid layer count {dense_count}");
@@ -178,26 +191,30 @@ impl Net {
 }
 
 fn convolve(conv: &Conv, input: &[f32], [h, w]: [usize; 2], [oh, ow]: [usize; 2]) -> Vec<f32> {
-    let k = KERNEL;
     let mut out = vec![0.0; conv.outputs * oh * ow];
-    for o in 0..conv.outputs {
-        for y in 0..oh {
-            for x in 0..ow {
-                let mut sum = conv.bias[o];
-                for i in 0..conv.inputs {
-                    for ky in 0..k {
-                        let Some(iy) = (y * conv.stride + ky).checked_sub(1).filter(|&v| v < h) else {
+    let mut sums = conv.bias.clone();
+    for y in 0..oh {
+        for x in 0..ow {
+            sums.copy_from_slice(&conv.bias);
+            for i in 0..conv.inputs {
+                for ky in 0..KERNEL {
+                    let Some(iy) = (y * conv.stride + ky).checked_sub(1).filter(|&v| v < h) else {
+                        continue;
+                    };
+                    for kx in 0..KERNEL {
+                        let Some(ix) = (x * conv.stride + kx).checked_sub(1).filter(|&v| v < w) else {
                             continue;
                         };
-                        for kx in 0..k {
-                            let Some(ix) = (x * conv.stride + kx).checked_sub(1).filter(|&v| v < w) else {
-                                continue;
-                            };
-                            sum += conv.weights[((o * conv.inputs + i) * k + ky) * k + kx]
-                                * input[(i * h + iy) * w + ix];
+                        let value = input[(i * h + iy) * w + ix];
+                        let start = ((i * KERNEL + ky) * KERNEL + kx) * conv.outputs;
+                        let weights = &conv.weights[start..start + conv.outputs];
+                        for (sum, weight) in sums.iter_mut().zip(weights) {
+                            *sum += weight * value;
                         }
                     }
                 }
+            }
+            for (o, &sum) in sums.iter().enumerate() {
                 out[(o * oh + y) * ow + x] = sum.max(0.0);
             }
         }
@@ -362,5 +379,71 @@ mod tests {
         let mut trailing = valid;
         trailing.push(0);
         assert!(Net::read(&trailing).is_err());
+    }
+
+    #[test]
+    fn convolutions_preserve_each_output_accumulation_order() {
+        fn values(count: usize, seed: u32) -> Vec<f32> {
+            let mut bits = seed;
+            (0..count)
+                .map(|_| {
+                    bits = bits.wrapping_mul(1664525).wrapping_add(1013904223);
+                    ((bits >> 8) as f32 / 16777216.0 - 0.5) * 3.0
+                })
+                .collect()
+        }
+        for outputs in [1, 3, 8, 16, 17, 19] {
+            for stride in [1, 2, 3, 5] {
+                for dims in [[1, 1], [2, 3], [7, 11], [16, 24]] {
+                    let inputs = 5;
+                    let conv = Conv {
+                        inputs,
+                        outputs,
+                        stride,
+                        weights: values(outputs * inputs * KERNEL * KERNEL, 7),
+                        bias: values(outputs, 13),
+                    };
+                    let input = values(inputs * dims.iter().product::<usize>(), 29);
+                    let next = dims.map(|n| shrink(n, stride));
+                    let packed = Conv::new(inputs, outputs, stride, conv.weights.clone(), conv.bias.clone());
+                    let actual = convolve(&packed, &input, dims, next);
+                    let expected = scalar_convolve(&conv, &input, dims, next);
+                    assert_eq!(
+                        actual.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                        expected.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                        "{outputs} outputs, stride {stride}, dimensions {dims:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    fn scalar_convolve(conv: &Conv, input: &[f32], [h, w]: [usize; 2], [oh, ow]: [usize; 2]) -> Vec<f32> {
+        let k = KERNEL;
+        let mut out = vec![0.0; conv.outputs * oh * ow];
+        for o in 0..conv.outputs {
+            for y in 0..oh {
+                for x in 0..ow {
+                    let mut sum = conv.bias[o];
+                    for i in 0..conv.inputs {
+                        for ky in 0..k {
+                            let Some(iy) = (y * conv.stride + ky).checked_sub(1).filter(|&v| v < h) else {
+                                continue;
+                            };
+                            for kx in 0..k {
+                                let Some(ix) = (x * conv.stride + kx).checked_sub(1).filter(|&v| v < w)
+                                else {
+                                    continue;
+                                };
+                                sum += conv.weights[((o * conv.inputs + i) * k + ky) * k + kx]
+                                    * input[(i * h + iy) * w + ix];
+                            }
+                        }
+                    }
+                    out[(o * oh + y) * ow + x] = sum.max(0.0);
+                }
+            }
+        }
+        out
     }
 }

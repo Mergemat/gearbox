@@ -34,9 +34,7 @@ pub struct MapAssets<'a> {
 
 impl<'a> MapAssets<'a> {
     pub fn from_packs(packs: &'a PackSet, filters: &[&str], map: &gearbox_gbx::Map) -> Result<Self> {
-        let catalog =
-            gearbox_packs::catalog::crawl_cached(packs, filters, &gearbox_packs::install::cache_dir())?;
-        Self::from_catalog(Assets::from_catalog(catalog), packs, map)
+        Self::from_catalog(Assets::from_packs(packs, filters)?, packs, map)
     }
 
     pub fn from_catalog(mut assets: Assets, packs: &'a PackSet, map: &gearbox_gbx::Map) -> Result<Self> {
