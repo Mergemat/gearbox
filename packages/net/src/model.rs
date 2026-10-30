@@ -7,9 +7,11 @@ use crate::observe;
 
 const MAGIC: &[u8; 4] = b"GNET";
 pub const FORMAT: u32 = 5;
+pub const FORMAT_RESPAWN: u32 = 6;
 pub const PERIOD: u32 = 5;
 pub const STEER: [f32; 11] = [-1.0, -0.65, -0.4, -0.2, -0.08, 0.0, 0.08, 0.2, 0.4, 0.65, 1.0];
 pub const OUTPUTS: usize = STEER.len() + 2;
+pub const RESPAWNS: usize = 3;
 
 #[derive(Clone, Debug)]
 struct Dense {
@@ -25,6 +27,7 @@ pub struct Net {
     mean: Vec<f32>,
     std: Vec<f32>,
     layers: Vec<Dense>,
+    respawns: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -32,6 +35,18 @@ pub struct Verdict {
     pub steer_logits: [f32; STEER.len()],
     pub gas: f32,
     pub brake: f32,
+    pub respawn_logits: [f32; RESPAWNS],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Respawn {
+    None,
+    Moving,
+    Standing,
+}
+
+impl Respawn {
+    pub const ALL: [Respawn; RESPAWNS] = [Respawn::None, Respawn::Moving, Respawn::Standing];
 }
 
 impl Verdict {
@@ -47,6 +62,11 @@ impl Verdict {
             brake: f32::from(self.brake > 0.0),
         }
     }
+
+    pub fn respawn(&self) -> Respawn {
+        let logits = &self.respawn_logits;
+        Respawn::ALL[(0..RESPAWNS).fold(0, |best, i| if logits[i] > logits[best] { i } else { best })]
+    }
 }
 
 impl Net {
@@ -59,7 +79,11 @@ impl Net {
         let mut r = Reader { bytes, at: 0 };
         ensure!(r.word()?.to_le_bytes() == *MAGIC, "not a network file");
         let format = r.word()?;
-        ensure!(format == FORMAT, "network file format {format}, this build reads {FORMAT}");
+        ensure!(
+            format == FORMAT || format == FORMAT_RESPAWN,
+            "network file format {format}, this build reads {FORMAT} and {FORMAT_RESPAWN}"
+        );
+        let respawns = format == FORMAT_RESPAWN;
         let version = r.word()?;
         let expected = observe::len(version).with_context(|| {
             format!("network was trained on observation version {version}, this build has 8 and 9")
@@ -84,14 +108,16 @@ impl Net {
             layers.push(Dense { outputs, weights, bias });
             inputs = outputs;
         }
-        ensure!(inputs == OUTPUTS, "network gives {inputs} outputs, expected {OUTPUTS}");
+        let outputs = OUTPUTS + if respawns { RESPAWNS } else { 0 };
+        ensure!(inputs == outputs, "format {format} network gives {inputs} outputs, expected {outputs}");
         ensure!(r.at == bytes.len(), "{} bytes after the last layer", bytes.len() - r.at);
-        Ok(Self { version, period: period as u32, mean, std, layers })
+        Ok(Self { version, period: period as u32, mean, std, layers, respawns })
     }
 
     pub fn write(&self) -> Vec<u8> {
         let mut out = MAGIC.to_vec();
-        let words = [FORMAT, self.version, self.inputs() as u32, self.period, STEER.len() as u32];
+        let format = if self.respawns { FORMAT_RESPAWN } else { FORMAT };
+        let words = [format, self.version, self.inputs() as u32, self.period, STEER.len() as u32];
         out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
         let floats = STEER.iter().chain(&self.mean).chain(&self.std);
         out.extend(floats.flat_map(|v| v.to_le_bytes()));
@@ -116,6 +142,10 @@ impl Net {
             first.weights.resize(first.weights.len() + added * first.outputs, 0.0);
         }
         net
+    }
+
+    pub fn respawns(&self) -> bool {
+        self.respawns
     }
 
     pub fn version(&self) -> u32 {
@@ -159,6 +189,10 @@ impl Net {
             steer_logits: std::array::from_fn(|i| x[i]),
             gas: x[STEER.len()],
             brake: x[STEER.len() + 1],
+            respawn_logits: match self.respawns {
+                true => std::array::from_fn(|i| x[OUTPUTS + i]),
+                false => [0.0, f32::NEG_INFINITY, f32::NEG_INFINITY],
+            },
         }
     }
 }
@@ -194,8 +228,12 @@ mod tests {
     use super::*;
 
     fn file(layers: &[(usize, usize, Vec<f32>, Vec<f32>)], mean: f32, std: f32) -> Vec<u8> {
+        file_as(FORMAT, layers, mean, std)
+    }
+
+    fn file_as(format: u32, layers: &[(usize, usize, Vec<f32>, Vec<f32>)], mean: f32, std: f32) -> Vec<u8> {
         let mut out = MAGIC.to_vec();
-        let words = [FORMAT, observe::VERSION, observe::LEN as u32, PERIOD, STEER.len() as u32];
+        let words = [format, observe::VERSION, observe::LEN as u32, PERIOD, STEER.len() as u32];
         for w in words {
             out.extend(w.to_le_bytes());
         }
@@ -225,10 +263,14 @@ mod tests {
     }
 
     fn two_layers() -> Vec<(usize, usize, Vec<f32>, Vec<f32>)> {
+        layers_to(OUTPUTS)
+    }
+
+    fn layers_to(outputs: usize) -> Vec<(usize, usize, Vec<f32>, Vec<f32>)> {
         let hidden = 24;
         vec![
             (observe::LEN, hidden, values(observe::LEN * hidden, 3), values(hidden, 5)),
-            (hidden, OUTPUTS, values(hidden * OUTPUTS, 7), values(OUTPUTS, 11)),
+            (hidden, outputs, values(hidden * outputs, 7), values(outputs, 11)),
         ]
     }
 
@@ -262,7 +304,8 @@ mod tests {
             for (gas, brake, pedals) in
                 [(-1.0, 0.0, [0.0, 0.0]), (0.01, -1.0, [1.0, 0.0]), (1.0, 2.0, [1.0, 1.0])]
             {
-                let mut verdict = Verdict { steer_logits: [0.0; STEER.len()], gas, brake };
+                let mut verdict =
+                    Verdict { steer_logits: [0.0; STEER.len()], gas, brake, respawn_logits: [0.0; RESPAWNS] };
                 verdict.steer_logits[bin] = 1.0;
                 verdict.steer_logits[(bin + 3) % STEER.len()] = 1.0;
                 let controls = verdict.controls();
@@ -270,6 +313,30 @@ mod tests {
                 assert_eq!([controls.gas, controls.brake], pedals);
             }
         }
+    }
+
+    #[test]
+    fn a_respawn_head_adds_three_outputs_and_networks_without_it_never_respawn() {
+        let obs = values(observe::LEN, 13).iter().map(|v| v * 40.0).collect::<Vec<_>>();
+        let plain = Net::read(&file(&two_layers(), 0.5, 2.0)).unwrap();
+        assert!(!plain.respawns());
+        assert_eq!(plain.eval(&obs).respawn(), Respawn::None);
+        let mut layers = layers_to(OUTPUTS + RESPAWNS);
+        let head = Net::read(&file_as(FORMAT_RESPAWN, &layers, 0.5, 2.0)).unwrap();
+        assert!(head.respawns() && head.widen().respawns());
+        assert_eq!(Net::read(&head.write()).unwrap().write(), head.write());
+        let driving = |v: &Verdict| (v.steer_logits, v.gas, v.brake);
+        let first = driving(&head.eval(&obs));
+        for (choice, respawn) in Respawn::ALL.into_iter().enumerate() {
+            for (k, bias) in layers[1].3[OUTPUTS..].iter_mut().enumerate() {
+                *bias = if k == choice { 1e4 } else { -1e4 };
+            }
+            let verdict = Net::read(&file_as(FORMAT_RESPAWN, &layers, 0.5, 2.0)).unwrap().eval(&obs);
+            assert_eq!(verdict.respawn(), respawn);
+            assert_eq!(driving(&verdict), first);
+        }
+        assert!(Net::read(&file_as(FORMAT_RESPAWN, &two_layers(), 0.5, 2.0)).is_err());
+        assert!(Net::read(&file(&layers, 0.5, 2.0)).is_err());
     }
 
     #[test]
