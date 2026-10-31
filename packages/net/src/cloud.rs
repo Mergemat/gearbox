@@ -48,6 +48,8 @@ const UP: u8 = 0;
 const SIDE: u8 = 1;
 const DOWN: u8 = 2;
 const STRATA: usize = 17 * 3;
+/// Metres; far above the rounding in a dot's distance from its voxel's centre on any map.
+const SLACK: f32 = 0.02;
 
 /// A point on a surface: its normal ×127 and `kind`, the surface class ×4 plus its facing (up, side, down).
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -89,7 +91,35 @@ impl Dot {
     }
 }
 
-type Tile = Arc<[Dot]>;
+type Tile = Arc<Block>;
+
+/// A tile's dots, and the box around each run of `RUN` of them in order, so a read skips the runs outside its shell.
+#[derive(Debug, Default, PartialEq)]
+struct Block {
+    dots: Vec<Dot>,
+    runs: Vec<[[f32; 3]; 2]>,
+}
+
+const RUN: usize = 16;
+
+impl From<Vec<Dot>> for Block {
+    fn from(dots: Vec<Dot>) -> Self {
+        let runs = dots
+            .chunks(RUN)
+            .map(|run| {
+                let mut bounds = [[f32::INFINITY; 3], [f32::NEG_INFINITY; 3]];
+                for dot in run {
+                    for k in 0..3 {
+                        bounds[0][k] = bounds[0][k].min(dot.position[k]);
+                        bounds[1][k] = bounds[1][k].max(dot.position[k]);
+                    }
+                }
+                bounds
+            })
+            .collect();
+        Self { dots, runs }
+    }
+}
 type Fast = std::hash::BuildHasherDefault<Fx>;
 
 /// A multiply-rotate hash for tile keys: std's default costs more than the lookup it serves, every decision.
@@ -151,7 +181,7 @@ impl serde::Serialize for Cloud {
             .far
             .iter()
             .map(|tiles| {
-                let mut list: Vec<_> = tiles.iter().map(|(k, v)| (*k, &v[..])).collect();
+                let mut list: Vec<_> = tiles.iter().map(|(k, v)| (*k, &v.dots[..])).collect();
                 list.sort_by_key(|e| e.0);
                 list
             })
@@ -163,8 +193,10 @@ impl serde::Serialize for Cloud {
 impl<'de> serde::Deserialize<'de> for Cloud {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let levels: Vec<Vec<([i32; 3], Vec<Dot>)>> = serde::Deserialize::deserialize(deserializer)?;
-        let far =
-            levels.into_iter().map(|l| l.into_iter().map(|(k, v)| (k, Tile::from(v))).collect()).collect();
+        let far = levels
+            .into_iter()
+            .map(|l| l.into_iter().map(|(k, v)| (k, Tile::new(v.into()))).collect())
+            .collect();
         Ok(Self { far, near: Mutex::default() })
     }
 }
@@ -195,12 +227,13 @@ impl Cloud {
 
     pub fn bytes(&self) -> usize {
         self.far_bytes()
-            + self.near.lock().unwrap().values().map(|t| t.len()).sum::<usize>() * size_of::<Dot>()
+            + self.near.lock().unwrap().values().map(|t| t.dots.len()).sum::<usize>() * size_of::<Dot>()
     }
 
     /// The bytes of the levels built once per map.
     pub fn far_bytes(&self) -> usize {
-        self.far.iter().flat_map(|tiles| tiles.values()).map(|t| t.len()).sum::<usize>() * size_of::<Dot>()
+        self.far.iter().flat_map(|tiles| tiles.values()).map(|t| t.dots.len()).sum::<usize>()
+            * size_of::<Dot>()
     }
 
     /// The near tiles built so far.
@@ -268,14 +301,14 @@ impl Cloud {
                     Some(tile) => found.push(tile.clone()),
                     None => {
                         missing.push(at);
-                        found.push(Tile::from([]));
+                        found.push(Tile::default());
                     }
                 }
             }
         }
         for at in missing {
             // Built outside the lock: a tile is a pure function of the map, so a race only repeats work.
-            let tile = Tile::from(near_tile(statics, level, keys[at]));
+            let tile = Tile::new(near_tile(statics, level, keys[at]).into());
             found[at] = self.near.lock().unwrap().entry((level, keys[at])).or_insert(tile).clone();
         }
     }
@@ -300,16 +333,29 @@ impl Cloud {
                 self.tiles_around(&session.world.statics, level, car.position, [inner, outer], tiles);
                 // Branch-free, as about half the dots face away: each dot is written past the kept ones and kept by
                 // moving the end. Only surfaces facing the car count; a road's underside can't be driven.
+                // A run's box bounds its dots' distances as rounded, so skipping runs keeps exactly the same dots.
                 let mut len = 0;
                 for tile in tiles.iter() {
-                    if found.len() < len + tile.len() {
-                        found.resize(2 * (len + tile.len()), Dot::default());
+                    if found.len() < len + tile.dots.len() {
+                        found.resize(2 * (len + tile.dots.len()), Dot::default());
                     }
-                    for dot in tile.iter() {
-                        let q = Vec3::from(dot.position) - p;
-                        let d = q.dot(q);
-                        found[len] = *dot;
-                        len += usize::from((d >= low) & (d < high) & (dot.normal().dot(q) < 0.0));
+                    for (bounds, run) in tile.runs.iter().zip(tile.dots.chunks(RUN)) {
+                        let (mut near, mut far) = ([0.0; 3], [0.0; 3]);
+                        for k in 0..3 {
+                            let (below, above) = (bounds[0][k] - p[k], bounds[1][k] - p[k]);
+                            near[k] = below.max(-above).max(0.0);
+                            far[k] = below.abs().max(above.abs());
+                        }
+                        let square = |v: [f32; 3]| v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+                        if square(near) >= high || square(far) < low {
+                            continue;
+                        }
+                        for dot in run {
+                            let q = Vec3::from(dot.position) - p;
+                            let d = q.dot(q);
+                            found[len] = *dot;
+                            len += usize::from((d >= low) & (d < high) & (dot.normal().dot(q) < 0.0));
+                        }
                     }
                 }
                 found.truncate(len);
@@ -493,7 +539,7 @@ fn tiles(dots: &[Dot], level: usize) -> HashMap<[i32; 3], Tile, Fast> {
         }
         tiles.entry(key).or_default().push(*dot);
     }
-    tiles.into_iter().map(|(k, v)| (k, Tile::from(v))).collect()
+    tiles.into_iter().map(|(k, v)| (k, Tile::new(v.into()))).collect()
 }
 
 fn coarser(dots: &[Dot], size: f32) -> Vec<Dot> {
@@ -504,24 +550,78 @@ fn coarser(dots: &[Dot], size: f32) -> Vec<Dot> {
     best.into_dots()
 }
 
-/// Each voxel and facing's dot nearest the voxel's centre (ties to the smaller position bits).
+/// Where `add` offers points: each voxel and facing keeps the dot nearest the voxel's centre (ties to the smaller
+/// position bits).
+trait Voxels {
+    /// The squared distance from the centre a dot must beat to be kept, infinite while the voxel holds none.
+    fn bound(&self, voxel: [i32; 3], facing: u8) -> f32;
+    fn offer(&mut self, voxel: [i32; 3], size: f32, dot: Dot);
+}
+
 #[derive(Default)]
 struct Best(HashMap<([i32; 3], u8), (f32, Dot), Fast>);
 
-impl Best {
-    fn offer(&mut self, voxel: [i32; 3], size: f32, dot: Dot) {
-        let center: [f32; 3] = std::array::from_fn(|k| (voxel[k] as f32 + 0.5) * size);
-        let d = (0..3).map(|k| (dot.position[k] - center[k]).powi(2)).sum::<f32>();
-        let entry = self.0.entry((voxel, dot.facing())).or_insert((f32::INFINITY, dot));
-        if d < entry.0 || (d == entry.0 && dot.bits() < entry.1.bits()) {
-            *entry = (d, dot);
-        }
+impl Voxels for Best {
+    fn bound(&self, _: [i32; 3], _: u8) -> f32 {
+        f32::INFINITY
     }
 
+    fn offer(&mut self, voxel: [i32; 3], size: f32, dot: Dot) {
+        keep(self.0.entry((voxel, dot.facing())).or_insert((f32::INFINITY, dot)), voxel, size, dot);
+    }
+}
+
+impl Best {
     fn into_dots(self) -> Vec<Dot> {
         let mut dots: Vec<_> = self.0.into_iter().map(|(key, (_, dot))| (key, dot)).collect();
         dots.sort_by_key(|e| e.0);
         dots.into_iter().map(|e| e.1).collect()
+    }
+}
+
+/// `Best` over the voxels `add` may offer for one area, in an array: a near tile's voxels are few and known up
+/// front, and hashing them cost more than finding their dots.
+struct Grid {
+    low: [i32; 3],
+    dims: [usize; 3],
+    slots: Vec<Option<(f32, Dot)>>,
+}
+
+impl Grid {
+    fn new(area: [[f32; 3]; 2], size: f32) -> Self {
+        let low = area[0].map(|v| (v / size).floor() as i32);
+        let high: [i32; 3] = std::array::from_fn(|k| ((area[1][k] - size * 1e-3) / size).floor() as i32);
+        let dims = std::array::from_fn(|k| (high[k] - low[k] + 1).max(0) as usize);
+        Self { low, dims, slots: vec![None; dims.iter().product::<usize>() * 3] }
+    }
+
+    fn slot(&self, voxel: [i32; 3], facing: u8) -> usize {
+        let [x, y, z] = std::array::from_fn(|k| (voxel[k] - self.low[k]) as usize);
+        ((x * self.dims[1] + y) * self.dims[2] + z) * 3 + usize::from(facing)
+    }
+
+    /// In `Best::into_dots`'s order.
+    fn into_dots(self) -> Vec<Dot> {
+        self.slots.into_iter().flatten().map(|(_, dot)| dot).collect()
+    }
+}
+
+impl Voxels for Grid {
+    fn bound(&self, voxel: [i32; 3], facing: u8) -> f32 {
+        self.slots[self.slot(voxel, facing)].map_or(f32::INFINITY, |(d, _)| d)
+    }
+
+    fn offer(&mut self, voxel: [i32; 3], size: f32, dot: Dot) {
+        let slot = self.slot(voxel, dot.facing());
+        keep(self.slots[slot].get_or_insert((f32::INFINITY, dot)), voxel, size, dot);
+    }
+}
+
+fn keep(entry: &mut (f32, Dot), voxel: [i32; 3], size: f32, dot: Dot) {
+    let center: [f32; 3] = std::array::from_fn(|k| (voxel[k] as f32 + 0.5) * size);
+    let d = (0..3).map(|k| (dot.position[k] - center[k]).powi(2)).sum::<f32>();
+    if d < entry.0 || (d == entry.0 && dot.bits() < entry.1.bits()) {
+        *entry = (d, dot);
     }
 }
 
@@ -536,7 +636,18 @@ fn class_of(surface: u8, play: u8) -> u8 {
 }
 
 /// Offers `triangle`'s points to every voxel of `size` it may touch that lies in `area` (low and high corners).
-fn add(best: &mut Best, v: &[[f32; 3]; 3], surface: u8, play: u8, size: f32, area: [[f32; 3]; 2]) {
+fn add(best: &mut impl Voxels, v: &[[f32; 3]; 3], surface: u8, play: u8, size: f32, area: [[f32; 3]; 2]) {
+    let low: [f32; 3] = std::array::from_fn(|k| v[0][k].min(v[1][k]).min(v[2][k]));
+    let high: [f32; 3] = std::array::from_fn(|k| v[0][k].max(v[1][k]).max(v[2][k]));
+    let mut lo = low;
+    let mut hi = high;
+    for k in 0..3 {
+        lo[k] = lo[k].max(area[0][k]);
+        hi[k] = hi[k].min(area[1][k] - size * 1e-3);
+    }
+    if (0..3).any(|k| lo[k] > hi[k]) {
+        return;
+    }
     let [a, b, c] = v.map(Vec3::from);
     let normal = cross(b - a, c - a);
     let length = normal.dot(normal).sqrt();
@@ -559,17 +670,6 @@ fn add(best: &mut Best, v: &[[f32; 3]; 3], surface: u8, play: u8, size: f32, are
     let n = normal.to_array();
     let along = (0..3).fold(0, |m, k| if n[k].abs() > n[m].abs() { k } else { m });
     let [u, w] = [(along + 1) % 3, (along + 2) % 3];
-    let low: [f32; 3] = std::array::from_fn(|k| v[0][k].min(v[1][k]).min(v[2][k]));
-    let high: [f32; 3] = std::array::from_fn(|k| v[0][k].max(v[1][k]).max(v[2][k]));
-    let mut lo = low;
-    let mut hi = high;
-    for k in 0..3 {
-        lo[k] = lo[k].max(area[0][k]);
-        hi[k] = hi[k].min(area[1][k] - size * 1e-3);
-    }
-    if (0..3).any(|k| lo[k] > hi[k]) {
-        return;
-    }
     let cells = |k: usize| (lo[k] / size).floor() as i32..=(hi[k] / size).floor() as i32;
     let offset = normal.dot(a);
     let reach = 0.75 * size * size;
@@ -591,7 +691,17 @@ fn add(best: &mut Best, v: &[[f32; 3]; 3], surface: u8, play: u8, size: f32, are
                 voxel[u] = i;
                 voxel[w] = j;
                 voxel[along] = k;
-                let center = Vec3::from(std::array::from_fn(|q| (voxel[q] as f32 + 0.5) * size));
+                let center: [f32; 3] = std::array::from_fn(|q| (voxel[q] as f32 + 0.5) * size);
+                // The triangle's box is no nearer the centre than its nearest point: a voxel the box can't reach
+                // or win skips finding that point. The slack covers rounding.
+                let apart = (0..3)
+                    .map(|q| (low[q] - center[q]).max(center[q] - high[q]).max(0.0).powi(2))
+                    .sum::<f32>()
+                    .sqrt();
+                if apart > best.bound(voxel, facing).min(reach).sqrt() + SLACK {
+                    continue;
+                }
+                let center = Vec3::from(center);
                 let point = closest(center, a, b, c);
                 let gap = point - center;
                 if gap.dot(gap) <= reach {
@@ -612,7 +722,7 @@ fn near_tile(statics: &StaticWorld, level: usize, tile: [i32; 3]) -> Vec<Dot> {
         Vec3::from(std::array::from_fn(|k| (area[0][k] + area[1][k]) * 0.5)),
         Vec3::new(side * 0.5 + 0.5, side * 0.5 + 0.5, side * 0.5 + 0.5),
     );
-    let mut best = Best::default();
+    let mut best = Grid::new(area, size);
     for id in AabbQuery::new(&statics.tree.nodes, column) {
         let Some(surface) = statics.surfaces.get(id as usize) else { continue };
         if statics.items[surface.item as usize].flags.contains(ItemEvents::CONTACT_TIME) {
