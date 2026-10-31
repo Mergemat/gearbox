@@ -3,6 +3,7 @@ use gearbox_engine::race::WaypointFlags;
 use gearbox_engine::{Session, gameplay};
 use gearbox_search::gate::gates;
 
+use crate::chart::{self, Chart};
 use crate::ground::{self, Ground, Layer};
 use crate::observe::hypot;
 
@@ -13,7 +14,7 @@ pub const CHANNELS: usize = 7;
 pub const STEPS: f32 = 32.0;
 pub const IMAGE_LEN: usize = SIDE * SIDE * CHANNELS;
 pub const LEN: usize = SCALES.len() * IMAGE_LEN;
-pub const GROUPS: usize = 255;
+pub const GROUPS: usize = u16::MAX as usize;
 
 const LEVELS: usize = 4;
 const MERGE: [f32; 3] = [0.0, 3.0, 6.0];
@@ -25,10 +26,10 @@ const BOOST: u8 = 1;
 const LOSS: u8 = 2;
 const OTHER: u8 = 4;
 const FINISH: u8 = 8;
-const NO_GATE: u8 = u8::MAX;
+const NO_GATE: u16 = u16::MAX;
 const REACH: f32 = 0.5;
 
-type Stamp = ([f32; 3], [f32; 3], u8, u8);
+type Stamp = ([f32; 3], [f32; 3], u8, u16);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Level {
@@ -38,14 +39,14 @@ struct Level {
     slick: u16,
     wall: u16,
     marks: u8,
-    gate: u8,
+    gate: u16,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Mark {
     wall: bool,
     marks: u8,
-    gate: u8,
+    gate: u16,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -106,7 +107,7 @@ impl Atlas {
                     groups.push(mark.group);
                     groups.len() - 1
                 });
-                (0, if index < GROUPS { index as u8 } else { NO_GATE })
+                (0, if index < GROUPS { index as u16 } else { NO_GATE })
             };
             stamps.extend(gate.boxes.iter().map(|b| (b.min, b.max, bits, index)));
         }
@@ -204,15 +205,7 @@ fn sample(
             } else {
                 1.0
             };
-            let special = if level.marks & LOSS != 0 {
-                -1.0
-            } else if level.marks & BOOST != 0 {
-                1.0
-            } else if level.marks & OTHER != 0 {
-                0.5
-            } else {
-                0.0
-            };
+            let special = special(level.marks);
             let share = |count: f32| (count * STEPS / area).round() / STEPS;
             let cell = (row * SIDE + col) * CHANNELS;
             image[cell..cell + CHANNELS].copy_from_slice(&[
@@ -342,7 +335,7 @@ fn walls(ground: &Ground, marks: &mut [Mark], triangles: &[PhysicalTriangle]) {
     }
 }
 
-fn stamp(ground: &Ground, marks: &mut [Mark], min: [f32; 3], max: [f32; 3], bits: u8, gate: u8) {
+fn stamp(ground: &Ground, marks: &mut [Mark], min: [f32; 3], max: [f32; 3], bits: u8, gate: u16) {
     if !min.iter().chain(&max).all(|v| v.is_finite()) {
         return;
     }
@@ -362,46 +355,67 @@ fn stamp(ground: &Ground, marks: &mut [Mark], min: [f32; 3], max: [f32; 3], bits
     }
 }
 
+struct Gather {
+    factor: usize,
+    merge: f32,
+    members: Vec<(Level, usize)>,
+    seen: Vec<bool>,
+}
+
+impl Gather {
+    fn new(factor: usize, merge: f32) -> Self {
+        Self { factor, merge, members: Vec::new(), seen: vec![false; factor * factor] }
+    }
+
+    fn cell(&mut self, ground: &Ground, marks: &[Mark], first: [isize; 2], levels: &mut Vec<Level>) {
+        let factor = self.factor;
+        self.members.clear();
+        for dk in 0..factor {
+            for di in 0..factor {
+                let [i, k] = [first[0] + di as isize, first[1] + dk as isize];
+                if i < 0 || k < 0 || i as usize >= ground.size[0] || k as usize >= ground.size[1] {
+                    continue;
+                }
+                let column = k as usize * ground.size[0] + i as usize;
+                for at in ground.starts[column] as usize..ground.starts[column + 1] as usize {
+                    self.members.push((level(&ground.layers[at], marks[at]), dk * factor + di));
+                }
+            }
+        }
+        self.members.sort_by(|a, b| b.0.height.total_cmp(&a.0.height));
+        let mut at = 0;
+        for _ in 0..LEVELS {
+            let Some(&(top, _)) = self.members.get(at) else { break };
+            self.seen.fill(false);
+            let mut level = Level { cover: 0, loose: 0, slick: 0, wall: 0, marks: 0, gate: NO_GATE, ..top };
+            while let Some(&(member, id)) =
+                self.members.get(at).filter(|m| m.0.height >= top.height - self.merge)
+            {
+                if !std::mem::replace(&mut self.seen[id], true) {
+                    level.cover += member.cover;
+                    level.loose += member.loose;
+                    level.slick += member.slick;
+                    level.wall += member.wall;
+                }
+                level.marks |= member.marks;
+                level.gate = level.gate.min(member.gate);
+                at += 1;
+            }
+            levels.push(level);
+        }
+    }
+}
+
 fn coarse(ground: &Ground, marks: &[Mark], factor: usize, merge: f32) -> Grid {
     let fine = Frame::of(ground);
     let size = fine.size.map(|n| n.div_ceil(factor));
     let mut starts = Vec::with_capacity(size[0] * size[1] + 1);
     let mut levels = Vec::new();
-    let mut members: Vec<(Level, usize)> = Vec::new();
-    let mut seen = vec![false; factor * factor];
+    let mut gather = Gather::new(factor, merge);
     for k in 0..size[1] {
         for i in 0..size[0] {
             starts.push(levels.len() as u32);
-            members.clear();
-            for fk in k * factor..((k + 1) * factor).min(fine.size[1]) {
-                for fi in i * factor..((i + 1) * factor).min(fine.size[0]) {
-                    let column = fk * fine.size[0] + fi;
-                    let id = (fk - k * factor) * factor + fi - i * factor;
-                    for at in ground.starts[column] as usize..ground.starts[column + 1] as usize {
-                        members.push((level(&ground.layers[at], marks[at]), id));
-                    }
-                }
-            }
-            members.sort_by(|a, b| b.0.height.total_cmp(&a.0.height));
-            let mut at = 0;
-            for _ in 0..LEVELS {
-                let Some(&(top, _)) = members.get(at) else { break };
-                seen.fill(false);
-                let mut level =
-                    Level { cover: 0, loose: 0, slick: 0, wall: 0, marks: 0, gate: NO_GATE, ..top };
-                while let Some(&(member, id)) = members.get(at).filter(|m| m.0.height >= top.height - merge) {
-                    if !std::mem::replace(&mut seen[id], true) {
-                        level.cover += member.cover;
-                        level.loose += member.loose;
-                        level.slick += member.slick;
-                        level.wall += member.wall;
-                    }
-                    level.marks |= member.marks;
-                    level.gate = level.gate.min(member.gate);
-                    at += 1;
-                }
-                levels.push(level);
-            }
+            gather.cell(ground, marks, [(i * factor) as isize, (k * factor) as isize], &mut levels);
         }
     }
     starts.push(levels.len() as u32);
@@ -410,6 +424,50 @@ fn coarse(ground: &Ground, marks: &[Mark], factor: usize, merge: f32) -> Grid {
         area: (factor * factor) as f32,
         starts,
         levels,
+    }
+}
+
+impl Atlas {
+    pub(crate) fn chart(&self, ground: &Ground, chart: &mut Chart, factor: usize) {
+        if self.marks.len() != ground.layers.len() {
+            return;
+        }
+        let first = [0, 1].map(|k| {
+            ((chart.center[k] - chart.extent * 0.5 - ground.origin[k]) / ground::CELL).round() as isize
+        });
+        let area = (factor * factor) as f32;
+        let mut gather = Gather::new(factor, (chart.cell * 0.25).max(MERGE[1]));
+        let mut levels = Vec::with_capacity(LEVELS);
+        for (at, cell) in chart.image.as_chunks_mut::<CHANNELS>().0.iter_mut().enumerate() {
+            let (row, col) = (at / chart::SIDE, at % chart::SIDE);
+            levels.clear();
+            let corner = [first[0] + (col * factor) as isize, first[1] + (row * factor) as isize];
+            gather.cell(ground, &self.marks, corner, &mut levels);
+            let Some(top) = levels.first() else { continue };
+            let share = |count: f32| (count * STEPS / area).round() / STEPS;
+            let lower = levels.get(1).is_some_and(|below| below.height >= top.height - BELOW);
+            cell.copy_from_slice(&[
+                share(f32::from(top.cover)),
+                (top.height - chart.height).round().clamp(-128.0, 127.0) / STEPS,
+                f32::from(lower),
+                share(f32::from(top.loose) * 0.5 + f32::from(top.slick)),
+                share(f32::from(top.wall)),
+                special(top.marks),
+                if top.marks & FINISH != 0 { -1.0 } else { f32::from(top.gate != NO_GATE) },
+            ]);
+        }
+    }
+}
+
+fn special(marks: u8) -> f32 {
+    if marks & LOSS != 0 {
+        -1.0
+    } else if marks & BOOST != 0 {
+        1.0
+    } else if marks & OTHER != 0 {
+        0.5
+    } else {
+        0.0
     }
 }
 

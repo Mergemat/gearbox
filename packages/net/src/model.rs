@@ -1,8 +1,11 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
-use gearbox_engine::Controls;
+use gearbox_engine::{Controls, Session};
 
+use crate::chart::Chart;
+use crate::graph::{Graph, Memory};
+use crate::ground::Ground;
 use crate::observe;
 
 const MAGIC: &[u8; 4] = b"GNET";
@@ -10,6 +13,9 @@ pub const FORMAT: u32 = 5;
 pub const FORMAT_RESPAWN: u32 = 6;
 pub const FORMAT_IMAGES: u32 = 7;
 pub const FORMAT_PLAN: u32 = 8;
+pub const FORMAT_GRAPH: u32 = 9;
+const HEAD_BINS: usize = 0;
+const HEAD_PLAN: usize = 1;
 pub const HOLD: u32 = 100;
 pub const COMPONENTS: u32 = 2;
 pub const HOLD_GIVEN: usize = 4;
@@ -26,13 +32,76 @@ struct Dense {
 }
 
 #[derive(Clone, Debug)]
-struct Conv {
+pub(crate) struct Conv {
     outputs: usize,
     kernel: usize,
     stride: usize,
     padding: usize,
     weights: Vec<f32>,
     bias: Vec<f32>,
+}
+
+impl Conv {
+    pub(crate) fn read(r: &mut Reader<'_>, [height, width, channels]: [usize; 3]) -> Result<Self> {
+        let [outputs, kernel, stride, padding] = r.words()?;
+        ensure!(
+            outputs > 0
+                && kernel > 0
+                && stride > 0
+                && height + 2 * padding >= kernel
+                && width + 2 * padding >= kernel,
+            "invalid convolution"
+        );
+        let taps = kernel * kernel * channels;
+        let weights = r.floats(taps * outputs)?;
+        let weights = (0..outputs * taps).map(|i| weights[(i % taps) * outputs + i / taps]).collect();
+        let bias = r.floats(outputs)?;
+        Ok(Self { outputs, kernel, stride, padding, weights, bias })
+    }
+
+    pub(crate) fn write(&self, out: &mut Vec<u8>) {
+        let words = [self.outputs, self.kernel, self.stride, self.padding];
+        out.extend(words.iter().flat_map(|&w| (w as u32).to_le_bytes()));
+        let taps = self.weights.len() / self.outputs;
+        let weights =
+            (0..self.weights.len()).map(|i| self.weights[(i % self.outputs) * taps + i / self.outputs]);
+        out.extend(weights.chain(self.bias.iter().copied()).flat_map(|v| v.to_le_bytes()));
+    }
+
+    pub(crate) fn shape(&self, [height, width, _]: [usize; 3]) -> [usize; 3] {
+        let [rows, cols] = [height, width].map(|n| (n + 2 * self.padding - self.kernel) / self.stride + 1);
+        [rows, cols, self.outputs]
+    }
+
+    pub(crate) fn apply(&self, x: &[f32], [height, width, channels]: [usize; 3]) -> Vec<f32> {
+        let (k, stride, padding) = (self.kernel, self.stride, self.padding);
+        let [rows, cols, _] = self.shape([height, width, channels]);
+        let taps = k * k * channels;
+        let mut patch = vec![0.0; taps];
+        let mut y = vec![0.0; rows * cols * self.outputs];
+        for (at, out) in y.chunks_exact_mut(self.outputs).enumerate() {
+            let (row, col) = (at / cols, at % cols);
+            patch.fill(0.0);
+            for ky in 0..k {
+                let Some(iy) = (row * stride + ky).checked_sub(padding).filter(|&v| v < height) else {
+                    continue;
+                };
+                for kx in 0..k {
+                    let Some(ix) = (col * stride + kx).checked_sub(padding).filter(|&v| v < width) else {
+                        continue;
+                    };
+                    let to = (ky * k + kx) * channels;
+                    patch[to..to + channels].copy_from_slice(&x[(iy * width + ix) * channels..][..channels]);
+                }
+            }
+            for ((value, weights), &bias) in
+                out.iter_mut().zip(self.weights.chunks_exact(taps)).zip(&self.bias)
+            {
+                *value = (dot(&patch, weights) + bias).max(0.0);
+            }
+        }
+        y
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -57,6 +126,7 @@ pub struct Net {
     std: Vec<f32>,
     towers: Vec<Tower>,
     layers: Vec<Dense>,
+    graph: Option<Graph>,
     respawns: bool,
 }
 
@@ -118,16 +188,24 @@ impl Net {
         ensure!(r.word()?.to_le_bytes() == *MAGIC, "not a network file");
         let format = r.word()?;
         ensure!(
-            matches!(format, FORMAT | FORMAT_RESPAWN | FORMAT_IMAGES | FORMAT_PLAN),
-            "network file format {format}, this build reads {FORMAT} to {FORMAT_PLAN}"
+            matches!(format, FORMAT | FORMAT_RESPAWN | FORMAT_IMAGES | FORMAT_PLAN | FORMAT_GRAPH),
+            "network file format {format}, this build reads {FORMAT} to {FORMAT_GRAPH}"
         );
         let version = r.word()?;
         let expected = observe::len(version).with_context(|| {
-            format!("network was trained on observation version {version}, this build has 8, 9 and 10")
+            format!("network was trained on observation version {version}, this build has 8 to 11")
         })?;
         let [len] = r.words()?;
         ensure!(len == expected, "network reads {len} observations, version {version} has {expected}");
-        let (mut head, plan_respawns) = if format == FORMAT_PLAN {
+        let plan = match format {
+            FORMAT_GRAPH => match r.words()? {
+                [HEAD_BINS] => false,
+                [HEAD_PLAN] => true,
+                [head] => anyhow::bail!("network head {head}, this build reads 0 (bins) and 1 (plan)"),
+            },
+            _ => format == FORMAT_PLAN,
+        };
+        let (mut head, plan_respawns) = if plan {
             let [respawns, hold, components] = r.words()?;
             ensure!(respawns <= 1, "invalid respawn flag {respawns}");
             ensure!(hold > 0 && hold <= 10_000, "invalid longest hold {hold}");
@@ -145,6 +223,24 @@ impl Net {
             ensure!(r.floats(steers)? == STEER, "network steering bins differ from {STEER:?}");
             (Head::Bins { period: period as u32 }, false)
         };
+        if format == FORMAT_GRAPH {
+            let graph = Graph::read(&mut r, len)?;
+            if let Head::Plan { hold, given, .. } = &mut head {
+                *given = r.floats(HOLD_GIVEN * *hold as usize)?;
+            }
+            let outputs = graph.outputs();
+            let respawns = if plan { plan_respawns } else { outputs == OUTPUTS + RESPAWNS };
+            let (mean, std, towers, layers, graph) =
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Some(graph));
+            let net = Self { format, version, inputs: len, head, mean, std, towers, layers, graph, respawns };
+            ensure!(
+                outputs == net.outputs_len(),
+                "format 9 network gives {outputs} outputs, expected {}",
+                net.outputs_len()
+            );
+            ensure!(r.at == bytes.len(), "{} bytes after the network", bytes.len() - r.at);
+            return Ok(net);
+        }
         let images = observe::images(version);
         let towered = matches!(format, FORMAT_IMAGES | FORMAT_PLAN);
         let flat = if towered { r.words::<1>()?[0] } else { len };
@@ -170,28 +266,16 @@ impl Net {
         }
         let mut inputs = flat;
         for tower in &mut towers {
-            let [_, mut height, mut width, mut channels] = tower.image;
+            let [_, height, width, channels] = tower.image;
+            let mut shape = [height, width, channels];
             let [count] = r.words()?;
             ensure!(count > 0 && count <= 8, "invalid convolution count {count}");
             for _ in 0..count {
-                let [outputs, kernel, stride, padding] = r.words()?;
-                ensure!(
-                    outputs > 0
-                        && kernel > 0
-                        && stride > 0
-                        && height + 2 * padding >= kernel
-                        && width + 2 * padding >= kernel,
-                    "invalid convolution"
-                );
-                let taps = kernel * kernel * channels;
-                let weights = r.floats(taps * outputs)?;
-                let weights = (0..outputs * taps).map(|i| weights[(i % taps) * outputs + i / taps]).collect();
-                let bias = r.floats(outputs)?;
-                tower.convs.push(Conv { outputs, kernel, stride, padding, weights, bias });
-                [height, width] = [height, width].map(|n| (n + 2 * padding - kernel) / stride + 1);
-                channels = outputs;
+                let conv = Conv::read(&mut r, shape)?;
+                shape = conv.shape(shape);
+                tower.convs.push(conv);
             }
-            inputs += height * width * channels;
+            inputs += shape.iter().product::<usize>();
         }
         let [count] = r.words()?;
         ensure!(count > 0 && count <= 16, "invalid layer count {count}");
@@ -212,7 +296,8 @@ impl Net {
         if let Head::Plan { hold, given, .. } = &mut head {
             *given = r.floats(HOLD_GIVEN * *hold as usize)?;
         }
-        let net = Self { format, version, inputs: len, head, mean, std, towers, layers, respawns };
+        let net =
+            Self { format, version, inputs: len, head, mean, std, towers, layers, graph: None, respawns };
         let outputs = net.outputs_len();
         ensure!(inputs == outputs, "format {format} network gives {inputs} outputs, expected {outputs}");
         ensure!(r.at == bytes.len(), "{} bytes after the network", bytes.len() - r.at);
@@ -230,6 +315,9 @@ impl Net {
     pub fn write(&self) -> Vec<u8> {
         let mut out = MAGIC.to_vec();
         let mut words = vec![self.format, self.version, self.inputs as u32];
+        if self.graph.is_some() {
+            words.push(if self.period().is_some() { HEAD_BINS } else { HEAD_PLAN } as u32);
+        }
         match &self.head {
             Head::Bins { period } => words.extend([*period, STEER.len() as u32]),
             Head::Plan { hold, components, .. } => {
@@ -239,6 +327,13 @@ impl Net {
         out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
         if let Head::Bins { .. } = self.head {
             out.extend(STEER.iter().flat_map(|v| v.to_le_bytes()));
+        }
+        if let Some(graph) = &self.graph {
+            graph.write(&mut out);
+            if let Head::Plan { given, .. } = &self.head {
+                out.extend(given.iter().flat_map(|v| v.to_le_bytes()));
+            }
+            return out;
         }
         let towered = matches!(self.format, FORMAT_IMAGES | FORMAT_PLAN);
         if towered {
@@ -253,12 +348,7 @@ impl Net {
             for tower in &self.towers {
                 out.extend((tower.convs.len() as u32).to_le_bytes());
                 for conv in &tower.convs {
-                    let words = [conv.outputs, conv.kernel, conv.stride, conv.padding];
-                    out.extend(words.iter().flat_map(|&w| (w as u32).to_le_bytes()));
-                    let taps = conv.weights.len() / conv.outputs;
-                    let weights = (0..conv.weights.len())
-                        .map(|i| conv.weights[(i % conv.outputs) * taps + i / conv.outputs]);
-                    out.extend(weights.chain(conv.bias.iter().copied()).flat_map(|v| v.to_le_bytes()));
+                    conv.write(&mut out);
                 }
             }
         }
@@ -277,7 +367,7 @@ impl Net {
 
     pub fn widen(&self) -> Self {
         let mut net = self.clone();
-        if self.version == 8 && self.towers.is_empty() {
+        if self.version == 8 && self.towers.is_empty() && self.graph.is_none() {
             let added = observe::LEN_V9 - observe::LEN;
             net.version = 9;
             net.inputs = observe::LEN_V9;
@@ -315,13 +405,29 @@ impl Net {
         }
     }
 
+    pub fn reads_chart(&self) -> bool {
+        self.graph.as_ref().is_some_and(Graph::reads_chart)
+    }
+
+    pub fn prepare(&self, chart: &Chart) -> Option<Memory> {
+        self.graph.as_ref().filter(|graph| graph.reads_chart()).map(|graph| graph.prepare(chart))
+    }
+
+    pub fn memory(&self, ground: &Ground, session: &Session) -> Option<Memory> {
+        self.reads_chart().then(|| self.prepare(ground.chart(session))).flatten()
+    }
+
     pub fn plan(&self, observation: &[f32]) -> Plan {
+        self.plan_with(observation, None)
+    }
+
+    pub fn plan_with(&self, observation: &[f32], memory: Option<&Memory>) -> Plan {
         let Head::Plan { hold, components, given } = &self.head else {
-            let verdict = self.eval(observation);
+            let verdict = self.eval_with(observation, memory);
             let period = self.period().unwrap_or(PERIOD) as usize;
             return Plan { controls: vec![verdict.controls(); period], respawn: verdict.respawn() };
         };
-        let x = self.outputs(observation);
+        let x = self.outputs_with(observation, memory);
         let (h, c) = (*hold as usize, *components as usize);
         let steer = x[h + c + argmax(&x[h..h + c])].clamp(-1.0, 1.0);
         let pedals = h + 3 * c;
@@ -342,8 +448,12 @@ impl Net {
     }
 
     pub fn eval(&self, observation: &[f32]) -> Verdict {
+        self.eval_with(observation, None)
+    }
+
+    pub fn eval_with(&self, observation: &[f32], memory: Option<&Memory>) -> Verdict {
         assert!(self.period().is_some(), "a planning network has no single verdict");
-        let x = self.outputs(observation);
+        let x = self.outputs_with(observation, memory);
         Verdict {
             steer_logits: std::array::from_fn(|i| x[i]),
             gas: x[STEER.len()],
@@ -356,8 +466,15 @@ impl Net {
     }
 
     pub fn outputs(&self, observation: &[f32]) -> Vec<f32> {
+        self.outputs_with(observation, None)
+    }
+
+    pub fn outputs_with(&self, observation: &[f32], memory: Option<&Memory>) -> Vec<f32> {
         assert!(observation.len() >= self.inputs(), "observation length");
         let observation = &observation[..self.inputs];
+        if let Some(graph) = &self.graph {
+            return graph.eval(observation, memory);
+        }
         let mut x: Vec<f32> =
             observation.iter().zip(&self.mean).zip(&self.std).map(|((v, m), s)| (v - m) / s).collect();
         for tower in &self.towers {
@@ -389,45 +506,18 @@ impl Net {
 
 impl Tower {
     fn eval(&self, observation: &[f32]) -> Vec<f32> {
-        let [offset, mut height, mut width, mut channels] = self.image;
+        let [offset, height, width, channels] = self.image;
+        let mut shape = [height, width, channels];
         let mut x = observation[offset..offset + height * width * channels].to_vec();
-        let mut patch = Vec::new();
         for conv in &self.convs {
-            let (k, stride, padding) = (conv.kernel, conv.stride, conv.padding);
-            let [rows, cols] = [height, width].map(|n| (n + 2 * padding - k) / stride + 1);
-            let taps = k * k * channels;
-            let mut y = vec![0.0; rows * cols * conv.outputs];
-            for (at, out) in y.chunks_exact_mut(conv.outputs).enumerate() {
-                let (row, col) = (at / cols, at % cols);
-                patch.clear();
-                patch.resize(taps, 0.0);
-                for ky in 0..k {
-                    let Some(iy) = (row * stride + ky).checked_sub(padding).filter(|&v| v < height) else {
-                        continue;
-                    };
-                    for kx in 0..k {
-                        let Some(ix) = (col * stride + kx).checked_sub(padding).filter(|&v| v < width) else {
-                            continue;
-                        };
-                        let to = (ky * k + kx) * channels;
-                        patch[to..to + channels]
-                            .copy_from_slice(&x[(iy * width + ix) * channels..][..channels]);
-                    }
-                }
-                for ((value, weights), &bias) in
-                    out.iter_mut().zip(conv.weights.chunks_exact(taps)).zip(&conv.bias)
-                {
-                    *value = (dot(&patch, weights) + bias).max(0.0);
-                }
-            }
-            [height, width, channels] = [rows, cols, conv.outputs];
-            x = y;
+            x = conv.apply(&x, shape);
+            shape = conv.shape(shape);
         }
         x
     }
 }
 
-fn dot(a: &[f32], b: &[f32]) -> f32 {
+pub(crate) fn dot(a: &[f32], b: &[f32]) -> f32 {
     let mut lanes = [0.0f32; 8];
     let (chunks, rest) = a.as_chunks::<8>();
     for (x, y) in chunks.iter().zip(b.as_chunks::<8>().0) {
@@ -440,19 +530,19 @@ fn dot(a: &[f32], b: &[f32]) -> f32 {
     ((a + b) + (c + d)) + ((e + f) + (g + h)) + tail
 }
 
-struct Reader<'a> {
-    bytes: &'a [u8],
-    at: usize,
+pub(crate) struct Reader<'a> {
+    pub(crate) bytes: &'a [u8],
+    pub(crate) at: usize,
 }
 
 impl Reader<'_> {
-    fn word(&mut self) -> Result<u32> {
+    pub(crate) fn word(&mut self) -> Result<u32> {
         let b = self.bytes.get(self.at..self.at + 4).context("network file is truncated")?;
         self.at += 4;
         Ok(u32::from_le_bytes(b.try_into().unwrap()))
     }
 
-    fn words<const N: usize>(&mut self) -> Result<[usize; N]> {
+    pub(crate) fn words<const N: usize>(&mut self) -> Result<[usize; N]> {
         let mut out = [0; N];
         for v in &mut out {
             *v = self.word()? as usize;
@@ -460,7 +550,7 @@ impl Reader<'_> {
         Ok(out)
     }
 
-    fn floats(&mut self, n: usize) -> Result<Vec<f32>> {
+    pub(crate) fn floats(&mut self, n: usize) -> Result<Vec<f32>> {
         ensure!(n <= (self.bytes.len() - self.at) / 4, "network file is truncated");
         (0..n).map(|_| self.word().map(f32::from_bits)).collect()
     }

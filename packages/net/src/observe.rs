@@ -6,7 +6,7 @@ use gearbox_search::gate::gates;
 
 use crate::ground::{self, Ground};
 use crate::triggers::{self, Trigger};
-use crate::{atlas, dynamics, rays};
+use crate::{atlas, chart, dynamics, rays};
 
 pub const VERSION: u32 = 8;
 pub const AHEAD: usize = 4;
@@ -31,25 +31,32 @@ pub const DRIVEN_START: usize = LEN;
 pub const EVERY_START: usize = DRIVEN_START + 4;
 pub const IMAGES_START: usize = EVERY_START + (EVERY + 1) * GATE_LEN + 4;
 pub const LEN_V10: usize = IMAGES_START + atlas::LEN;
+pub const EVERY_V11: usize = 512;
+pub const POSE_START: usize = EVERY_START + (EVERY_V11 + 1) * GATE_LEN + 4;
+pub const IMAGES_START_V11: usize = POSE_START + chart::POSE_LEN;
+pub const LEN_V11: usize = IMAGES_START_V11 + atlas::LEN;
 
-const _: () = assert!(LEN == 677 && LEN_V9 == 1006 && LEN_V10 == 13111);
+const _: () = assert!(LEN == 677 && LEN_V9 == 1006 && LEN_V10 == 13111 && LEN_V11 == 17919);
 
 pub fn len(version: u32) -> Option<usize> {
     match version {
         8 => Some(LEN),
         9 => Some(LEN_V9),
         10 => Some(LEN_V10),
+        11 => Some(LEN_V11),
         _ => None,
     }
 }
 
 pub fn images(version: u32) -> Vec<[usize; 4]> {
-    match version {
-        10 => (0..atlas::SCALES.len())
-            .map(|k| [IMAGES_START + k * atlas::IMAGE_LEN, atlas::SIDE, atlas::SIDE, atlas::CHANNELS])
-            .collect(),
-        _ => Vec::new(),
-    }
+    let start = match version {
+        10 => IMAGES_START,
+        11 => IMAGES_START_V11,
+        _ => return Vec::new(),
+    };
+    (0..atlas::SCALES.len())
+        .map(|k| [start + k * atlas::IMAGE_LEN, atlas::SIDE, atlas::SIDE, atlas::CHANNELS])
+        .collect()
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -190,7 +197,8 @@ impl Course {
     }
 
     fn every(&self, car: &Car, race: &Race, out: &mut [f32]) {
-        assert_eq!(out.len(), IMAGES_START - EVERY_START);
+        let count = (out.len() - 4) / GATE_LEN - 1;
+        assert_eq!(out.len(), (count + 1) * GATE_LEN + 4);
         let gate = |gates: &[[f32; 3]], facings: &[[f32; 3]], flag: bool, links: u32| {
             gates
                 .iter()
@@ -213,7 +221,7 @@ impl Course {
             .map(|target| gate(&target.gates, &target.facings, passed(race, target.group), target.links))
             .collect();
         slots.sort_by(order);
-        let (every, rest) = out.split_at_mut(EVERY * GATE_LEN);
+        let (every, rest) = out.split_at_mut(count * GATE_LEN);
         for (out, slot) in every.as_chunks_mut::<GATE_LEN>().0.iter_mut().zip(&slots) {
             *out = *slot;
         }
@@ -349,7 +357,7 @@ pub(crate) fn surface_class(material: u8) -> usize {
 }
 
 pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f32]) {
-    assert!(matches!(out.len(), LEN | LEN_V9 | LEN_V10), "observation length");
+    assert!(matches!(out.len(), LEN | LEN_V9 | LEN_V10 | LEN_V11), "observation length");
     out.fill(0.0);
     let (out, extra) = out.split_at_mut(LEN);
     let car = Car::read(session);
@@ -405,13 +413,20 @@ pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f
         if !extra.is_empty() {
             let (driven, extra) = extra.split_at_mut(EVERY_START - DRIVEN_START);
             driven[session.config.model(vehicle.model_choice).car as usize] = 1.0;
-            let (every, images) = extra.split_at_mut(IMAGES_START - EVERY_START);
-            course.every(&car, &session.race, every);
+            let images = if extra.len() == LEN_V11 - EVERY_START {
+                let (every, extra) = extra.split_at_mut(POSE_START - EVERY_START);
+                course.every(&car, &session.race, every);
+                let (pose, images) = extra.split_at_mut(chart::POSE_LEN);
+                pose.copy_from_slice(&ground.chart(session).pose(&car));
+                images
+            } else {
+                let (every, images) = extra.split_at_mut(IMAGES_START - EVERY_START);
+                course.every(&car, &session.race, every);
+                images
+            };
             let map = ground.atlas(session);
-            let mut passed_groups = [false; atlas::GROUPS];
-            for (seen, &group) in passed_groups.iter_mut().zip(map.groups()) {
-                *seen = passed(&session.race, group);
-            }
+            let passed_groups: Vec<bool> =
+                map.groups().iter().map(|&group| passed(&session.race, group)).collect();
             map.read(ground, car.position, [forward.x, forward.z], &passed_groups, images);
         }
         return;

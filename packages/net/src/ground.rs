@@ -5,6 +5,7 @@ use gearbox_engine::{Session, gameplay};
 use gearbox_search::gate::gates;
 
 use crate::atlas::Atlas;
+use crate::chart::Chart;
 use crate::observe::{hypot, surface_class};
 
 pub const CELL: f32 = 2.0;
@@ -66,6 +67,7 @@ pub struct Ground {
     pub(crate) starts: Vec<u32>,
     pub(crate) layers: Vec<Layer>,
     pub(crate) atlas: OnceLock<Atlas>,
+    pub(crate) chart: OnceLock<Chart>,
 }
 
 impl Ground {
@@ -84,6 +86,10 @@ impl Ground {
 
     pub(crate) fn atlas(&self, session: &Session) -> &Atlas {
         self.atlas.get_or_init(|| Atlas::build(session, self, &session.static_triangles()))
+    }
+
+    pub fn chart(&self, session: &Session) -> &Chart {
+        self.chart.get_or_init(|| Chart::build(session, self))
     }
 
     pub fn from_triangles(triangles: &[PhysicalTriangle], [low, high]: [[f32; 2]; 2]) -> Self {
@@ -130,7 +136,7 @@ impl Ground {
             starts[column] = first as u32;
         }
         starts[columns] = layers.len() as u32;
-        Self { origin, size, starts, layers, atlas: OnceLock::new() }
+        Self { origin, size, starts, layers, atlas: OnceLock::new(), chart: OnceLock::new() }
     }
 
     pub fn bytes(&self) -> usize {
@@ -138,6 +144,7 @@ impl Ground {
             + self.starts.len() * size_of::<u32>()
             + self.layers.len() * size_of::<Layer>()
             + self.atlas.get().map_or(0, Atlas::bytes)
+            + self.chart.get().map_or(0, |chart| chart.image.len() * 4)
     }
 
     pub fn column(&self, x: f32, z: f32) -> &[Layer] {
