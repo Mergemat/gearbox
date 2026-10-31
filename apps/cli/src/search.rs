@@ -52,6 +52,8 @@ struct Args {
     trick_bonus: f64,
     #[arg(long)]
     full_rollouts: bool,
+    #[arg(long, default_value_t = 0)]
+    checkpoint_every: u32,
     #[arg(long)]
     start_state: Option<PathBuf>,
     #[command(subcommand)]
@@ -222,7 +224,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
             from_ms: None,
             path_every: 0,
             prune: false,
-            checkpoint_every: 0,
+            checkpoint_every: args.checkpoint_every,
         },
         mutation: Mutation {
             max_changes: args.changes,
