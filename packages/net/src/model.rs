@@ -9,6 +9,10 @@ const MAGIC: &[u8; 4] = b"GNET";
 pub const FORMAT: u32 = 5;
 pub const FORMAT_RESPAWN: u32 = 6;
 pub const FORMAT_IMAGES: u32 = 7;
+pub const FORMAT_PLAN: u32 = 8;
+pub const HOLD: u32 = 100;
+pub const COMPONENTS: u32 = 2;
+pub const HOLD_GIVEN: usize = 4;
 pub const PERIOD: u32 = 5;
 pub const STEER: [f32; 11] = [-1.0, -0.65, -0.4, -0.2, -0.08, 0.0, 0.08, 0.2, 0.4, 0.65, 1.0];
 pub const OUTPUTS: usize = STEER.len() + 2;
@@ -37,12 +41,18 @@ struct Tower {
     convs: Vec<Conv>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+enum Head {
+    Bins { period: u32 },
+    Plan { hold: u32, components: u32, given: Vec<f32> },
+}
+
 #[derive(Clone, Debug)]
 pub struct Net {
     format: u32,
     version: u32,
     inputs: usize,
-    period: u32,
+    head: Head,
     mean: Vec<f32>,
     std: Vec<f32>,
     towers: Vec<Tower>,
@@ -58,6 +68,12 @@ pub struct Verdict {
     pub respawn_logits: [f32; RESPAWNS],
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Plan {
+    pub controls: Vec<Controls>,
+    pub respawn: Respawn,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Respawn {
     None,
@@ -69,10 +85,13 @@ impl Respawn {
     pub const ALL: [Respawn; RESPAWNS] = [Respawn::None, Respawn::Moving, Respawn::Standing];
 }
 
+fn argmax(values: &[f32]) -> usize {
+    (0..values.len()).fold(0, |best, i| if values[i] > values[best] { i } else { best })
+}
+
 impl Verdict {
     pub fn steer_bin(&self) -> usize {
-        (0..STEER.len())
-            .fold(0, |best, i| if self.steer_logits[i] > self.steer_logits[best] { i } else { best })
+        argmax(&self.steer_logits)
     }
 
     pub fn controls(&self) -> Controls {
@@ -84,8 +103,7 @@ impl Verdict {
     }
 
     pub fn respawn(&self) -> Respawn {
-        let logits = &self.respawn_logits;
-        Respawn::ALL[(0..RESPAWNS).fold(0, |best, i| if logits[i] > logits[best] { i } else { best })]
+        Respawn::ALL[argmax(&self.respawn_logits)]
     }
 }
 
@@ -100,25 +118,41 @@ impl Net {
         ensure!(r.word()?.to_le_bytes() == *MAGIC, "not a network file");
         let format = r.word()?;
         ensure!(
-            matches!(format, FORMAT | FORMAT_RESPAWN | FORMAT_IMAGES),
-            "network file format {format}, this build reads {FORMAT}, {FORMAT_RESPAWN} and {FORMAT_IMAGES}"
+            matches!(format, FORMAT | FORMAT_RESPAWN | FORMAT_IMAGES | FORMAT_PLAN),
+            "network file format {format}, this build reads {FORMAT} to {FORMAT_PLAN}"
         );
         let version = r.word()?;
         let expected = observe::len(version).with_context(|| {
             format!("network was trained on observation version {version}, this build has 8, 9 and 10")
         })?;
-        let [len, period, steers] = r.words()?;
+        let [len] = r.words()?;
         ensure!(len == expected, "network reads {len} observations, version {version} has {expected}");
-        ensure!(period > 0, "network has no decision period");
-        ensure!(steers == STEER.len(), "network has {steers} steering bins, this build has {}", STEER.len());
-        ensure!(r.floats(steers)? == STEER, "network steering bins differ from {STEER:?}");
+        let (mut head, plan_respawns) = if format == FORMAT_PLAN {
+            let [respawns, hold, components] = r.words()?;
+            ensure!(respawns <= 1, "invalid respawn flag {respawns}");
+            ensure!(hold > 0 && hold <= 10_000, "invalid longest hold {hold}");
+            ensure!(components > 0 && components <= 16, "invalid steer component count {components}");
+            let given = Vec::new();
+            (Head::Plan { hold: hold as u32, components: components as u32, given }, respawns == 1)
+        } else {
+            let [period, steers] = r.words()?;
+            ensure!(period > 0, "network has no decision period");
+            ensure!(
+                steers == STEER.len(),
+                "network has {steers} steering bins, this build has {}",
+                STEER.len()
+            );
+            ensure!(r.floats(steers)? == STEER, "network steering bins differ from {STEER:?}");
+            (Head::Bins { period: period as u32 }, false)
+        };
         let images = observe::images(version);
-        let flat = if format == FORMAT_IMAGES { r.words::<1>()?[0] } else { len };
+        let towered = matches!(format, FORMAT_IMAGES | FORMAT_PLAN);
+        let flat = if towered { r.words::<1>()?[0] } else { len };
         let mean = r.floats(flat)?;
         let std = r.floats(flat)?;
         ensure!(std.iter().all(|s| *s > 0.0 && s.is_finite()), "network input scale is not positive");
         let mut towers = Vec::new();
-        if format == FORMAT_IMAGES {
+        if towered {
             ensure!(
                 flat == images.first().map_or(len, |image| image[0]),
                 "network reads {flat} plain inputs"
@@ -172,24 +206,46 @@ impl Net {
         }
         let respawns = match format {
             FORMAT_IMAGES => inputs == OUTPUTS + RESPAWNS,
+            FORMAT_PLAN => plan_respawns,
             _ => format == FORMAT_RESPAWN,
         };
-        let outputs = OUTPUTS + if respawns { RESPAWNS } else { 0 };
+        if let Head::Plan { hold, given, .. } = &mut head {
+            *given = r.floats(HOLD_GIVEN * *hold as usize)?;
+        }
+        let net = Self { format, version, inputs: len, head, mean, std, towers, layers, respawns };
+        let outputs = net.outputs_len();
         ensure!(inputs == outputs, "format {format} network gives {inputs} outputs, expected {outputs}");
-        ensure!(r.at == bytes.len(), "{} bytes after the last layer", bytes.len() - r.at);
-        Ok(Self { format, version, inputs: len, period: period as u32, mean, std, towers, layers, respawns })
+        ensure!(r.at == bytes.len(), "{} bytes after the network", bytes.len() - r.at);
+        Ok(net)
+    }
+
+    fn outputs_len(&self) -> usize {
+        let head = match &self.head {
+            Head::Bins { .. } => OUTPUTS,
+            Head::Plan { hold, components, .. } => (hold + 3 * components + 2) as usize,
+        };
+        head + if self.respawns { RESPAWNS } else { 0 }
     }
 
     pub fn write(&self) -> Vec<u8> {
         let mut out = MAGIC.to_vec();
-        let words = [self.format, self.version, self.inputs as u32, self.period, STEER.len() as u32];
+        let mut words = vec![self.format, self.version, self.inputs as u32];
+        match &self.head {
+            Head::Bins { period } => words.extend([*period, STEER.len() as u32]),
+            Head::Plan { hold, components, .. } => {
+                words.extend([u32::from(self.respawns), *hold, *components])
+            }
+        }
         out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
-        out.extend(STEER.iter().flat_map(|v| v.to_le_bytes()));
-        if self.format == FORMAT_IMAGES {
+        if let Head::Bins { .. } = self.head {
+            out.extend(STEER.iter().flat_map(|v| v.to_le_bytes()));
+        }
+        let towered = matches!(self.format, FORMAT_IMAGES | FORMAT_PLAN);
+        if towered {
             out.extend((self.mean.len() as u32).to_le_bytes());
         }
         out.extend(self.mean.iter().chain(&self.std).flat_map(|v| v.to_le_bytes()));
-        if self.format == FORMAT_IMAGES {
+        if towered {
             out.extend((self.towers.len() as u32).to_le_bytes());
             for tower in &self.towers {
                 out.extend(tower.image.iter().flat_map(|&w| (w as u32).to_le_bytes()));
@@ -212,6 +268,9 @@ impl Net {
             out.extend([inputs as u32, layer.outputs as u32].iter().flat_map(|w| w.to_le_bytes()));
             out.extend(layer.weights.iter().chain(&layer.bias).flat_map(|v| v.to_le_bytes()));
             inputs = layer.outputs;
+        }
+        if let Head::Plan { given, .. } = &self.head {
+            out.extend(given.iter().flat_map(|v| v.to_le_bytes()));
         }
         out
     }
@@ -242,11 +301,61 @@ impl Net {
         self.inputs
     }
 
-    pub fn period(&self) -> u32 {
-        self.period
+    pub fn period(&self) -> Option<u32> {
+        match self.head {
+            Head::Bins { period } => Some(period),
+            Head::Plan { .. } => None,
+        }
+    }
+
+    pub fn hold(&self) -> Option<u32> {
+        match &self.head {
+            Head::Bins { .. } => None,
+            Head::Plan { hold, .. } => Some(*hold),
+        }
+    }
+
+    pub fn plan(&self, observation: &[f32]) -> Plan {
+        let Head::Plan { hold, components, given } = &self.head else {
+            let verdict = self.eval(observation);
+            let period = self.period().unwrap_or(PERIOD) as usize;
+            return Plan { controls: vec![verdict.controls(); period], respawn: verdict.respawn() };
+        };
+        let x = self.outputs(observation);
+        let (h, c) = (*hold as usize, *components as usize);
+        let steer = x[h + c + argmax(&x[h..h + c])].clamp(-1.0, 1.0);
+        let pedals = h + 3 * c;
+        let controls = Controls {
+            steer,
+            gas: f32::from(u8::from(x[pedals] > 0.0)),
+            brake: f32::from(u8::from(x[pedals + 1] > 0.0)),
+        };
+        let features = [controls.steer, controls.steer.abs(), controls.gas, controls.brake];
+        let logits: Vec<f32> = (0..h)
+            .map(|i| features.iter().enumerate().fold(x[i], |sum, (j, f)| sum + f * given[j * h + i]))
+            .collect();
+        let respawn = match self.respawns {
+            true => Respawn::ALL[argmax(&x[pedals + 2..pedals + 2 + RESPAWNS])],
+            false => Respawn::None,
+        };
+        Plan { controls: vec![controls; argmax(&logits) + 1], respawn }
     }
 
     pub fn eval(&self, observation: &[f32]) -> Verdict {
+        assert!(self.period().is_some(), "a planning network has no single verdict");
+        let x = self.outputs(observation);
+        Verdict {
+            steer_logits: std::array::from_fn(|i| x[i]),
+            gas: x[STEER.len()],
+            brake: x[STEER.len() + 1],
+            respawn_logits: match self.respawns {
+                true => std::array::from_fn(|i| x[OUTPUTS + i]),
+                false => [0.0, f32::NEG_INFINITY, f32::NEG_INFINITY],
+            },
+        }
+    }
+
+    pub fn outputs(&self, observation: &[f32]) -> Vec<f32> {
         assert!(observation.len() >= self.inputs(), "observation length");
         let observation = &observation[..self.inputs];
         let mut x: Vec<f32> =
@@ -274,15 +383,7 @@ impl Net {
             }
             std::mem::swap(&mut x, &mut y);
         }
-        Verdict {
-            steer_logits: std::array::from_fn(|i| x[i]),
-            gas: x[STEER.len()],
-            brake: x[STEER.len() + 1],
-            respawn_logits: match self.respawns {
-                true => std::array::from_fn(|i| x[OUTPUTS + i]),
-                false => [0.0, f32::NEG_INFINITY, f32::NEG_INFINITY],
-            },
-        }
+        x
     }
 }
 
@@ -420,7 +521,7 @@ mod tests {
     fn eval_normalises_inputs_and_matches_a_plain_layer_by_layer_sum() {
         let layers = two_layers();
         let net = Net::read(&file(&layers, 0.5, 2.0)).unwrap();
-        assert_eq!(net.period(), PERIOD);
+        assert_eq!(net.period(), Some(PERIOD));
         let obs = values(observe::LEN, 13).iter().map(|v| v * 40.0).collect::<Vec<_>>();
         let mut x: Vec<f64> = obs.iter().map(|&v| (f64::from(v) - 0.5) / 2.0).collect();
         for (k, (inputs, outputs, weights, bias)) in layers.iter().enumerate() {
@@ -513,5 +614,52 @@ mod tests {
         let mut trailing = valid;
         trailing.push(0);
         assert!(Net::read(&trailing).is_err());
+    }
+
+    fn plan_file(respawns: u32, layers: &[(usize, usize, Vec<f32>, Vec<f32>)], given: &[f32]) -> Vec<u8> {
+        let len = observe::LEN as u32;
+        let words = [FORMAT_PLAN, observe::VERSION, len, respawns, HOLD, COMPONENTS, len];
+        let mut out = MAGIC.to_vec();
+        out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
+        out.extend(
+            [0.5f32; observe::LEN].iter().chain(&[2.0f32; observe::LEN]).flat_map(|v| v.to_le_bytes()),
+        );
+        out.extend(0u32.to_le_bytes());
+        out.extend((layers.len() as u32).to_le_bytes());
+        for (inputs, outputs, weights, bias) in layers {
+            out.extend([*inputs as u32, *outputs as u32].iter().flat_map(|w| w.to_le_bytes()));
+            out.extend(weights.iter().chain(bias).flat_map(|v| v.to_le_bytes()));
+        }
+        out.extend(given.iter().flat_map(|v| v.to_le_bytes()));
+        out
+    }
+
+    #[test]
+    fn a_plan_holds_the_likeliest_component_s_steer_and_the_pedals_for_the_likeliest_number_of_ticks_given_them()
+     {
+        let (h, c) = (HOLD as usize, COMPONENTS as usize);
+        let mut layers = layers_to(h + 3 * c + 2 + RESPAWNS);
+        layers[1].2.iter_mut().for_each(|w| *w = 0.0);
+        let bias = &mut layers[1].3;
+        bias.iter_mut().for_each(|b| *b = -1.0);
+        bias[36] = 2.0;
+        bias[h..h + 2 * c].copy_from_slice(&[0.2, 0.7, -0.4, 1.8]);
+        bias[h + 3 * c] = 0.5;
+        bias[h + 3 * c + 2 + 2] = 5.0;
+        let mut given = vec![0.0; HOLD_GIVEN * h];
+        given[2 * h + 9] = 4.0;
+        given[3 * h + 70] = 100.0;
+        let net = Net::read(&plan_file(1, &layers, &given)).unwrap();
+        assert_eq!((net.period(), net.hold()), (None, Some(HOLD)));
+        assert_eq!(Net::read(&net.write()).unwrap().write(), net.write());
+        let plan = net.plan(&values(observe::LEN, 13));
+        assert_eq!(plan.controls, vec![Controls { steer: 1.0, gas: 1.0, brake: 0.0 }; 10]);
+        assert_eq!(plan.respawn, Respawn::Standing);
+        assert!(Net::read(&plan_file(0, &layers, &given)).is_err());
+        assert!(Net::read(&plan_file(1, &layers, &given[1..])).is_err());
+        let binned = Net::read(&file(&two_layers(), 0.5, 2.0)).unwrap();
+        let obs = values(observe::LEN, 17);
+        let verdict = binned.eval(&obs);
+        assert_eq!(binned.plan(&obs).controls, vec![verdict.controls(); PERIOD as usize]);
     }
 }
