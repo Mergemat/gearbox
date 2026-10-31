@@ -48,6 +48,7 @@ pub struct VehicleAssets {
 
 #[derive(Clone, Debug)]
 pub struct VehicleModel {
+    pub car: u8,
     pub assets: VehicleAssets,
     pub spawn: spawn::Assets,
     pub body: crate::dyna::DynaModel,

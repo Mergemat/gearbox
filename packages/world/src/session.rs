@@ -176,6 +176,7 @@ fn load_models(
         }
     }
     let model = |car: CarAssets, assets, state: &State| VehicleModel {
+        car: Car::ALL.iter().position(|&known| known == car.car).unwrap_or(0) as u8,
         assets,
         spawn: car.spawn,
         body: car.body,
