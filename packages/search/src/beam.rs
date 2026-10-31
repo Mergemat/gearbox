@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 
 use crate::Body;
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use gearbox_engine::Controls;
 use gearbox_engine::Savestate;
 
@@ -291,7 +291,7 @@ pub fn build_line(
     p.observe(goals, &mut native, body);
     for c in &base.controls[start..from_k] {
         native.step(*c);
-        let body = Body::from(native.body());
+        let body = Body::from(native.try_body().context("the car leaves the world before the range")?);
         p.observe(goals, &mut native, body);
     }
     ensure!(p.times.len() < goals.ordered.len(), "the run already reaches every goal before the range");
@@ -355,7 +355,11 @@ pub fn build_line(
                             let mut ok = true;
                             for _ in 0..w.chunk {
                                 n.step(c);
-                                body = Body::from(n.body());
+                                let Some(state) = n.try_body() else {
+                                    ok = false;
+                                    break;
+                                };
+                                body = Body::from(state);
                                 if !body.0.iter().all(|v| v.is_finite()) {
                                     ok = false;
                                     break;

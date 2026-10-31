@@ -129,7 +129,8 @@ pub fn generate_families(origin: &dyn Origin, config: &Config, families: &[&str]
     let mut trace = Vec::with_capacity(config.horizon_ticks);
     for _ in 0..config.horizon_ticks {
         probe.step(Controls { gas: 1.0, ..Default::default() });
-        let body = Body::from(probe.body());
+        let Some(state) = probe.try_body() else { break };
+        let body = Body::from(state);
         trace.push(Sample { ms: probe.race_ms(), observation: Observation::read(&mut probe, body) });
     }
     drop(probe);
@@ -154,8 +155,9 @@ pub fn generate_families(origin: &dyn Origin, config: &Config, families: &[&str]
                             vec![PoseSample { tick: 0, pose: Pose::from_body(Body::from(n.body())) }];
                         for (i, c) in inputs.controls.iter().enumerate() {
                             n.step(*c);
+                            let Some(state) = n.try_body() else { break };
                             if (i + 1) % config.sample_every == 0 || i + 1 == config.horizon_ticks {
-                                let pose = Pose::from_body(Body::from(n.body()));
+                                let pose = Pose::from_body(Body::from(state));
                                 pose.validate()?;
                                 trajectory.push(PoseSample { tick: i + 1, pose });
                             }

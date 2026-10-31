@@ -29,7 +29,8 @@ pub fn drive_on(
     let (mut trail, mut speed_at_end, mut i) = (Vec::new(), 0.0, 0);
     let mut k = line.tick(n.race_ms())?;
     while k < until {
-        let body = Body::from(n.body());
+        let Some(state) = n.try_body() else { break };
+        let body = Body::from(state);
         if k >= to && !follow.is_empty() {
             i = next_point(body.position(), follow, i);
             line.controls[k] = steer_toward(&body, follow[i]);

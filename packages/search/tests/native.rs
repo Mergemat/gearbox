@@ -113,3 +113,21 @@ fn guided_population_and_receding_are_independent_of_worker_count() {
         assert_eq!(one.evaluated_ticks, four.evaluated_ticks);
     }
 }
+
+#[test]
+#[ignore = "local packs, pilot map 0fRz in maps/ and recorded inputs; run under nice"]
+fn a_run_that_loses_the_car_body_scores_unreached() {
+    let root = fixtures();
+    let inputs = Timeline::read(&root.join("inputs/body-lost-0fRz.txt.in")).unwrap();
+    let session = gearbox_search::session::open(
+        &packs(),
+        &root.join("maps/0fRznN6J9eeHpGNXIp1uh1vEBA1.Map.Gbx"),
+        Some(&inputs),
+    )
+    .unwrap();
+    let mut n = session.clone();
+    n.seed = inputs.seed;
+    let until = inputs.t0 + 10 * inputs.controls.len() as i32;
+    let ev = gearbox_search::objective::evaluate(&mut n, &inputs, &Objective::Finish, until).unwrap();
+    assert_eq!(ev.score, gearbox_search::objective::Score::Unreached);
+}

@@ -180,6 +180,11 @@ impl Session {
         self.dyna.state(BodyHandle(self.vehicle.body))
     }
 
+    /// None once the car has left the world and the engine has freed its body.
+    pub fn try_body(&self) -> Option<&BodyState> {
+        (self.vehicle.body != u32::MAX).then(|| self.body())
+    }
+
     pub fn vehicle(&self) -> &Vehicle {
         &self.vehicle
     }

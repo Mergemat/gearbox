@@ -359,7 +359,8 @@ fn drive_on(
     let dist = |a: [f32; 3], b: [f32; 3]| ((a[0] - b[0]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
     let mut near = (from.saturating_sub(trail_from)).min(trail.len() - 1);
     while k < to {
-        let body = Body::from(n.body());
+        let Some(state) = n.try_body() else { break };
+        let body = Body::from(state);
         let p = body.position();
         let mut best = near;
         for j in near..(near + 300).min(trail.len()) {

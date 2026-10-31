@@ -468,6 +468,21 @@ pub fn evaluate_resumable(
         }
         native.step(*c);
         ticks += 1;
+        if native.try_body().is_none() {
+            if hit.is_some() {
+                break;
+            }
+            return Ok(Evaluation {
+                score: Score::Unreached,
+                ticks,
+                body: Body([0.0; 22]),
+                digest: digest.finish(),
+                events: detector.events,
+                trace,
+                path,
+                frontier_ms: None,
+            });
+        }
         if let Objective::Goals(goals) = objective {
             let body = Body::from(native.body());
             if !body.0.iter().all(|v| v.is_finite()) {
