@@ -2,6 +2,7 @@ macro_rules! flags {
     ($(#[$doc:meta])* $name:ident, $bits:ty) => {
         $(#[$doc])*
         #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         #[repr(transparent)]
         pub struct $name($bits);
         impl $name {

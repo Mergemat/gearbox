@@ -1837,6 +1837,9 @@ dependencies = [
 [[package]]
 name = "gearbox-engine"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "gearbox-gbx"
@@ -1860,6 +1863,8 @@ dependencies = [
  "gearbox-run",
  "gearbox-search",
  "libm",
+ "postcard",
+ "serde",
 ]
 
 [[package]]
@@ -1924,6 +1929,8 @@ dependencies = [
  "gearbox-engine",
  "gearbox-gbx",
  "gearbox-packs",
+ "postcard",
+ "serde",
 ]
 
 [[package]]

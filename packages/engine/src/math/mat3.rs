@@ -3,6 +3,7 @@ use std::ops::Mul;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Mat3 {
     pub rows: [Vec3; 3],
 }

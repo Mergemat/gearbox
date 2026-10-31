@@ -40,6 +40,7 @@ pub struct ForceAcc {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DynaModel {
     pub mass: f32,
     pub inverse_inertia_matrix: crate::Mat3,

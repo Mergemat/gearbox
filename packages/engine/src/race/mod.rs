@@ -23,6 +23,7 @@ pub struct RaceState {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WaypointFlags(pub u32);
 impl WaypointFlags {
     pub const SPAWN: Self = Self(1);
@@ -67,6 +68,7 @@ pub enum WaypointKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RaceWaypoint {
     pub flags: WaypointFlags,
     pub group: u32,

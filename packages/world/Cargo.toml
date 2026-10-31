@@ -12,9 +12,11 @@ description = "Typed map collision, water, gameplay and kinematic body construct
 
 [dependencies]
 anyhow = "1"
-gearbox-engine = { path = "../engine" }
+gearbox-engine = { path = "../engine", features = ["serde"] }
 gearbox-gbx = { path = "../gbx" }
 gearbox-packs = { path = "../packs" }
+postcard = { version = "1", features = ["use-std"] }
+serde = { version = "1", features = ["derive"] }
 
 [lints]
 workspace = true

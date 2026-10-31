@@ -21,7 +21,7 @@ pub struct Gameplay {
     pub initial_pose: Iso,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Layout {
     waypoints: Vec<RaceWaypoint>,
     checkpoints_per_lap: u32,

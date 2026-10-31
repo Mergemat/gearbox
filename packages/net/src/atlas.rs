@@ -31,7 +31,7 @@ const REACH: f32 = 0.5;
 
 type Stamp = ([f32; 3], [f32; 3], u8, u16);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Level {
     height: f32,
     cover: u16,
@@ -42,21 +42,21 @@ struct Level {
     gate: u16,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Mark {
     wall: bool,
     marks: u8,
     gate: u16,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Frame {
     origin: [f32; 2],
     cell: f32,
     size: [usize; 2],
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Grid {
     frame: Frame,
     area: f32,
@@ -64,7 +64,7 @@ struct Grid {
     levels: Vec<Level>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Atlas {
     marks: Vec<Mark>,
     grids: Vec<Grid>,

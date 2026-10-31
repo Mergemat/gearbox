@@ -11,7 +11,7 @@ pub const POSE_LEN: usize = 8;
 pub const MIN_CELL: f32 = 8.0;
 const MARGIN: f32 = 32.0;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Chart {
     pub center: [f32; 2],
     pub extent: f32,

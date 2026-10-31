@@ -1,6 +1,7 @@
 use crate::Iso;
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Grid {
     pub cell: [f32; 2],
     pub inverse_cell: [f32; 2],
@@ -10,18 +11,21 @@ pub struct Grid {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Entry {
     pub value: u32,
     pub next: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Layer {
     pub bottom: u32,
     pub top: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Column {
     pub surface: f32,
     pub bottom: f32,
@@ -29,6 +33,7 @@ pub struct Column {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VoxelGrid {
     pub material: u32,
     pub layers: Vec<Layer>,
@@ -42,6 +47,7 @@ pub struct VoxelGrid {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ModelBox {
     pub model: u32,
     pub placement: Iso,
@@ -49,6 +55,7 @@ pub struct ModelBox {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Volume {
     pub grid: Grid,
     pub default_column: Column,
@@ -60,6 +67,7 @@ pub struct Volume {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Water {
     pub queries_disabled: bool,
     pub models: Vec<VoxelGrid>,

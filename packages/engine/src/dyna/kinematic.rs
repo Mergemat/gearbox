@@ -2,6 +2,7 @@ use super::BodyHandle;
 use crate::{Iso, Quat, Vec3, math};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Easing {
     #[default]
     Constant,
@@ -37,6 +38,7 @@ impl Easing {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Segment {
     pub easing: Easing,
     pub reversed: u8,
@@ -44,6 +46,7 @@ pub struct Segment {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MotionCurve {
     pub segments: Vec<Segment>,
     pub cached_duration: u32,
@@ -86,6 +89,7 @@ impl MotionCurve {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KinematicModel {
     pub translation: MotionCurve,
     pub translation_axis: u8,

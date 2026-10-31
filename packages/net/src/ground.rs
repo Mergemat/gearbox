@@ -52,7 +52,7 @@ const MERGE: f32 = 1.0;
 const MARGIN: f32 = 256.0;
 const MAX_COLUMNS: usize = 2048;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Layer {
     pub height: f32,
     pub normal_y: u8,
@@ -90,6 +90,11 @@ impl Ground {
 
     pub fn chart(&self, session: &Session) -> &Chart {
         self.chart.get_or_init(|| Chart::build(session, self))
+    }
+
+    /// The chart if `chart` or `decode` made it.
+    pub fn charted(&self) -> Option<&Chart> {
+        self.chart.get()
     }
 
     pub fn from_triangles(triangles: &[PhysicalTriangle], [low, high]: [[f32; 2]; 2]) -> Self {
@@ -137,6 +142,32 @@ impl Ground {
         }
         starts[columns] = layers.len() as u32;
         Self { origin, size, starts, layers, atlas: OnceLock::new(), chart: OnceLock::new() }
+    }
+
+    /// The ground with its atlas and chart if built; `decode` restores it for the same map and code. Columns are
+    /// stored as layer counts, which compress far better than their running starts.
+    pub fn encode(&self) -> Vec<u8> {
+        let counts: Vec<u8> = self.starts.windows(2).map(|w| (w[1] - w[0]) as u8).collect();
+        let parts = (self.origin, self.size, counts, &self.layers, self.atlas.get(), self.chart.get());
+        postcard::to_stdvec(&parts).expect("a ground serializes")
+    }
+
+    pub fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
+        let (origin, size, counts, layers, atlas, chart): (_, _, Vec<u8>, _, Option<Atlas>, Option<Chart>) =
+            postcard::from_bytes(bytes)?;
+        let mut starts = Vec::with_capacity(counts.len() + 1);
+        starts.push(0);
+        for count in counts {
+            starts.push(starts[starts.len() - 1] + u32::from(count));
+        }
+        let ground = Self { origin, size, starts, layers, atlas: OnceLock::new(), chart: OnceLock::new() };
+        if let Some(atlas) = atlas {
+            let _ = ground.atlas.set(atlas);
+        }
+        if let Some(chart) = chart {
+            let _ = ground.chart.set(chart);
+        }
+        Ok(ground)
     }
 
     pub fn bytes(&self) -> usize {

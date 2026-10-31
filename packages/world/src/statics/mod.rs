@@ -22,7 +22,7 @@ pub use model::{BlockKey, Catalog, Geometry as BlockGeometry};
 pub use spawn::{block_pose, item_poses, item_waypoint_tags};
 use std::collections::HashSet;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Selection {
     pub omitted_items: Vec<usize>,
 }

@@ -11,7 +11,7 @@ use gearbox_engine::{
     race::GateRecord,
 };
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Instance {
     pub model: DynaModel,
     pub shape: u32,

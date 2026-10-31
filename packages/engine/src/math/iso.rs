@@ -3,6 +3,7 @@ use std::ops::Mul;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Iso {
     pub rot: Mat3,
     pub pos: Vec3,

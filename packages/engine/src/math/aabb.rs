@@ -2,6 +2,7 @@ use super::{Iso, Quat, Vec3};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Aabb {
     pub center: Vec3,
     pub half: Vec3,

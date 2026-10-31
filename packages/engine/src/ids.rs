@@ -1,6 +1,7 @@
 macro_rules! ids {
     ($($name:ident),* $(,)?) => {$(
         #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct $name(pub u32);
 
         impl $name {
@@ -26,6 +27,7 @@ ids!(
 );
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ShapeId {
     Shared(SharedShapeId),
     Owned(OwnedShapeId),
@@ -56,6 +58,7 @@ impl ShapeId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ItemId {
     Static(StaticItemId),
     Dynamic(DynamicItemId),

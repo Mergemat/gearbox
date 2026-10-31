@@ -1,5 +1,5 @@
 use crate::{
-    bodies,
+    bodies::{self, Built},
     car::{self, Car, CarAssets, VehicleStart},
     gameplay::{self, Gameplay},
     statics::MapAssets,
@@ -11,6 +11,7 @@ use gearbox_engine::{
     ghost::Playback,
     race::RaceRules,
     session::{Clock, Session, SessionConfig, VehicleAssets, VehicleModel},
+    static_world::{Shape, StaticWorld},
     vehicle::{Vehicle, spawn, vis},
     world_water::Water,
 };
@@ -56,6 +57,39 @@ impl<'a> Prepared<'a> {
             water: crate::water::build(map, &assets)?,
             bodies: bodies::build(map, &assets)?,
         })
+    }
+
+    /// What `new` derived from the map and packs, as bytes and the static shapes apart from them (maps share
+    /// most shapes, so a cache stores each once); `decode` restores it for the same map, packs and code.
+    pub fn encode(&self) -> (Vec<u8>, &[Shape]) {
+        let Built { statics, selection, gates, animations, instances } = &self.bodies;
+        let StaticWorld { items, surfaces, shapes: _, tree, material14_alias } = statics;
+        let rest = (
+            &self.layout,
+            &self.water,
+            items,
+            surfaces,
+            tree,
+            material14_alias,
+            selection,
+            gates,
+            animations,
+            instances,
+        );
+        (postcard::to_stdvec(&rest).expect("a prepared map serializes"), &statics.shapes)
+    }
+
+    pub fn decode(
+        map: &'a gearbox_gbx::Map,
+        packs: &'a PackSet,
+        bytes: &[u8],
+        shapes: Vec<Shape>,
+    ) -> Result<Self> {
+        let (layout, water, items, surfaces, tree, material14_alias, selection, gates, animations, instances) =
+            postcard::from_bytes(bytes)?;
+        let statics = StaticWorld { items, surfaces, shapes, tree, material14_alias };
+        let bodies = Built { statics, selection, gates, animations, instances };
+        Ok(Self { map, packs, layout, water, bodies })
     }
 
     pub fn open(&self, options: OpenOptions) -> Result<Session> {

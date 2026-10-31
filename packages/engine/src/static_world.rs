@@ -7,6 +7,7 @@ pub const LAYER_GATE: u8 = 0x16;
 pub const NO_CHILD_TAG: u64 = u32::MAX as u64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Entity {
     None,
     Waypoint(Option<u32>),
@@ -14,6 +15,7 @@ pub enum Entity {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Item {
     pub entity: Entity,
     pub shape: u32,
@@ -26,6 +28,7 @@ pub struct Item {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Surface {
     pub shape: u32,
     pub iso: Iso,
@@ -34,6 +37,7 @@ pub struct Surface {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Tree {
     pub nodes: Vec<TreeNode>,
     pub leaves: u32,
@@ -49,6 +53,7 @@ impl Default for Tree {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Mesh {
     pub vertices: Vec<Vec3>,
     pub triangles: Vec<Triangle>,
@@ -57,6 +62,7 @@ pub struct Mesh {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Compound {
     pub children: Vec<ShapeId>,
     pub locations: Vec<Iso>,
@@ -65,6 +71,7 @@ pub struct Compound {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Face {
     pub normal: Vec3,
     pub offset: f32,
@@ -75,6 +82,7 @@ pub struct Face {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Convex {
     pub material: u16,
     pub vertices: Vec<Vec3>,
@@ -87,6 +95,7 @@ pub struct Convex {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Geometry {
     Mesh(Mesh),
     Compound(Compound),
@@ -94,12 +103,14 @@ pub enum Geometry {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Shape {
     pub main_dir: Vec3,
     pub geometry: Geometry,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StaticWorld {
     pub items: Vec<Item>,
     pub surfaces: Vec<Surface>,
