@@ -31,6 +31,9 @@ pub struct Constraints {
     pub digital_steer: bool,
     pub steer_limit: Option<f32>,
     pub locked: Vec<Range<usize>>,
+    /// Edits change whole aligned blocks of this many ticks, so a policy deciding once per block can
+    /// reproduce them; 0 allows single-tick edits.
+    pub hold: usize,
 }
 
 impl Constraints {
@@ -50,6 +53,15 @@ impl Constraints {
     pub fn apply(&self, parent: &[Controls], child: &mut [Controls], window: Range<usize>) {
         if self.is_free() {
             return;
+        }
+        if self.hold > 1 {
+            let first = window.start / self.hold * self.hold;
+            for block in (first..window.end).step_by(self.hold) {
+                let block = block.max(window.start)..(block + self.hold).min(window.end).min(child.len());
+                let Some(k) = block.clone().find(|&k| parent.get(k) != Some(&child[k])) else { continue };
+                let held = child[k];
+                child[block].fill(held);
+            }
         }
         let limit = self.steer_limit.unwrap_or(1.0);
         for i in window {
@@ -291,6 +303,16 @@ mod tests {
         assert_eq!(child[3], parent[3]);
         assert_eq!(child[4], parent[4]);
         assert_eq!(child[5], c(1.0, 1.0, -0.9));
+    }
+
+    #[test]
+    fn held_edits_fill_their_whole_block_and_leave_other_blocks_alone() {
+        let parent = vec![c(1.0, 0.0, 0.0); 12];
+        let mut child = parent.clone();
+        child[6].steer = 0.4;
+        Constraints { hold: 5, ..Default::default() }.apply(&parent, &mut child, 2..12);
+        let steer: Vec<f32> = child.iter().map(|c| c.steer).collect();
+        assert_eq!(steer, [0.0, 0.0, 0.0, 0.0, 0.0, 0.4, 0.4, 0.4, 0.4, 0.4, 0.0, 0.0]);
     }
 
     #[test]

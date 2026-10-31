@@ -815,6 +815,7 @@ fn run(
         } else {
             Vec::new()
         },
+        hold: 0,
     };
     let threads = if s.threads == 0 {
         gearbox_search::search::default_threads()

@@ -54,6 +54,8 @@ struct Args {
     full_rollouts: bool,
     #[arg(long, default_value_t = 0)]
     checkpoint_every: u32,
+    #[arg(long, default_value_t = 0)]
+    hold_ticks: usize,
     #[arg(long)]
     start_state: Option<PathBuf>,
     #[command(subcommand)]
@@ -231,6 +233,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
             max_span_ticks: args.span_ticks,
             max_shift_ticks: args.shift_ticks,
             max_steer_delta: args.steer_delta,
+            constraints: gearbox_search::mutation::Constraints { hold: args.hold_ticks, ..Default::default() },
             ..Default::default()
         },
     };
