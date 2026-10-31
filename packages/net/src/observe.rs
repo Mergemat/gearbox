@@ -27,11 +27,12 @@ pub const STATE_LEN: usize = 15;
 pub const LEN_V9: usize = STATE_START + STATE_LEN;
 pub const EVERY: usize = 32;
 pub const GATE_LEN: usize = 10;
-pub const EVERY_START: usize = LEN;
+pub const DRIVEN_START: usize = LEN;
+pub const EVERY_START: usize = DRIVEN_START + 4;
 pub const IMAGES_START: usize = EVERY_START + (EVERY + 1) * GATE_LEN + 4;
 pub const LEN_V10: usize = IMAGES_START + atlas::LEN;
 
-const _: () = assert!(LEN == 677 && LEN_V9 == 1006 && LEN_V10 == 13107);
+const _: () = assert!(LEN == 677 && LEN_V9 == 1006 && LEN_V10 == 13111);
 
 pub fn len(version: u32) -> Option<usize> {
     match version {
@@ -402,8 +403,8 @@ pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f
     if extra.len() != LEN_V9 - LEN {
         rays::read(session, &mut out[RAYS_START..], &mut []);
         if !extra.is_empty() {
-            out[12..CAR_LEN].fill(0.0);
-            out[12 + session.config.model(vehicle.model_choice).car as usize] = 1.0;
+            let (driven, extra) = extra.split_at_mut(EVERY_START - DRIVEN_START);
+            driven[session.config.model(vehicle.model_choice).car as usize] = 1.0;
             let (every, images) = extra.split_at_mut(IMAGES_START - EVERY_START);
             course.every(&car, &session.race, every);
             let mut passed_groups = [false; atlas::GROUPS];
