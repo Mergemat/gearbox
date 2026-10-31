@@ -288,6 +288,16 @@ pub fn search_seeded(
                             &mut inputs.controls,
                             window.clone(),
                         );
+                        if inputs.controls == parent.inputs.controls {
+                            // Unchanged inputs replay to the parent's own result, so reuse it.
+                            result.candidates.push(Candidate {
+                                attempt,
+                                inputs,
+                                evaluation: parent.evaluation.clone(),
+                                checkpoints: parent.checkpoints.clone(),
+                            });
+                            continue;
+                        }
                         let first = (window.start..window.end)
                             .find(|&k| inputs.controls[k] != parent.inputs.controls[k])
                             .unwrap_or(window.end);
