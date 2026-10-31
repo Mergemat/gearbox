@@ -16,6 +16,7 @@ const RELU: u32 = 9;
 const POOL: u32 = 10;
 const ATTEND: u32 = 11;
 const SELECT: u32 = 12;
+const ONE_HOT: u32 = 13;
 pub const RELATIVE: usize = 4;
 
 #[derive(Clone, Debug)]
@@ -52,6 +53,7 @@ enum Op {
     Pool { source: usize },
     Attend(Box<Attend>),
     Select { source: usize, column: usize },
+    OneHot { source: usize, column: usize, scale: f32 },
 }
 
 #[derive(Clone, Debug)]
@@ -224,6 +226,14 @@ impl Program {
                     ensure!(column < shape[2], "selection by column {column} of {}", shape[2]);
                     (Op::Select { source, column }, shape)
                 }
+                ONE_HOT => {
+                    let [source, column, classes] = r.words()?;
+                    let scale = f32::from_bits(r.word()?);
+                    let [h, w, c] = shape_of(&ops, source)?;
+                    ensure!(column < c && classes > 0 && classes <= 256, "one-hot of column {column} of {c}");
+                    ensure!(scale > 0.0 && scale.is_finite(), "invalid one-hot scale");
+                    (Op::OneHot { source, column, scale }, [h, w, c - 1 + classes])
+                }
                 _ => bail!("unknown operation {kind}"),
             };
             ops.push(op);
@@ -262,6 +272,11 @@ impl Program {
                 Op::Relu { source } => words(out, &[RELU as usize, *source]),
                 Op::Pool { source } => words(out, &[POOL as usize, *source]),
                 Op::Select { source, column } => words(out, &[SELECT as usize, *source, *column]),
+                Op::OneHot { source, column, scale } => {
+                    let classes = shape[2] + 1 - self.ops[*source].1[2];
+                    words(out, &[ONE_HOT as usize, *source, *column, classes]);
+                    floats(out, [scale]);
+                }
                 Op::Attend(a) => {
                     words(out, &[ATTEND as usize, a.query, a.pose, a.keys, a.values, a.heads]);
                     a.relative_keys.write(out);
@@ -338,6 +353,21 @@ impl Program {
                         .flatten()
                         .copied()
                         .collect()
+                }
+                Op::OneHot { source, column, scale } => {
+                    let c = self.ops[*source].1[2];
+                    let classes = shape[2] + 1 - c;
+                    let mut out = Vec::with_capacity(buffers[*source].len() / c * shape[2]);
+                    for row in buffers[*source].chunks_exact(c) {
+                        let index = (row[*column] * scale).round();
+                        out.extend(row.iter().enumerate().filter(|&(k, _)| k != *column).map(|(_, v)| *v));
+                        let at = out.len();
+                        out.resize(at + classes, 0.0);
+                        if index >= 0.0 && (index as usize) < classes {
+                            out[at + index as usize] = 1.0;
+                        }
+                    }
+                    out
                 }
                 Op::Attend(a) => match memory {
                     Some(memory) => a.apply(&buffers[a.query], &buffers[a.pose], memory),

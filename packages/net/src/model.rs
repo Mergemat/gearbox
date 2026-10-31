@@ -193,10 +193,13 @@ impl Net {
         );
         let version = r.word()?;
         let expected = observe::len(version).with_context(|| {
-            format!("network was trained on observation version {version}, this build has 8 to 11")
+            format!("network was trained on observation version {version}, this build has 8 to 12")
         })?;
         let [len] = r.words()?;
-        ensure!(len == expected, "network reads {len} observations, version {version} has {expected}");
+        ensure!(
+            len == expected || (version == 12 && observe::dots(len).is_some()),
+            "network reads {len} observations, version {version} has {expected}"
+        );
         let plan = match format {
             FORMAT_GRAPH => match r.words()? {
                 [HEAD_BINS] => false,

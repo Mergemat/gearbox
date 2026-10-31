@@ -6,6 +6,7 @@ use gearbox_search::gate::gates;
 
 use crate::atlas::Atlas;
 use crate::chart::Chart;
+use crate::cloud::Cloud;
 use crate::observe::{hypot, surface_class};
 
 pub const CELL: f32 = 2.0;
@@ -68,6 +69,7 @@ pub struct Ground {
     pub(crate) layers: Vec<Layer>,
     pub(crate) atlas: OnceLock<Atlas>,
     pub(crate) chart: OnceLock<Chart>,
+    pub(crate) cloud: OnceLock<Cloud>,
 }
 
 impl Ground {
@@ -90,6 +92,15 @@ impl Ground {
 
     pub fn chart(&self, session: &Session) -> &Chart {
         self.chart.get_or_init(|| Chart::build(session, self))
+    }
+
+    pub fn cloud(&self, session: &Session) -> &Cloud {
+        self.cloud.get_or_init(|| Cloud::build(session, self))
+    }
+
+    /// The dots if `cloud` or `decode` made them.
+    pub fn clouded(&self) -> Option<&Cloud> {
+        self.cloud.get()
     }
 
     /// The chart if `chart` or `decode` made it.
@@ -141,31 +152,65 @@ impl Ground {
             starts[column] = first as u32;
         }
         starts[columns] = layers.len() as u32;
-        Self { origin, size, starts, layers, atlas: OnceLock::new(), chart: OnceLock::new() }
+        Self {
+            origin,
+            size,
+            starts,
+            layers,
+            atlas: OnceLock::new(),
+            chart: OnceLock::new(),
+            cloud: OnceLock::new(),
+        }
     }
 
-    /// The ground with its atlas and chart if built; `decode` restores it for the same map and code. Columns are
-    /// stored as layer counts, which compress far better than their running starts.
+    /// The ground with its atlas, chart and far dots if built; `decode` restores it for the same map and code.
+    /// Columns are stored as layer counts, which compress far better than their running starts.
     pub fn encode(&self) -> Vec<u8> {
         let counts: Vec<u8> = self.starts.windows(2).map(|w| (w[1] - w[0]) as u8).collect();
-        let parts = (self.origin, self.size, counts, &self.layers, self.atlas.get(), self.chart.get());
+        let parts = (
+            self.origin,
+            self.size,
+            counts,
+            &self.layers,
+            self.atlas.get(),
+            self.chart.get(),
+            self.cloud.get(),
+        );
         postcard::to_stdvec(&parts).expect("a ground serializes")
     }
 
     pub fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        let (origin, size, counts, layers, atlas, chart): (_, _, Vec<u8>, _, Option<Atlas>, Option<Chart>) =
-            postcard::from_bytes(bytes)?;
+        let (origin, size, counts, layers, atlas, chart, cloud): (
+            _,
+            _,
+            Vec<u8>,
+            _,
+            Option<Atlas>,
+            Option<Chart>,
+            Option<Cloud>,
+        ) = postcard::from_bytes(bytes)?;
         let mut starts = Vec::with_capacity(counts.len() + 1);
         starts.push(0);
         for count in counts {
             starts.push(starts[starts.len() - 1] + u32::from(count));
         }
-        let ground = Self { origin, size, starts, layers, atlas: OnceLock::new(), chart: OnceLock::new() };
+        let ground = Self {
+            origin,
+            size,
+            starts,
+            layers,
+            atlas: OnceLock::new(),
+            chart: OnceLock::new(),
+            cloud: OnceLock::new(),
+        };
         if let Some(atlas) = atlas {
             let _ = ground.atlas.set(atlas);
         }
         if let Some(chart) = chart {
             let _ = ground.chart.set(chart);
+        }
+        if let Some(cloud) = cloud {
+            let _ = ground.cloud.set(cloud);
         }
         Ok(ground)
     }
@@ -176,6 +221,7 @@ impl Ground {
             + self.layers.len() * size_of::<Layer>()
             + self.atlas.get().map_or(0, Atlas::bytes)
             + self.chart.get().map_or(0, |chart| chart.image.len() * 4)
+            + self.cloud.get().map_or(0, Cloud::bytes)
     }
 
     pub fn column(&self, x: f32, z: f32) -> &[Layer] {

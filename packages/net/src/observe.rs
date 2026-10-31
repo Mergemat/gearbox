@@ -6,7 +6,7 @@ use gearbox_search::gate::gates;
 
 use crate::ground::{self, Ground};
 use crate::triggers::{self, Trigger};
-use crate::{atlas, chart, dynamics, rays};
+use crate::{atlas, chart, cloud, dynamics, rays};
 
 pub const VERSION: u32 = 8;
 pub const AHEAD: usize = 4;
@@ -35,6 +35,8 @@ pub const EVERY_V11: usize = 512;
 pub const POSE_START: usize = EVERY_START + (EVERY_V11 + 1) * GATE_LEN + 4;
 pub const IMAGES_START_V11: usize = POSE_START + chart::POSE_LEN;
 pub const LEN_V11: usize = IMAGES_START_V11 + atlas::LEN;
+pub const DOTS_START: usize = POSE_START;
+pub const LEN_V12: usize = DOTS_START + cloud::DOTS * cloud::FEATURES;
 
 const _: () = assert!(LEN == 677 && LEN_V9 == 1006 && LEN_V10 == 13111 && LEN_V11 == 17919);
 
@@ -44,7 +46,30 @@ pub fn len(version: u32) -> Option<usize> {
         9 => Some(LEN_V9),
         10 => Some(LEN_V10),
         11 => Some(LEN_V11),
+        12 => Some(LEN_V12),
         _ => None,
+    }
+}
+
+/// The length of observation `version`, with `dots` dots for v12.
+pub fn len_dots(version: u32, dots: usize) -> Option<usize> {
+    if version == 12 { (dots > 0).then_some(DOTS_START + dots * cloud::FEATURES) } else { len(version) }
+}
+
+/// How many dots an observation of `len` values holds, if it is a v12 one (any count of at least one dot).
+pub fn dots(len: usize) -> Option<usize> {
+    let rest = len.checked_sub(DOTS_START)?;
+    (rest > 0 && rest % cloud::FEATURES == 0 && len != LEN_V10 && len != LEN_V11)
+        .then_some(rest / cloud::FEATURES)
+}
+
+/// Where an observation's values that are int8 codes (multiples of 1/32 in [-4, 4)) start: v10's and v11's images,
+/// v12's dots.
+pub fn codes_start(len: usize) -> Option<usize> {
+    match len {
+        LEN_V10 => Some(IMAGES_START),
+        LEN_V11 => Some(IMAGES_START_V11),
+        _ => dots(len).map(|_| DOTS_START),
     }
 }
 
@@ -256,7 +281,7 @@ fn entries(race: &Race, run: u32) -> impl Iterator<Item = &gearbox_engine::race:
         .flat_map(|chunk| chunk.entries.iter().take_while(|entry| entry.time != gearbox_engine::race::NO_RUN))
 }
 
-fn passed(race: &Race, group: u32) -> bool {
+pub(crate) fn passed(race: &Race, group: u32) -> bool {
     race.players.first().is_some_and(|player| {
         entries(race, player.player.lap_run)
             .any(|entry| race.rules.waypoints[entry.waypoint as usize].group == group)
@@ -357,7 +382,8 @@ pub(crate) fn surface_class(material: u8) -> usize {
 }
 
 pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f32]) {
-    assert!(matches!(out.len(), LEN | LEN_V9 | LEN_V10 | LEN_V11), "observation length");
+    let dots = dots(out.len());
+    assert!(matches!(out.len(), LEN | LEN_V9 | LEN_V10 | LEN_V11) || dots.is_some(), "observation length");
     out.fill(0.0);
     let (out, extra) = out.split_at_mut(LEN);
     let car = Car::read(session);
@@ -413,6 +439,12 @@ pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f
         if !extra.is_empty() {
             let (driven, extra) = extra.split_at_mut(EVERY_START - DRIVEN_START);
             driven[session.config.model(vehicle.model_choice).car as usize] = 1.0;
+            if dots.is_some() {
+                let (every, dots) = extra.split_at_mut(DOTS_START - EVERY_START);
+                course.every(&car, &session.race, every);
+                ground.cloud(session).read(session, course, &car, dots);
+                return;
+            }
             let images = if extra.len() == LEN_V11 - EVERY_START {
                 let (every, extra) = extra.split_at_mut(POSE_START - EVERY_START);
                 course.every(&car, &session.race, every);
@@ -743,12 +775,12 @@ mod tests {
         };
         let (blind, blind_state, _) = drive(0);
         assert!(blind.is_some());
-        for len in [LEN_V9, LEN_V10] {
+        for len in [LEN_V9, LEN_V10, LEN_V12] {
             let (finish, state, seen) = drive(len);
             assert_eq!(finish, blind);
             assert_eq!(state, blind_state);
             assert_eq!(seen, drive(len).2);
-            if len == LEN_V10 {
+            if len != LEN_V9 {
                 assert_eq!(seen.iter().map(|o| o[..LEN].to_vec()).collect::<Vec<_>>(), drive(LEN).2);
             }
         }
