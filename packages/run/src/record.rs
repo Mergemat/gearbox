@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
-use gearbox_engine::{Controls, Session, race::replay::InputState};
+use gearbox_engine::{Controls, Session, race::replay::{InputBits, InputState}};
 use gearbox_gbx::inputs::{DecodedInputs, EventKind};
 use gearbox_gbx::{Ghost, Map, Replay};
 use gearbox_packs::packs::PackSet;
@@ -40,13 +40,43 @@ pub struct Driven {
 }
 
 impl Record {
+    /// A `.Replay.Gbx` (its first finished ghost) or an inputs file (`from_run`).
     pub fn read(path: &Path) -> Result<Self> {
+        if path.extension().is_some_and(|e| e == "inputs") {
+            return Self::from_run(Run::read(path)?).with_context(|| format!("reading {}", path.display()));
+        }
         let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         Self::parse(&bytes).with_context(|| format!("reading the record in {}", path.display()))
     }
 
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         Self::from_replay(&Replay::parse(bytes)?)
+    }
+
+    /// An inputs file's run (search output), driven tick by tick as `Session::step` drives controls, which is how
+    /// search scored it. Its time is where its inputs end: cut the file at its finish tick to carry the finish.
+    pub fn from_run(run: Run) -> Result<Self> {
+        ensure!(!run.controls.is_empty(), "the inputs are empty");
+        ensure!(run.actions.iter().all(|&a| a == 0), "the inputs press actions (respawns)");
+        let input_states = run
+            .controls
+            .iter()
+            .map(|c| InputState {
+                bits: InputBits::REPLAY,
+                axes: [c.steer, c.gas, c.brake, 0.0],
+                ..Default::default()
+            })
+            .collect();
+        Ok(Self {
+            time_ms: run.end_ms(),
+            run,
+            respawns: Vec::new(),
+            checkpoints_ms: Vec::new(),
+            player: None,
+            build: None,
+            input_states,
+            starting_steer_limit: None,
+        })
     }
 
     pub fn from_replay(replay: &Replay) -> Result<Self> {
