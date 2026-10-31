@@ -2,6 +2,7 @@ use gearbox_engine::consumer::PhysicalTriangle;
 use gearbox_engine::{Session, gameplay};
 use gearbox_search::gate::gates;
 
+use crate::atlas::Atlas;
 use crate::observe::{hypot, surface_class};
 
 pub const CELL: f32 = 2.0;
@@ -43,7 +44,7 @@ const TRAVEL_SIN: [f32; 7] =
     [-0.707_106_8, -0.342_020_14, -0.139_173_1, 0.0, 0.139_173_1, 0.342_020_14, 0.707_106_8];
 const TRAVEL_COS: [f32; 7] =
     [0.707_106_8, 0.939_692_6, 0.990_268_1, 1.0, 0.990_268_1, 0.939_692_6, 0.707_106_8];
-const MIN_NORMAL_Y: f32 = 0.3;
+pub(crate) const MIN_NORMAL_Y: f32 = 0.3;
 const MERGE: f32 = 1.0;
 const MARGIN: f32 = 256.0;
 const MAX_COLUMNS: usize = 2048;
@@ -58,10 +59,11 @@ pub struct Layer {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Ground {
-    origin: [f32; 2],
-    size: [usize; 2],
-    starts: Vec<u32>,
-    layers: Vec<Layer>,
+    pub(crate) origin: [f32; 2],
+    pub(crate) size: [usize; 2],
+    pub(crate) starts: Vec<u32>,
+    pub(crate) layers: Vec<Layer>,
+    pub(crate) atlas: Atlas,
 }
 
 impl Ground {
@@ -75,7 +77,11 @@ impl Ground {
                 high[k] = high[k].max(bounds.max[axis]);
             }
         }
-        Self::from_triangles(&session.static_triangles(), [low.map(|v| v - MARGIN), high.map(|v| v + MARGIN)])
+        let triangles = session.static_triangles();
+        let mut ground =
+            Self::from_triangles(&triangles, [low.map(|v| v - MARGIN), high.map(|v| v + MARGIN)]);
+        ground.atlas = Atlas::build(session, &ground, &triangles);
+        ground
     }
 
     pub fn from_triangles(triangles: &[PhysicalTriangle], [low, high]: [[f32; 2]; 2]) -> Self {
@@ -122,11 +128,14 @@ impl Ground {
             starts[column] = first as u32;
         }
         starts[columns] = layers.len() as u32;
-        Self { origin, size, starts, layers }
+        Self { origin, size, starts, layers, atlas: Atlas::default() }
     }
 
     pub fn bytes(&self) -> usize {
-        size_of::<Self>() + self.starts.len() * size_of::<u32>() + self.layers.len() * size_of::<Layer>()
+        size_of::<Self>()
+            + self.starts.len() * size_of::<u32>()
+            + self.layers.len() * size_of::<Layer>()
+            + self.atlas.bytes()
     }
 
     pub fn column(&self, x: f32, z: f32) -> &[Layer] {
@@ -195,7 +204,7 @@ impl Ground {
     }
 }
 
-fn unit(direction: [f32; 2]) -> [f32; 2] {
+pub(crate) fn unit(direction: [f32; 2]) -> [f32; 2] {
     let length = hypot(direction[0], direction[1]);
     if length > 1e-6 { direction.map(|v| v / length) } else { [0.0, 1.0] }
 }

@@ -6,7 +6,7 @@ use gearbox_search::gate::gates;
 
 use crate::ground::{self, Ground};
 use crate::triggers::{self, Trigger};
-use crate::{dynamics, rays};
+use crate::{atlas, dynamics, rays};
 
 pub const VERSION: u32 = 8;
 pub const AHEAD: usize = 4;
@@ -25,14 +25,29 @@ pub const RAYS_3D_START: usize = TRIGGERS_START + triggers::LEN;
 pub const STATE_START: usize = RAYS_3D_START + rays::EXTRA_LEN;
 pub const STATE_LEN: usize = 15;
 pub const LEN_V9: usize = STATE_START + STATE_LEN;
+pub const EVERY: usize = 32;
+pub const GATE_LEN: usize = 10;
+pub const EVERY_START: usize = LEN;
+pub const IMAGES_START: usize = EVERY_START + (EVERY + 1) * GATE_LEN + 4;
+pub const LEN_V10: usize = IMAGES_START + atlas::LEN;
 
-const _: () = assert!(LEN == 677 && LEN_V9 == 1006);
+const _: () = assert!(LEN == 677 && LEN_V9 == 1006 && LEN_V10 == 13107);
 
 pub fn len(version: u32) -> Option<usize> {
     match version {
         8 => Some(LEN),
         9 => Some(LEN_V9),
+        10 => Some(LEN_V10),
         _ => None,
+    }
+}
+
+pub fn images(version: u32) -> Vec<[usize; 4]> {
+    match version {
+        10 => (0..atlas::SCALES.len())
+            .map(|k| [IMAGES_START + k * atlas::IMAGE_LEN, atlas::SIDE, atlas::SIDE, atlas::CHANNELS])
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -40,12 +55,16 @@ pub fn len(version: u32) -> Option<usize> {
 pub struct Target {
     pub group: u32,
     pub gates: Vec<[f32; 3]>,
+    pub facings: Vec<[f32; 3]>,
+    pub links: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Course {
     pub checkpoints: Vec<Target>,
     pub finishes: Vec<[f32; 3]>,
+    pub finish_facings: Vec<[f32; 3]>,
+    pub finish_links: u32,
     pub laps: u32,
     pub triggers: Vec<Trigger>,
 }
@@ -53,24 +72,41 @@ pub struct Course {
 impl Course {
     pub fn race(session: &Session) -> Result<Self> {
         let mut checkpoints: Vec<Target> = Vec::new();
-        let mut finishes = Vec::new();
+        let mut finish = Target { group: 0, gates: Vec::new(), facings: Vec::new(), links: 0 };
         for gate in gates(session)? {
             let mark = &session.race.rules.waypoints[gate.waypoint as usize];
             if !mark.linked || !mark.flags.counts() {
                 continue;
             }
             let centers = gate.boxes.iter().map(|b| std::array::from_fn(|k| (b.min[k] + b.max[k]) * 0.5));
-            if mark.flags.contains(WaypointFlags::GOAL) {
-                finishes.extend(centers);
-            } else if let Some(target) = checkpoints.iter_mut().find(|target| target.group == mark.group) {
-                target.gates.extend(centers);
+            let target = if mark.flags.contains(WaypointFlags::GOAL) {
+                &mut finish
+            } else if let Some(at) = checkpoints.iter().position(|target| target.group == mark.group) {
+                &mut checkpoints[at]
             } else {
-                checkpoints.push(Target { group: mark.group, gates: centers.collect() });
-            }
+                checkpoints.push(Target {
+                    group: mark.group,
+                    gates: Vec::new(),
+                    facings: Vec::new(),
+                    links: 0,
+                });
+                checkpoints.last_mut().unwrap()
+            };
+            target.gates.extend(centers);
+            let facing = (mark.pose.rot * Vec3::new(0.0, 0.0, 1.0)).to_array();
+            target.facings.resize(target.gates.len(), facing);
+            target.links += 1;
         }
-        ensure!(!finishes.is_empty(), "the map has no finish gate");
+        ensure!(!finish.gates.is_empty(), "the map has no finish gate");
         let laps = if session.race.rules.lap_race { session.race.rules.laps.max(1) } else { 1 };
-        Ok(Self { checkpoints, finishes, laps, triggers: triggers::build(session) })
+        Ok(Self {
+            checkpoints,
+            finishes: finish.gates,
+            finish_facings: finish.facings,
+            finish_links: finish.links,
+            laps,
+            triggers: triggers::build(session),
+        })
     }
 
     pub fn checkpoints_left(&self, session: &Session) -> usize {
@@ -151,6 +187,56 @@ impl Course {
         out[AHEAD * 5 + 6] = laps_left as f32;
         out
     }
+
+    fn every(&self, car: &Car, race: &Race, out: &mut [f32]) {
+        assert_eq!(out.len(), IMAGES_START - EVERY_START);
+        let gate = |gates: &[[f32; 3]], facings: &[[f32; 3]], flag: bool, links: u32| {
+            gates
+                .iter()
+                .zip(facings)
+                .map(|(&point, &facing)| {
+                    let target = car.target(point, 0.0);
+                    let facing = car.to_car(Vec3::from(facing)).to_array();
+                    let mut slot = [0.0; GATE_LEN];
+                    slot[..4].copy_from_slice(&target[..4]);
+                    slot[4..7].copy_from_slice(&facing);
+                    slot[7..].copy_from_slice(&[f32::from(flag), links as f32 / 4.0, 1.0]);
+                    slot
+                })
+                .min_by(order)
+                .unwrap_or_default()
+        };
+        let mut slots: Vec<[f32; GATE_LEN]> = self
+            .checkpoints
+            .iter()
+            .map(|target| gate(&target.gates, &target.facings, passed(race, target.group), target.links))
+            .collect();
+        slots.sort_by(order);
+        let (every, rest) = out.split_at_mut(EVERY * GATE_LEN);
+        for (out, slot) in every.as_chunks_mut::<GATE_LEN>().0.iter_mut().zip(&slots) {
+            *out = *slot;
+        }
+        let left = self.checkpoints.iter().filter(|target| !passed(race, target.group)).count();
+        let laps_left = self.laps_left(race);
+        let open = left == 0 && laps_left > 0;
+        rest[..GATE_LEN].copy_from_slice(&gate(
+            &self.finishes,
+            &self.finish_facings,
+            open,
+            self.finish_links,
+        ));
+        rest[GATE_LEN..].copy_from_slice(&[
+            left as f32 / self.checkpoints.len().max(1) as f32,
+            self.checkpoints.len() as f32 / EVERY as f32,
+            laps_left as f32,
+            self.laps as f32,
+        ]);
+    }
+}
+
+fn order(a: &[f32; GATE_LEN], b: &[f32; GATE_LEN]) -> std::cmp::Ordering {
+    a[3].total_cmp(&b[3])
+        .then_with(|| a.iter().zip(b).fold(std::cmp::Ordering::Equal, |o, (x, y)| o.then(x.total_cmp(y))))
 }
 
 fn entries(race: &Race, run: u32) -> impl Iterator<Item = &gearbox_engine::race::Entry> {
@@ -262,7 +348,7 @@ pub(crate) fn surface_class(material: u8) -> usize {
 }
 
 pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f32]) {
-    assert!(out.len() == LEN || out.len() == LEN_V9, "observation length");
+    assert!(matches!(out.len(), LEN | LEN_V9 | LEN_V10), "observation length");
     out.fill(0.0);
     let (out, extra) = out.split_at_mut(LEN);
     let car = Car::read(session);
@@ -313,8 +399,19 @@ pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f
     out[TARGETS_START..GROUND_START].copy_from_slice(&course.features(&car, &session.race));
     let forward = car.rotation * Vec3::new(0.0, 0.0, 1.0);
     ground.ahead(car.position, [forward.x, forward.z], &mut out[GROUND_START..RAYS_START]);
-    if extra.is_empty() {
+    if extra.len() != LEN_V9 - LEN {
         rays::read(session, &mut out[RAYS_START..], &mut []);
+        if !extra.is_empty() {
+            out[12..CAR_LEN].fill(0.0);
+            out[12 + session.config.model(vehicle.model_choice).car as usize] = 1.0;
+            let (every, images) = extra.split_at_mut(IMAGES_START - EVERY_START);
+            course.every(&car, &session.race, every);
+            let mut passed_groups = [false; atlas::GROUPS];
+            for (seen, &group) in passed_groups.iter_mut().zip(ground.atlas.groups()) {
+                *seen = passed(&session.race, group);
+            }
+            ground.atlas.read(ground, car.position, [forward.x, forward.z], &passed_groups, images);
+        }
         return;
     }
     let (travel, extra) = extra.split_at_mut(TRIGGERS_START - LEN);
@@ -423,13 +520,20 @@ mod tests {
         }
     }
 
+    fn target(group: u32, gates: Vec<[f32; 3]>) -> Target {
+        let facings = (0..gates.len()).map(|k| [k as f32, 0.0, 1.0]).collect();
+        Target { group, links: gates.len() as u32, gates, facings }
+    }
+
     fn course(laps: u32) -> Course {
         Course {
             checkpoints: vec![
-                Target { group: 0, gates: vec![[100.0, 0.0, 0.0]] },
-                Target { group: 1, gates: vec![[0.0, 0.0, 10.0], [0.0, 0.0, -200.0]] },
+                target(0, vec![[100.0, 0.0, 0.0]]),
+                target(1, vec![[0.0, 0.0, 10.0], [0.0, 0.0, -200.0]]),
             ],
             finishes: vec![[0.0, 0.0, 20.0]],
+            finish_facings: vec![[0.0, 0.0, 1.0]],
+            finish_links: 1,
             laps,
             triggers: Vec::new(),
         }
@@ -514,7 +618,7 @@ mod tests {
     fn only_the_four_nearest_groups_fill_the_target_slots() {
         let mut course = course(1);
         for (group, distance) in [(2, 2.0), (3, 30.0), (4, 5.0), (5, 1.0)] {
-            course.checkpoints.push(Target { group, gates: vec![[0.0, 0.0, distance]] });
+            course.checkpoints.push(target(group, vec![[0.0, 0.0, distance]]));
         }
         let features = course.features(&car(), &race(1));
         for (slot, distance) in features[..20].as_chunks::<5>().0.iter().zip([1.0_f32, 2.0, 5.0, 10.0]) {
@@ -545,6 +649,43 @@ mod tests {
     }
 
     #[test]
+    fn every_checkpoint_shows_in_distance_order_whatever_order_the_map_lists_them() {
+        let mut course = course(1);
+        for (group, at) in
+            [(2, [0.0, 0.0, 2.0]), (3, [-30.0, 0.0, 0.0]), (4, [5.0, 3.0, 0.0]), (5, [0.0, 0.0, -2.0])]
+        {
+            course.checkpoints.push(target(group, vec![at, [at[0], at[1], at[2] + 500.0]]));
+        }
+        let mut race = race(1);
+        race.waypoint(0, None, 1, 10);
+        let every = |course: &Course| {
+            let mut out = vec![0.0; IMAGES_START - EVERY_START];
+            course.every(&car(), &race, &mut out);
+            out
+        };
+        let seen = every(&course);
+        let slots = seen.as_chunks::<GATE_LEN>().0;
+        assert_eq!(slots[..6].iter().map(|slot| slot[3]).collect::<Vec<_>>(), {
+            let mut d = [2.0_f32, 2.0, 5.83, 10.0, 30.0, 100.0].map(|d| libm::log1pf(d) / 5.0).to_vec();
+            d[2] = libm::log1pf(34.0_f32.sqrt()) / 5.0;
+            d
+        });
+        assert_eq!(&slots[3][..], &[0.0, 0.0, 1.0, libm::log1pf(10.0) / 5.0, 0.0, 0.0, 1.0, 1.0, 0.5, 1.0]);
+        assert!(slots[6..EVERY].iter().all(|slot| slot == &[0.0; GATE_LEN]));
+        assert_eq!(&seen[(EVERY + 1) * GATE_LEN..], &[5.0 / 6.0, 6.0 / 32.0, 1.0, 1.0]);
+        for turn in 1..course.checkpoints.len() {
+            let mut shuffled = course.clone();
+            shuffled.checkpoints.rotate_left(turn);
+            shuffled.checkpoints.reverse();
+            for target in &mut shuffled.checkpoints {
+                target.gates.reverse();
+                target.facings.reverse();
+            }
+            assert_eq!(every(&shuffled), seen);
+        }
+    }
+
+    #[test]
     fn heading_rotates_targets_and_motion_into_the_car_frame() {
         let car = Car { rotation: Mat3::from_array([0.0, 0.0, 1.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0]), ..car() };
         assert_eq!(car.to_car(Vec3::new(50.0, 0.0, 0.0)).to_array(), [0.0, 0.0, 50.0]);
@@ -566,12 +707,12 @@ mod tests {
         let (record, start) = open("GEARBOX_TEST")?;
         let course = Course::race(&start)?;
         let ground = Ground::build(&start);
-        let drive = |watch: bool| {
+        let drive = |watch: usize| {
             let mut session = start.clone();
-            let mut out = vec![0.0; LEN_V9];
+            let mut out = vec![0.0; watch];
             let mut seen = Vec::new();
             for tick in 0..record.run.controls.len() + 100 {
-                if watch {
+                if watch > 0 {
                     observe(&session, &course, &ground, &mut out);
                     seen.push(out.iter().map(|v| v.to_bits()).collect::<Vec<_>>());
                 }
@@ -583,12 +724,17 @@ mod tests {
             let state = [body.pos, body.vel, body.ang_vel].map(|v| v.to_array().map(f32::to_bits));
             (session.race().and_then(|r| r.finish), state, seen)
         };
-        let (finish, state, seen) = drive(true);
-        let (blind, blind_state, _) = drive(false);
-        assert!(finish.is_some());
-        assert_eq!(finish, blind);
-        assert_eq!(state, blind_state);
-        assert_eq!(seen, drive(true).2);
+        let (blind, blind_state, _) = drive(0);
+        assert!(blind.is_some());
+        for len in [LEN_V9, LEN_V10] {
+            let (finish, state, seen) = drive(len);
+            assert_eq!(finish, blind);
+            assert_eq!(state, blind_state);
+            assert_eq!(seen, drive(len).2);
+            if len == LEN_V10 {
+                assert_eq!(seen.iter().map(|o| o[..LEN].to_vec()).collect::<Vec<_>>(), drive(LEN).2);
+            }
+        }
         Ok(())
     }
 
