@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use gearbox_engine::consumer::PhysicalTriangle;
 use gearbox_engine::{Session, gameplay};
 use gearbox_search::gate::gates;
@@ -63,7 +65,7 @@ pub struct Ground {
     pub(crate) size: [usize; 2],
     pub(crate) starts: Vec<u32>,
     pub(crate) layers: Vec<Layer>,
-    pub(crate) atlas: Atlas,
+    pub(crate) atlas: OnceLock<Atlas>,
 }
 
 impl Ground {
@@ -77,11 +79,11 @@ impl Ground {
                 high[k] = high[k].max(bounds.max[axis]);
             }
         }
-        let triangles = session.static_triangles();
-        let mut ground =
-            Self::from_triangles(&triangles, [low.map(|v| v - MARGIN), high.map(|v| v + MARGIN)]);
-        ground.atlas = Atlas::build(session, &ground, &triangles);
-        ground
+        Self::from_triangles(&session.static_triangles(), [low.map(|v| v - MARGIN), high.map(|v| v + MARGIN)])
+    }
+
+    pub(crate) fn atlas(&self, session: &Session) -> &Atlas {
+        self.atlas.get_or_init(|| Atlas::build(session, self, &session.static_triangles()))
     }
 
     pub fn from_triangles(triangles: &[PhysicalTriangle], [low, high]: [[f32; 2]; 2]) -> Self {
@@ -128,14 +130,14 @@ impl Ground {
             starts[column] = first as u32;
         }
         starts[columns] = layers.len() as u32;
-        Self { origin, size, starts, layers, atlas: Atlas::default() }
+        Self { origin, size, starts, layers, atlas: OnceLock::new() }
     }
 
     pub fn bytes(&self) -> usize {
         size_of::<Self>()
             + self.starts.len() * size_of::<u32>()
             + self.layers.len() * size_of::<Layer>()
-            + self.atlas.bytes()
+            + self.atlas.get().map_or(0, Atlas::bytes)
     }
 
     pub fn column(&self, x: f32, z: f32) -> &[Layer] {

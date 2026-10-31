@@ -407,11 +407,12 @@ pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f
             driven[session.config.model(vehicle.model_choice).car as usize] = 1.0;
             let (every, images) = extra.split_at_mut(IMAGES_START - EVERY_START);
             course.every(&car, &session.race, every);
+            let map = ground.atlas(session);
             let mut passed_groups = [false; atlas::GROUPS];
-            for (seen, &group) in passed_groups.iter_mut().zip(ground.atlas.groups()) {
+            for (seen, &group) in passed_groups.iter_mut().zip(map.groups()) {
                 *seen = passed(&session.race, group);
             }
-            ground.atlas.read(ground, car.position, [forward.x, forward.z], &passed_groups, images);
+            map.read(ground, car.position, [forward.x, forward.z], &passed_groups, images);
         }
         return;
     }
