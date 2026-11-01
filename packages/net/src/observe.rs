@@ -344,7 +344,7 @@ pub(crate) fn hypot(x: f32, y: f32) -> f32 {
     (x * x + y * y).sqrt() as f32
 }
 
-pub(crate) fn surface_class(material: u8) -> usize {
+pub fn surface_class(material: u8) -> usize {
     match material {
         surface::TURBO
         | surface::TURBO_2

@@ -408,6 +408,14 @@ impl Net {
         }
     }
 
+    /// A planning head's mixture components and the (4, hold) weights its hold logits take from the held controls.
+    pub fn plan_head(&self) -> Option<(u32, &[f32])> {
+        match &self.head {
+            Head::Bins { .. } => None,
+            Head::Plan { components, given, .. } => Some((*components, given)),
+        }
+    }
+
     pub fn reads_chart(&self) -> bool {
         self.graph.as_ref().is_some_and(Graph::reads_chart)
     }
@@ -425,12 +433,16 @@ impl Net {
     }
 
     pub fn plan_with(&self, observation: &[f32], memory: Option<&Memory>) -> Plan {
+        self.plan_from(&self.outputs_with(observation, memory))
+    }
+
+    /// The plan for outputs already computed (`outputs_with`), so a caller that keeps them evaluates once.
+    pub fn plan_from(&self, x: &[f32]) -> Plan {
         let Head::Plan { hold, components, given } = &self.head else {
-            let verdict = self.eval_with(observation, memory);
+            let verdict = self.verdict(x);
             let period = self.period().unwrap_or(PERIOD) as usize;
             return Plan { controls: vec![verdict.controls(); period], respawn: verdict.respawn() };
         };
-        let x = self.outputs_with(observation, memory);
         let (h, c) = (*hold as usize, *components as usize);
         let steer = x[h + c + argmax(&x[h..h + c])].clamp(-1.0, 1.0);
         let pedals = h + 3 * c;
@@ -456,7 +468,10 @@ impl Net {
 
     pub fn eval_with(&self, observation: &[f32], memory: Option<&Memory>) -> Verdict {
         assert!(self.period().is_some(), "a planning network has no single verdict");
-        let x = self.outputs_with(observation, memory);
+        self.verdict(&self.outputs_with(observation, memory))
+    }
+
+    fn verdict(&self, x: &[f32]) -> Verdict {
         Verdict {
             steer_logits: std::array::from_fn(|i| x[i]),
             gas: x[STEER.len()],
