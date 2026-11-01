@@ -315,10 +315,16 @@ impl Cloud {
 
     /// Fills `out` (n dots of `FEATURES`) for the car: gates first, then surfaces shell by shell.
     pub fn read(&self, session: &Session, course: &Course, car: &Car, out: &mut [f32]) {
+        self.read_placed(session, course, car, out, &mut []);
+    }
+
+    /// `read`, also writing each written dot's exact world position to `placed` (as many as it holds), for viewers:
+    /// the features keep a dot's offset only to the log-scaled 1/32 steps of `squash`.
+    pub fn read_placed(&self, session: &Session, course: &Course, car: &Car, out: &mut [f32], placed: &mut [[f32; 3]]) {
         assert_eq!(out.len() % FEATURES, 0);
         let n = out.len() / FEATURES;
         let slots = out.as_chunks_mut::<FEATURES>().0;
-        let gates = read_gates(course, &session.race, car, &mut slots[..n / GATE_SHARE]);
+        let gates = read_gates(course, &session.race, car, &mut slots[..n / GATE_SHARE], placed);
         let surfaces = n - gates;
         let p = Vec3::from(car.position);
         SCRATCH.with_borrow_mut(|Scratch { shells, spare, tiles }| {
@@ -371,8 +377,11 @@ impl Cloud {
             }
             let mut at = gates;
             for (level, found) in shells.iter().enumerate() {
-                for (slot, dot) in slots[at..].iter_mut().zip(&found[..chosen[level]]) {
+                for (i, (slot, dot)) in slots[at..].iter_mut().zip(&found[..chosen[level]]).enumerate() {
                     write(slot, car, dot.position, dot.normal() * (1.0 / 127.0), dot.class(), 0.0);
+                    if let Some(p) = placed.get_mut(at + i) {
+                        *p = dot.position;
+                    }
                 }
                 at += chosen[level];
             }
@@ -451,7 +460,7 @@ fn choose(candidates: &mut [Dot], budget: usize, spare: &mut Vec<(u32, Dot)>) ->
     budget
 }
 
-fn read_gates(course: &Course, race: &Race, car: &Car, slots: &mut [[f32; FEATURES]]) -> usize {
+fn read_gates(course: &Course, race: &Race, car: &Car, slots: &mut [[f32; FEATURES]], placed: &mut [[f32; 3]]) -> usize {
     let mut gates: Vec<(f32, [f32; 3], [f32; 3], u8, bool)> = Vec::new();
     let distance = |point: [f32; 3]| (0..3).map(|k| (point[k] - car.position[k]).powi(2)).sum::<f32>();
     for target in &course.checkpoints {
@@ -475,8 +484,11 @@ fn read_gates(course: &Course, race: &Race, car: &Car, slots: &mut [[f32; FEATUR
         gates.select_nth_unstable_by(count - 1, order);
     }
     gates[..count].sort_by(order);
-    for (slot, &(_, point, facing, class, flag)) in slots.iter_mut().zip(&gates[..count]) {
+    for (i, (slot, &(_, point, facing, class, flag))) in slots.iter_mut().zip(&gates[..count]).enumerate() {
         write(slot, car, point, Vec3::from(facing), class, f32::from(flag));
+        if let Some(p) = placed.get_mut(i) {
+            *p = point;
+        }
     }
     count
 }
