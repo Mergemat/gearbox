@@ -20,6 +20,14 @@ impl Session {
         }
         triangles
     }
+
+    /// The collision triangles of one shared shape in its own frame, as every item placing it shares them.
+    pub fn shape_triangles(&self, shape: u32) -> Vec<PhysicalTriangle> {
+        let mut triangles = Vec::new();
+        let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0];
+        leaves(&self.world.statics, ShapeId::Shared(SharedShapeId(shape)), identity, 0, &mut triangles);
+        triangles
+    }
 }
 
 fn apply(transform: [f32; 12], point: [f32; 3]) -> [f32; 3] {
