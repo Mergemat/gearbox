@@ -8,6 +8,7 @@ use crate::atlas::Atlas;
 use crate::chart::Chart;
 use crate::cloud::Cloud;
 use crate::observe::{hypot, surface_class};
+use crate::tokens::Tokens;
 
 pub const CELL: f32 = 2.0;
 pub const LAYERS: usize = 4;
@@ -70,6 +71,7 @@ pub struct Ground {
     pub(crate) atlas: OnceLock<Atlas>,
     pub(crate) chart: OnceLock<Chart>,
     pub(crate) cloud: OnceLock<Cloud>,
+    pub(crate) tokens: OnceLock<Tokens>,
 }
 
 impl Ground {
@@ -96,6 +98,14 @@ impl Ground {
 
     pub fn cloud(&self, session: &Session) -> &Cloud {
         self.cloud.get_or_init(|| Cloud::build(session, self))
+    }
+
+    pub fn tokens(&self, session: &Session) -> &Tokens {
+        self.tokens.get_or_init(|| Tokens::build(session))
+    }
+
+    pub fn tokened(&self) -> Option<&Tokens> {
+        self.tokens.get()
     }
 
     /// The dots if `cloud` or `decode` made them.
@@ -160,6 +170,7 @@ impl Ground {
             atlas: OnceLock::new(),
             chart: OnceLock::new(),
             cloud: OnceLock::new(),
+            tokens: OnceLock::new(),
         }
     }
 
@@ -175,12 +186,13 @@ impl Ground {
             self.atlas.get(),
             self.chart.get(),
             self.cloud.get(),
+            self.tokens.get(),
         );
         postcard::to_stdvec(&parts).expect("a ground serializes")
     }
 
     pub fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        let (origin, size, counts, layers, atlas, chart, cloud): (
+        let (origin, size, counts, layers, atlas, chart, cloud, tokens): (
             _,
             _,
             Vec<u8>,
@@ -188,6 +200,7 @@ impl Ground {
             Option<Atlas>,
             Option<Chart>,
             Option<Cloud>,
+            Option<Tokens>,
         ) = postcard::from_bytes(bytes)?;
         let mut starts = Vec::with_capacity(counts.len() + 1);
         starts.push(0);
@@ -202,6 +215,7 @@ impl Ground {
             atlas: OnceLock::new(),
             chart: OnceLock::new(),
             cloud: OnceLock::new(),
+            tokens: OnceLock::new(),
         };
         if let Some(atlas) = atlas {
             let _ = ground.atlas.set(atlas);
@@ -211,6 +225,9 @@ impl Ground {
         }
         if let Some(cloud) = cloud {
             let _ = ground.cloud.set(cloud);
+        }
+        if let Some(tokens) = tokens {
+            let _ = ground.tokens.set(tokens);
         }
         Ok(ground)
     }
@@ -222,6 +239,7 @@ impl Ground {
             + self.atlas.get().map_or(0, Atlas::bytes)
             + self.chart.get().map_or(0, |chart| chart.image.len() * 4)
             + self.cloud.get().map_or(0, Cloud::bytes)
+            + self.tokens.get().map_or(0, Tokens::bytes)
     }
 
     pub fn column(&self, x: f32, z: f32) -> &[Layer] {

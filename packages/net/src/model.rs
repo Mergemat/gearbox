@@ -193,7 +193,7 @@ impl Net {
         );
         let version = r.word()?;
         let expected = observe::len(version).with_context(|| {
-            format!("network was trained on observation version {version}, this build has 8 to 12")
+            format!("network was trained on observation version {version}, this build has 8 to 13")
         })?;
         let [len] = r.words()?;
         ensure!(
@@ -424,7 +424,18 @@ impl Net {
         self.graph.as_ref().filter(|graph| graph.reads_chart()).map(|graph| graph.prepare(chart))
     }
 
+    pub fn reads_tokens(&self) -> bool {
+        self.graph.as_ref().is_some_and(Graph::reads_tokens)
+    }
+
+    pub fn prepare_tokens(&self, tokens: std::sync::Arc<crate::tokens::Tokens>) -> Option<Memory> {
+        self.graph.as_ref().filter(|graph| graph.reads_tokens()).map(|graph| graph.prepare_tokens(tokens))
+    }
+
     pub fn memory(&self, ground: &Ground, session: &Session) -> Option<Memory> {
+        if self.reads_tokens() {
+            return self.prepare_tokens(std::sync::Arc::new(ground.tokens(session).clone()));
+        }
         self.reads_chart().then(|| self.prepare(ground.chart(session))).flatten()
     }
 

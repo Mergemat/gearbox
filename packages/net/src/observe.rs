@@ -37,6 +37,8 @@ pub const IMAGES_START_V11: usize = POSE_START + chart::POSE_LEN;
 pub const LEN_V11: usize = IMAGES_START_V11 + atlas::LEN;
 pub const DOTS_START: usize = POSE_START;
 pub const LEN_V12: usize = DOTS_START + cloud::DOTS * cloud::FEATURES;
+pub const CAR_POSE_START: usize = POSE_START;
+pub const LEN_V13: usize = CAR_POSE_START + 12;
 
 const _: () = assert!(LEN == 677 && LEN_V9 == 1006 && LEN_V10 == 13111 && LEN_V11 == 17919);
 
@@ -47,6 +49,7 @@ pub fn len(version: u32) -> Option<usize> {
         10 => Some(LEN_V10),
         11 => Some(LEN_V11),
         12 => Some(LEN_V12),
+        13 => Some(LEN_V13),
         _ => None,
     }
 }
@@ -59,7 +62,7 @@ pub fn len_dots(version: u32, dots: usize) -> Option<usize> {
 /// How many dots an observation of `len` values holds, if it is a v12 one (any count of at least one dot).
 pub fn dots(len: usize) -> Option<usize> {
     let rest = len.checked_sub(DOTS_START)?;
-    (rest > 0 && rest % cloud::FEATURES == 0 && len != LEN_V10 && len != LEN_V11)
+    (rest > 0 && rest % cloud::FEATURES == 0 && len != LEN_V10 && len != LEN_V11 && len != LEN_V13)
         .then_some(rest / cloud::FEATURES)
 }
 
@@ -383,7 +386,10 @@ pub fn surface_class(material: u8) -> usize {
 
 pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f32]) {
     let dots = dots(out.len());
-    assert!(matches!(out.len(), LEN | LEN_V9 | LEN_V10 | LEN_V11) || dots.is_some(), "observation length");
+    assert!(
+        matches!(out.len(), LEN | LEN_V9 | LEN_V10 | LEN_V11 | LEN_V13) || dots.is_some(),
+        "observation length"
+    );
     out.fill(0.0);
     let (out, extra) = out.split_at_mut(LEN);
     let car = Car::read(session);
@@ -439,6 +445,15 @@ pub fn observe(session: &Session, course: &Course, ground: &Ground, out: &mut [f
         if !extra.is_empty() {
             let (driven, extra) = extra.split_at_mut(EVERY_START - DRIVEN_START);
             driven[session.config.model(vehicle.model_choice).car as usize] = 1.0;
+            if extra.len() == LEN_V13 - EVERY_START {
+                let (every, pose) = extra.split_at_mut(CAR_POSE_START - EVERY_START);
+                course.every(&car, &session.race, every);
+                pose[..3].copy_from_slice(&car.position);
+                for r in 0..3 {
+                    pose[3 + 3 * r..6 + 3 * r].copy_from_slice(&car.rotation.rows[r].to_array());
+                }
+                return;
+            }
             if dots.is_some() {
                 let (every, dots) = extra.split_at_mut(DOTS_START - EVERY_START);
                 course.every(&car, &session.race, every);
