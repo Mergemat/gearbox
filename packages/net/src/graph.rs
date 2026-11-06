@@ -60,6 +60,12 @@ struct Cross {
     relative_values: Dense,
 }
 
+struct CrossGeometry {
+    turns: Vec<[f32; 2]>,
+    poses: Vec<[f32; POSE]>,
+    shapes: Vec<usize>,
+}
+
 #[derive(Clone, Debug)]
 struct Embed {
     column: usize,
@@ -410,6 +416,7 @@ impl Program {
 
     fn run(&self, observation: &[f32], map: &Map<'_>, memory: Option<&Memory>) -> Vec<Vec<f32>> {
         let mut buffers: Vec<Vec<f32>> = Vec::with_capacity(self.ops.len());
+        let mut cross_geometry = None;
         for (op, shape) in &self.ops {
             let size = shape.iter().product::<usize>();
             let value = match op {
@@ -527,7 +534,12 @@ impl Program {
                 }
                 Op::Cross(c) => match memory {
                     Some(memory) if memory.tokens.is_some() => {
-                        c.apply(&buffers[c.query], observation, memory)
+                        let key = (c.pose, c.fine, c.coarse, c.relative_keys.outputs / c.heads / 2);
+                        if cross_geometry.as_ref().is_none_or(|(cached, _)| *cached != key) {
+                            cross_geometry =
+                                Some((key, c.geometry(observation, memory.tokens.as_deref().unwrap())));
+                        }
+                        c.apply(&buffers[c.query], &cross_geometry.as_ref().unwrap().1, memory)
                     }
                     _ => vec![0.0; size],
                 },
@@ -643,14 +655,8 @@ fn pieces(vocab: &[u64], tokens: &Tokens) -> Vec<f32> {
 }
 
 impl Cross {
-    fn apply(&self, query: &[f32], observation: &[f32], memory: &Memory) -> Vec<f32> {
-        let tokens = memory.tokens.as_deref().expect("pieces");
-        let keys = &memory.buffers[self.keys];
-        let values = &memory.buffers[self.values];
-        let width = self.relative_keys.outputs;
-        let (heads, dim) = (self.heads, width / self.heads);
-        let pairs = dim / 2;
-        let scale = 1.0 / (dim as f32).sqrt();
+    fn geometry(&self, observation: &[f32], tokens: &Tokens) -> CrossGeometry {
+        let pairs = self.relative_keys.outputs / self.heads / 2;
         let pose = &observation[self.pose..self.pose + 12];
         let position = [pose[0], pose[1], pose[2]];
         let rotation = Mat3 {
@@ -662,19 +668,7 @@ impl Cross {
         };
         let mut selected = Vec::new();
         tokens.select(position, self.fine, self.coarse, &mut selected);
-        if selected.is_empty() {
-            return vec![0.0; width];
-        }
-        let mut seen = vec![0.0; heads * POSE];
-        let weights = &self.relative_keys.weights;
-        for h in 0..heads {
-            for f in 0..POSE {
-                seen[h * POSE + f] =
-                    (0..dim).map(|d| query[h * dim + d] * weights[f * width + h * dim + d]).sum::<f32>();
-            }
-        }
         let n = selected.len();
-        let mut scores = vec![0.0; heads * n];
         let mut turns = vec![[0.0f32; 2]; n * pairs];
         let mut poses = vec![[0.0f32; POSE]; n];
         let mut shapes = vec![0usize; n];
@@ -689,6 +683,32 @@ impl Cross {
                 let (sin, cos) = tokens::angle(&offset, j).sin_cos();
                 turns[t * pairs + j] = [cos, sin];
             }
+        }
+        CrossGeometry { turns, poses, shapes }
+    }
+
+    fn apply(&self, query: &[f32], geometry: &CrossGeometry, memory: &Memory) -> Vec<f32> {
+        let CrossGeometry { turns, poses, shapes } = geometry;
+        let keys = &memory.buffers[self.keys];
+        let values = &memory.buffers[self.values];
+        let width = self.relative_keys.outputs;
+        let (heads, dim) = (self.heads, width / self.heads);
+        let pairs = dim / 2;
+        let scale = 1.0 / (dim as f32).sqrt();
+        let n = shapes.len();
+        if n == 0 {
+            return vec![0.0; width];
+        }
+        let mut seen = vec![0.0; heads * POSE];
+        let weights = &self.relative_keys.weights;
+        for h in 0..heads {
+            for f in 0..POSE {
+                seen[h * POSE + f] =
+                    (0..dim).map(|d| query[h * dim + d] * weights[f * width + h * dim + d]).sum::<f32>();
+            }
+        }
+        let mut scores = vec![0.0; heads * n];
+        for (t, &s) in shapes.iter().enumerate() {
             let key = &keys[s * width..][..width];
             for h in 0..heads {
                 let q = &query[h * dim..][..dim];
@@ -699,7 +719,7 @@ impl Cross {
                     let (q0, q1, k0, k1) = (q[2 * j], q[2 * j + 1], k[2 * j], k[2 * j + 1]);
                     sum += cos * (q0 * k0 + q1 * k1) + sin * (q1 * k0 - q0 * k1);
                 }
-                sum += (0..POSE).map(|f| seen[h * POSE + f] * psi[f]).sum::<f32>();
+                sum += (0..POSE).map(|f| seen[h * POSE + f] * poses[t][f]).sum::<f32>();
                 scores[h * n + t] = sum * scale;
             }
         }
@@ -735,5 +755,115 @@ impl Cross {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tokens::Grid;
+
+    #[test]
+    fn shared_geometry_matches_independent_layers_across_observations_maps_and_budgets() {
+        let width = 8;
+        let dense = |seed: usize| Dense {
+            outputs: width,
+            relu: false,
+            weights: (0..POSE * width).map(|i| ((i + seed) % 17) as f32 / 19.0 - 0.4).collect(),
+            bias: vec![0.1; width],
+        };
+        let layers: Vec<_> =
+            [(0, 3, 1, 2), (0, 3, 1, 2), (12, 3, 1, 2), (12, 1, 1, 2), (12, 1, 0, 2), (12, 1, 0, 1)]
+                .into_iter()
+                .enumerate()
+                .map(|(query, (pose, fine, coarse, heads))| Cross {
+                    query,
+                    keys: 0,
+                    values: 1,
+                    heads,
+                    pose,
+                    fine,
+                    coarse,
+                    relative_keys: dense(query),
+                    relative_values: dense(query + 3),
+                })
+                .collect();
+        let mut ops = vec![(Op::Input { offset: 24 }, [1, 1, width])];
+        ops.extend(layers.iter().cloned().map(|c| (Op::Cross(Box::new(c)), [1, 1, width])));
+        let program = Program { ops };
+        let tokens = Tokens {
+            pieces: (0..4)
+                .map(|i| [i as f32, 16.0 + 32.0 * i as f32, 0.0, 16.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0])
+                .collect(),
+            fine: 3,
+            drivable: 3,
+            grid: Grid { origin: [0.0; 2], size: [3, 1], cell: 32.0 },
+            coarse_grid: Grid { origin: [0.0; 2], size: [1, 1], cell: 128.0 },
+            drivable_cells: vec![0, 1, 2, 3],
+            other_cells: vec![0; 4],
+            coarse_cells: vec![0, 1],
+            ..Tokens::default()
+        };
+        let map = Map { chart: None, tokens: None };
+        let mut previous = None;
+        for shift in [0.0, 7.0] {
+            let mut tokens = tokens.clone();
+            for piece in &mut tokens.pieces {
+                piece[2] += shift;
+            }
+            let memory = Memory {
+                buffers: (0..2)
+                    .map(|j| (0..4 * width).map(|i| (i + j) as f32 / 23.0 - 0.5).collect())
+                    .collect(),
+                tokens: Some(Arc::new(tokens)),
+            };
+            for x in [16.0, 48.0, 10000.0] {
+                let mut observation = vec![
+                    x,
+                    0.0,
+                    16.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    x + 32.0,
+                    0.0,
+                    16.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    -1.0,
+                    0.0,
+                    0.0,
+                ];
+                observation.extend((0..width).map(|i| i as f32 / 7.0));
+                let got = program.run(&observation, &map, Some(&memory));
+                let mut expected = observation[24..].to_vec();
+                for (i, layer) in layers.iter().enumerate() {
+                    let geometry = layer.geometry(&observation, memory.tokens.as_deref().unwrap());
+                    expected = layer.apply(&expected, &geometry, &memory);
+                    assert_eq!(
+                        got[i + 1].iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+                        expected.iter().map(|x| x.to_bits()).collect::<Vec<_>>()
+                    );
+                }
+                if x < 10000.0 {
+                    assert!(expected.iter().all(|v| v.is_finite()));
+                    assert!(expected.iter().any(|v| *v != 0.0));
+                    assert_ne!(previous.as_ref(), Some(&expected));
+                    previous = Some(expected);
+                } else {
+                    assert_eq!(expected, vec![0.0; width]);
+                }
+            }
+        }
     }
 }
