@@ -160,7 +160,7 @@ fn main() -> Result<()> {
     println!("WR replays to {wr_ms} ms; splits {:?}", crossings.iter().map(|c| c.1).collect::<Vec<_>>());
 
     let mut n = start.native()?;
-    let gates = gearbox_search::gate::gates(&mut n)?;
+    let gates = gearbox_search::gate::gates(&n)?;
     let goal_list: Vec<Goal> = crossings
         .iter()
         .enumerate()

@@ -63,8 +63,8 @@ fn main() -> Result<()> {
         }
     }
     let (wr_ms, wr_tick, waypoint) = cp.context("the record never crosses a checkpoint")?;
-    let mut m = start.native()?;
-    let gates = gearbox_search::gate::gates(&mut m)?;
+    let m = start.native()?;
+    let gates = gearbox_search::gate::gates(&m)?;
     let gate = gates.iter().find(|g| g.waypoint == waypoint).cloned().context("crossed gate exists")?;
     let world = m.static_triangles();
     let dry = |t: &&gearbox_engine::consumer::PhysicalTriangle| t.surface != 13;

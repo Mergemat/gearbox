@@ -1,7 +1,10 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
-use gearbox_engine::{Controls, Session, race::replay::{InputBits, InputState}};
+use gearbox_engine::{
+    Controls, Session,
+    race::replay::{InputBits, InputState},
+};
 use gearbox_gbx::inputs::{DecodedInputs, EventKind};
 use gearbox_gbx::{Ghost, Map, Replay};
 use gearbox_packs::packs::PackSet;

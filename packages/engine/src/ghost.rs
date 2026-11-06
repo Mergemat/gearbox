@@ -43,7 +43,7 @@ impl Playback {
                         return None;
                     }
                     let mut contact = track.sample(ms, local)?;
-                    contact.velocity = contact.velocity * clone.speed;
+                    contact.velocity *= clone.speed;
                     Some(contact)
                 })
             })

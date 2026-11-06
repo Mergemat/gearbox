@@ -320,7 +320,14 @@ impl Cloud {
 
     /// `read`, also writing each written dot's exact world position to `placed` (as many as it holds), for viewers:
     /// the features keep a dot's offset only to the log-scaled 1/32 steps of `squash`.
-    pub fn read_placed(&self, session: &Session, course: &Course, car: &Car, out: &mut [f32], placed: &mut [[f32; 3]]) {
+    pub fn read_placed(
+        &self,
+        session: &Session,
+        course: &Course,
+        car: &Car,
+        out: &mut [f32],
+        placed: &mut [[f32; 3]],
+    ) {
         assert_eq!(out.len() % FEATURES, 0);
         let n = out.len() / FEATURES;
         let slots = out.as_chunks_mut::<FEATURES>().0;
@@ -460,7 +467,13 @@ fn choose(candidates: &mut [Dot], budget: usize, spare: &mut Vec<(u32, Dot)>) ->
     budget
 }
 
-fn read_gates(course: &Course, race: &Race, car: &Car, slots: &mut [[f32; FEATURES]], placed: &mut [[f32; 3]]) -> usize {
+fn read_gates(
+    course: &Course,
+    race: &Race,
+    car: &Car,
+    slots: &mut [[f32; FEATURES]],
+    placed: &mut [[f32; 3]],
+) -> usize {
     let mut gates: Vec<(f32, [f32; 3], [f32; 3], u8, bool)> = Vec::new();
     let distance = |point: [f32; 3]| (0..3).map(|k| (point[k] - car.position[k]).powi(2)).sum::<f32>();
     for target in &course.checkpoints {

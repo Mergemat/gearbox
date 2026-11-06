@@ -144,7 +144,7 @@ pub fn main(args: Vec<String>) -> Result<()> {
         | Target::GateSpeed { index, waypoint, time_penalty } => {
             let mut n = origin.native()?;
             let gate = if let Some(wp) = waypoint {
-                gearbox_search::gate::gates(&mut n)?
+                gearbox_search::gate::gates(&n)?
                     .into_iter()
                     .find(|g| g.waypoint == wp)
                     .ok_or_else(|| anyhow::anyhow!("unknown waypoint ID {wp}"))?
@@ -233,8 +233,10 @@ pub fn main(args: Vec<String>) -> Result<()> {
             max_span_ticks: args.span_ticks,
             max_shift_ticks: args.shift_ticks,
             max_steer_delta: args.steer_delta,
-            constraints: gearbox_search::mutation::Constraints { hold: args.hold_ticks, ..Default::default() },
-            ..Default::default()
+            constraints: gearbox_search::mutation::Constraints {
+                hold: args.hold_ticks,
+                ..Default::default()
+            },
         },
     };
     ensure!((1..=MAX_THREADS).contains(&config.threads), "threads must be in 1..={MAX_THREADS}");

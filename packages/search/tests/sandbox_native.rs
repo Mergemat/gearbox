@@ -240,7 +240,7 @@ fn ordered_mixed_goals_and_receding_prefix_progress_use_real_trajectories() {
         receding.before.score
     );
     assert!(receding.after.score.reached(), "{}", receding.after.score);
-    let mut gate = gearbox_search::gate::gates(&mut origin.native().unwrap()).unwrap()[0].clone();
+    let mut gate = gearbox_search::gate::gates(&origin.native().unwrap()).unwrap()[0].clone();
     gate.waypoint = u32::MAX;
     let mixed = Objective::Goals(Goals {
         ordered: vec![
