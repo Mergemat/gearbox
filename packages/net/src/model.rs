@@ -159,6 +159,22 @@ fn argmax(values: &[f32]) -> usize {
     (0..values.len()).fold(0, |best, i| if values[i] > values[best] { i } else { best })
 }
 
+/// Opt-in decodes of the planning head, read once from the environment: `PILOT_STEER=mean` steers by the
+/// mixture's expected (clamped) steer instead of its top component's, and `PILOT_MAX_HOLD=N` re-decides at least
+/// every N ticks. A near-even mixture of "straight" and "full lock" otherwise decodes to one extreme, held long.
+struct Decode {
+    mean_steer: bool,
+    max_hold: usize,
+}
+
+fn decode() -> &'static Decode {
+    static DECODE: std::sync::OnceLock<Decode> = std::sync::OnceLock::new();
+    DECODE.get_or_init(|| Decode {
+        mean_steer: std::env::var("PILOT_STEER").is_ok_and(|v| v == "mean"),
+        max_hold: std::env::var("PILOT_MAX_HOLD").ok().and_then(|v| v.parse().ok()).unwrap_or(usize::MAX),
+    })
+}
+
 impl Verdict {
     pub fn steer_bin(&self) -> usize {
         argmax(&self.steer_logits)
@@ -455,7 +471,14 @@ impl Net {
             return Plan { controls: vec![verdict.controls(); period], respawn: verdict.respawn() };
         };
         let (h, c) = (*hold as usize, *components as usize);
-        let steer = x[h + c + argmax(&x[h..h + c])].clamp(-1.0, 1.0);
+        let steer = if decode().mean_steer {
+            let top = x[h..h + c].iter().copied().fold(f32::NEG_INFINITY, f32::max);
+            let w: Vec<f32> = x[h..h + c].iter().map(|l| (l - top).exp()).collect();
+            let total: f32 = w.iter().sum();
+            (0..c).map(|i| w[i] * x[h + c + i].clamp(-1.0, 1.0)).sum::<f32>() / total
+        } else {
+            x[h + c + argmax(&x[h..h + c])].clamp(-1.0, 1.0)
+        };
         let pedals = h + 3 * c;
         let controls = Controls {
             steer,
@@ -470,7 +493,7 @@ impl Net {
             true => Respawn::ALL[argmax(&x[pedals + 2..pedals + 2 + RESPAWNS])],
             false => Respawn::None,
         };
-        Plan { controls: vec![controls; argmax(&logits) + 1], respawn }
+        Plan { controls: vec![controls; (argmax(&logits) + 1).min(decode().max_hold)], respawn }
     }
 
     pub fn eval(&self, observation: &[f32]) -> Verdict {
